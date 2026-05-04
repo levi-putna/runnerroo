@@ -144,6 +144,20 @@ export function prevPromptTagsFromPredecessorNode({
 }
 
 /**
+ * Prompt tag for numeric steps that expose a single `exe.number` execution field (random draw, iteration result).
+ */
+export function numericExeNumberPromptTags(): PromptTagDefinition[] {
+  return [
+    {
+      id: "exe.number",
+      label: "Execution · number",
+      description:
+        "Numeric result from this step’s execution: a random draw between resolved bounds, or starting value plus increment.",
+    },
+  ]
+}
+
+/**
  * Prompt tags that mirror fields exposed by Vercel AI SDK `GenerateTextResult` (non-streaming `generateText`).
  * Use under the `exe.` prefix so authors map outbound outputs after the model call completes.
  *

@@ -106,6 +106,37 @@ export function inferPreviousStepOutputFields({
     ]
   }
 
+  if (previousNode.type === "random" || previousNode.type === "iteration") {
+    const data = previousNode.data as Record<string, unknown>
+    const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
+    if (fromOutput.length > 0) {
+      return fromOutput.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        suggestedValue: templatePrevPath({ path: f.key }),
+      }))
+    }
+    if (previousNode.type === "random") {
+      return [
+        {
+          key: "random_number",
+          label: "Random number",
+          type: "number",
+          suggestedValue: templatePrevPath({ path: "random_number" }),
+        },
+      ]
+    }
+    return [
+      {
+        key: "number",
+        label: "Number",
+        type: "number",
+        suggestedValue: templatePrevPath({ path: "number" }),
+      },
+    ]
+  }
+
   return [
     {
       key: "previous_output",

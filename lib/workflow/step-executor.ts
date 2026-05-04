@@ -267,6 +267,185 @@ async function executeAiGenerateNode({
   return resultPayload
 }
 
+// ─── Random number & iteration ────────────────────────────────────────────────
+
+/**
+ * Parses a resolved expression as a finite number or throws an actionable executor error.
+ */
+function parseFiniteNumberFromResolved({
+  text,
+  fieldLabel,
+}: {
+  text: string
+  fieldLabel: string
+}): number {
+  const t = text.trim()
+  if (t === "") {
+    throw new Error(`${fieldLabel} resolved to an empty value.`)
+  }
+  const n = Number(t)
+  if (!Number.isFinite(n)) {
+    throw new Error(`${fieldLabel} must be a finite number (got "${String(t)}").`)
+  }
+  return n
+}
+
+/**
+ * Draws uniformly on [min, max] inclusively — integer-valued when both bounds are integers.
+ */
+function drawUniformInclusiveBetween({ min, max }: { min: number; max: number }): number {
+  let lo = min
+  let hi = max
+  if (hi < lo) {
+    const swap = lo
+    lo = hi
+    hi = swap
+  }
+  const discrete = Number.isInteger(lo) && Number.isInteger(hi)
+  if (discrete) {
+    return Math.floor(Math.random() * (hi - lo + 1)) + lo
+  }
+  return Math.random() * (hi - lo) + lo
+}
+
+/**
+ * Resolves declared `inputSchema` cells against the inbound envelope (`{{prev.*}}`, `{{input.*}}`, etc.).
+ */
+function resolveDeclaredInputsMap({
+  inputSchema,
+  context,
+}: {
+  inputSchema: NodeInputField[]
+  context: Record<string, unknown>
+}): Record<string, string> {
+  const resolvedInputs: Record<string, string> = {}
+  for (const field of inputSchema) {
+    if (!field.value) continue
+    resolvedInputs[field.key] = resolveTemplate(field.value, context)
+  }
+  return resolvedInputs
+}
+
+/**
+ * Executes a `random` node: draws a number between resolved min and max.
+ */
+function executeRandomNumberNode({
+  node,
+  stepInput,
+}: {
+  node: Node
+  stepInput: unknown
+}): Record<string, unknown> {
+  const data = node.data as Record<string, unknown> | undefined
+  const label = typeof data?.label === "string" ? data.label : node.id
+  const context = buildResolutionContext(stepInput)
+  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
+  const resolvedInputs = resolveDeclaredInputsMap({ inputSchema, context })
+
+  const minStr = resolvedInputs.min ?? ""
+  const maxStr = resolvedInputs.max ?? ""
+  const min = parseFiniteNumberFromResolved({ text: minStr, fieldLabel: 'Input "min"' })
+  const max = parseFiniteNumberFromResolved({ text: maxStr, fieldLabel: 'Input "max"' })
+  const drawn = drawUniformInclusiveBetween({ min, max })
+
+  const exeContext: Record<string, unknown> = { number: drawn }
+  const outputSchema = readInputSchemaFromNodeData({ value: data?.outputSchema })
+  const resolvedOutputs: Record<string, unknown> = {}
+  const outputContext = { ...context, exe: exeContext }
+  for (const field of outputSchema) {
+    if (!field.value) continue
+    resolvedOutputs[field.key] = resolveTemplate(field.value, outputContext)
+  }
+
+  const globalsSchema = readInputSchemaFromNodeData({ value: data?.globalsSchema })
+  const resolvedGlobals = resolveGlobalsSchema({ globalsSchema, context: outputContext })
+
+  const resultPayload: Record<string, unknown> = {
+    kind: "random",
+    node_id: node.id,
+    label,
+    ok: true,
+    ...resolvedOutputs,
+    outputs: resolvedOutputs,
+    exe: exeContext,
+    inputs: resolvedInputs,
+  }
+
+  if (Object.keys(resolvedGlobals).length > 0) {
+    resultPayload.globals = resolvedGlobals
+  }
+
+  return resultPayload
+}
+
+/**
+ * Executes an `iteration` node: `starting_number` plus an increment resolved on the Execution tab (default 1).
+ */
+function executeIterationNode({
+  node,
+  stepInput,
+}: {
+  node: Node
+  stepInput: unknown
+}): Record<string, unknown> {
+  const data = node.data as Record<string, unknown> | undefined
+  const label = typeof data?.label === "string" ? data.label : node.id
+  const context = buildResolutionContext(stepInput)
+  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
+  const resolvedInputs = resolveDeclaredInputsMap({ inputSchema, context })
+
+  const rawStart = resolvedInputs.starting_number
+  if (rawStart === undefined) {
+    throw new Error(
+      'Add an input schema row with key "starting_number" and a mapped value before running this step.',
+    )
+  }
+  const startNum = parseFiniteNumberFromResolved({
+    text: rawStart,
+    fieldLabel: 'Input "starting_number"',
+  })
+
+  const incrementTemplateRaw =
+    typeof data?.iterationIncrement === "string" ? data.iterationIncrement : "1"
+  const incrementTemplate = incrementTemplateRaw.trim() === "" ? "1" : incrementTemplateRaw.trim()
+  const incrementResolvedStr = resolveTemplate(incrementTemplate, context)
+  let increment = Number(incrementResolvedStr.trim())
+  if (!Number.isFinite(increment)) {
+    increment = 1
+  }
+
+  const nextNumber = startNum + increment
+
+  const exeContext: Record<string, unknown> = { number: nextNumber }
+  const outputSchema = readInputSchemaFromNodeData({ value: data?.outputSchema })
+  const resolvedOutputs: Record<string, unknown> = {}
+  const outputContext = { ...context, exe: exeContext }
+  for (const field of outputSchema) {
+    if (!field.value) continue
+    resolvedOutputs[field.key] = resolveTemplate(field.value, outputContext)
+  }
+
+  const globalsSchema = readInputSchemaFromNodeData({ value: data?.globalsSchema })
+  const resolvedGlobals = resolveGlobalsSchema({ globalsSchema, context: outputContext })
+
+  const resultPayload: Record<string, unknown> = {
+    kind: "iteration",
+    node_id: node.id,
+    label,
+    ok: true,
+    ...resolvedOutputs,
+    outputs: resolvedOutputs,
+    exe: exeContext,
+    inputs: resolvedInputs,
+  }
+
+  if (Object.keys(resolvedGlobals).length > 0) {
+    resultPayload.globals = resolvedGlobals
+  }
+
+  return resultPayload
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -289,6 +468,16 @@ export function createWorkflowStepExecutor(): StepExecutorFn {
       if (subtype === "generate") {
         return executeAiGenerateNode({ node, stepInput })
       }
+    }
+
+    // Random number draw
+    if (t === "random") {
+      return executeRandomNumberNode({ node, stepInput })
+    }
+
+    // Numeric iteration (starting value + increment)
+    if (t === "iteration") {
+      return executeIterationNode({ node, stepInput })
     }
 
     // All other node types (action, code, decision, switch, split, end):

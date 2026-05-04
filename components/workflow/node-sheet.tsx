@@ -42,6 +42,7 @@ import { readInputSchemaFromNodeData } from "@/lib/workflow/input-schema"
 import {
   mergePromptTagDefinitions,
   generateTextExecutionPromptTags,
+  numericExeNumberPromptTags,
   nodeInputFieldsToPromptTags,
   prevPromptTagsFromPredecessorNode,
   workflowGlobalsPromptTagsFromNodes,
@@ -54,6 +55,7 @@ import {
 } from "@/lib/workflow/previous-step-import"
 import { mergeEntryOutputSchemaFromInputFields } from "@/lib/workflow/schema-mapping-merge"
 import { WorkflowSchemaImportButtonWithDialog } from "@/components/workflow/workflow-schema-import-button-with-dialog"
+import { FunctionInput } from "@/components/workflow/function-input"
 import { WorkflowRunContext } from "@/lib/workflow/run-context"
 import { RunStepDetailSheetBody } from "@/components/workflow/run-step-detail-sheet-body"
 import { resolveRunStepTimelineLabel } from "@/lib/workflow/run-timeline"
@@ -152,23 +154,28 @@ function getNodeSheetTabVisibility({
     entryShowsInputTab ||
     nodeType === "ai" ||
     nodeType === "code" ||
+    nodeType === "random" ||
+    nodeType === "iteration" ||
     nodeType === "decision" ||
     nodeType === "switch"
 
-  // Step behaviour distinct from inbound payload shaping (instructions, runnable code, etc.).
-  const showExecution = nodeType === "ai" || nodeType === "code"
+  // Step behaviour distinct from inbound payload shaping (instructions, runnable code, numeric increment, etc.).
+  const showExecution = nodeType === "ai" || nodeType === "code" || nodeType === "iteration"
 
   const manualEntryShowsOutput = nodeType === "entry" && entryKind === "manual"
 
   const showAiGenerateOutput =
     nodeType === "ai" && normaliseAiSubtype({ value: aiSubtype }) === "generate"
 
+  const showNumericComputationOutput = nodeType === "random" || nodeType === "iteration"
+
   const showOutput =
     nodeType === "decision" ||
     nodeType === "switch" ||
     nodeType === "split" ||
     manualEntryShowsOutput ||
-    showAiGenerateOutput
+    showAiGenerateOutput ||
+    showNumericComputationOutput
 
   return { showInput, showExecution, showOutput }
 }
@@ -391,7 +398,9 @@ export function NodeSheet({
                         workflowGlobalPromptTags={workflowGlobalPromptTags}
                       />
                     ) : null}
-                    {sheetNode.type === "code" ? (
+                    {sheetNode.type === "code" ||
+                    sheetNode.type === "random" ||
+                    sheetNode.type === "iteration" ? (
                       <CodeInputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
                     ) : null}
                     {sheetNode.type === "decision" ? (
@@ -415,6 +424,15 @@ export function NodeSheet({
                       />
                     ) : null}
                     {sheetNode.type === "code" ? <CodeExecutionConfig data={localData} set={set} /> : null}
+                    {sheetNode.type === "iteration" ? (
+                      <IterationIncrementExecutionConfig
+                        data={localData}
+                        set={set}
+                        nodeId={sheetNode.id}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
                   </TabsContent>
                 ) : null}
 
@@ -440,6 +458,14 @@ export function NodeSheet({
                     {sheetNode.type === "decision" ? <DecisionOutputConfig data={localData} set={set} /> : null}
                     {sheetNode.type === "switch" ? <SwitchOutputConfig data={localData} set={set} /> : null}
                     {sheetNode.type === "split" ? <SplitOutputConfig data={localData} set={set} /> : null}
+                    {sheetNode.type === "random" || sheetNode.type === "iteration" ? (
+                      <NumericComputationOutputConfig
+                        data={localData}
+                        set={set}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
                   </TabsContent>
                 ) : null}
 
@@ -555,6 +581,111 @@ function AiGenerateOutputConfig({
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
       />
+    </div>
+  )
+}
+
+/** Outbound mappings for Random number / Iteration steps — template cells resolve `{{exe.number}}`. */
+function NumericComputationOutputConfig({
+  data,
+  set,
+  upstreamPromptTags,
+  workflowGlobalPromptTags,
+}: {
+  data: Record<string, unknown>
+  set: (k: string, v: unknown) => void
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
+}) {
+  const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
+  const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
+
+  const contextualPromptTags = React.useMemo(() => {
+    const inputFieldsForTags = readInputSchemaFromNodeData({ value: data.inputSchema })
+    return [...numericExeNumberPromptTags(), ...nodeInputFieldsToPromptTags({ fields: inputFieldsForTags })]
+  }, [data.inputSchema])
+
+  const globalsContextualTags = React.useMemo(
+    () => [
+      ...workflowGlobalPromptTags,
+      ...nodeInputFieldsToPromptTags({ fields: outputSchemaFields }),
+      ...contextualPromptTags,
+    ],
+    [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Step outputs keyed for {{prev.*}} on downstream inbound mapping */}
+      <InputSchemaBuilder
+        fields={outputSchemaFields}
+        onChange={({ fields }) => set("outputSchema", fields)}
+        usageContext="output"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={contextualPromptTags}
+      />
+      {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
+      <InputSchemaBuilder
+        fields={globalsSchemaFields}
+        onChange={({ fields }) => set("globalsSchema", fields)}
+        usageContext="globals"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={globalsContextualTags}
+      />
+    </div>
+  )
+}
+
+/**
+ * Execution controls for an Iteration step — the increment resolves after `input.*` and other envelope tags.
+ */
+function IterationIncrementExecutionConfig({
+  data,
+  set,
+  nodeId,
+  upstreamPromptTags,
+  workflowGlobalPromptTags,
+}: {
+  data: Record<string, unknown>
+  set: (k: string, v: unknown) => void
+  nodeId: string
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
+}) {
+  const promptTags = React.useMemo(() => {
+    const fields = readInputSchemaFromNodeData({ value: data.inputSchema })
+    return mergePromptTagDefinitions({
+      contextual: [
+        ...workflowGlobalPromptTags,
+        ...upstreamPromptTags,
+        ...nodeInputFieldsToPromptTags({ fields }),
+      ],
+    })
+  }, [data.inputSchema, upstreamPromptTags, workflowGlobalPromptTags])
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Increment</p>
+      {/* Expression added to Starting number after tags resolve */}
+      <FunctionInput
+        tags={promptTags}
+        value={String(data.iterationIncrement ?? "1")}
+        onChange={({ value }) => set("iterationIncrement", value)}
+        fieldInstanceId={`${nodeId}-iteration-increment`}
+        rows={5}
+        expressionDialogTitle="Increment expression"
+        expressionDialogDescription={
+          <>
+            Resolve this to a number added to{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">starting_number</code> after the
+            Input tab resolves — use literals, {"{{prev.*}}"}, {"{{input.*}}"}, workflow {"{{global.*}}"}, and{" "}
+            {"{{now.*}}"}.
+          </>
+        }
+      />
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Blank drafts save as-is; omitted or non‑numeric resolves fall back to 1 at runtime.
+      </p>
     </div>
   )
 }

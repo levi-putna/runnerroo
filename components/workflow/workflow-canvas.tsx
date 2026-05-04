@@ -28,11 +28,19 @@ import { DecisionNode } from "./node-types/decision-node"
 import { SwitchNode, type SwitchBranch } from "./node-types/switch-node"
 import { SplitNode, type SplitPath } from "./node-types/split-node"
 import { EndNode } from "./node-types/end-node"
+import { RandomNumberNode } from "./node-types/random-node"
+import { IterationNode } from "./node-types/iteration-node"
 import { WorkflowSmoothEdge } from "./workflow-edge"
 import { NodeSheet } from "./node-sheet"
 import { NodeAddSheet, type NodeDefinition } from "./node-add-sheet"
 import { Button } from "@/components/ui/button"
-import { buildDefaultGenerateTextOutputSchemaFields } from "@/lib/workflow/input-schema"
+import {
+  buildDefaultGenerateTextOutputSchemaFields,
+  buildDefaultRandomNumberInputSchemaFields,
+  buildDefaultRandomNumberOutputSchemaFields,
+  buildDefaultIterationInputSchemaFields,
+  buildDefaultIterationOutputSchemaFields,
+} from "@/lib/workflow/input-schema"
 import { Plus } from "lucide-react"
 import { getWorkflowMinimapNodeColour } from "@/lib/workflow/node-type-registry"
 import { defaultWorkflowCanvasNodes, workflowGraphBaseline } from "@/lib/workflow/persist"
@@ -46,6 +54,8 @@ const nodeTypes = {
   entry: EntryNode,
   action: ActionNode,
   code: CodeNode,
+  random: RandomNumberNode,
+  iteration: IterationNode,
   ai: AiNode,
   decision: DecisionNode,
   switch: SwitchNode,
@@ -193,6 +203,23 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
       nodeData = {
         ...nodeData,
         outputSchema: buildDefaultGenerateTextOutputSchemaFields(),
+      }
+    }
+
+    if (def.type === "random") {
+      nodeData = {
+        ...nodeData,
+        inputSchema: buildDefaultRandomNumberInputSchemaFields(),
+        outputSchema: buildDefaultRandomNumberOutputSchemaFields(),
+      }
+    }
+
+    if (def.type === "iteration") {
+      nodeData = {
+        ...nodeData,
+        inputSchema: buildDefaultIterationInputSchemaFields(),
+        outputSchema: buildDefaultIterationOutputSchemaFields(),
+        iterationIncrement: typeof nodeData.iterationIncrement === "string" ? nodeData.iterationIncrement : "1",
       }
     }
 

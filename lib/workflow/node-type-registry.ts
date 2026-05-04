@@ -17,6 +17,8 @@ import {
   Wand2,
   Workflow,
   Wrench,
+  Dice3,
+  IterationCw,
 } from "lucide-react"
 
 /** React Flow node `type` values used on the workflow canvas. */
@@ -24,6 +26,8 @@ export type WorkflowRfNodeType =
   | "entry"
   | "action"
   | "code"
+  | "random"
+  | "iteration"
   | "ai"
   | "decision"
   | "switch"
@@ -138,6 +142,18 @@ export const WORKFLOW_NODE_CORE_META: Record<
     accentBg: "bg-slate-700",
     accentHex: "#334155",
     typeLabel: "Code",
+  },
+  random: {
+    Icon: Dice3,
+    accentBg: "bg-amber-600",
+    accentHex: "#d97706",
+    typeLabel: "Random number",
+  },
+  iteration: {
+    Icon: IterationCw,
+    accentBg: "bg-lime-600",
+    accentHex: "#65a30d",
+    typeLabel: "Iteration",
   },
   decision: {
     Icon: GitBranch,
@@ -314,6 +330,10 @@ export function getWorkflowSheetTypeLabel({ type }: GetWorkflowSheetTypeLabelPar
       return WORKFLOW_NODE_CORE_META.action.typeLabel
     case "code":
       return WORKFLOW_NODE_CORE_META.code.typeLabel
+    case "random":
+      return WORKFLOW_NODE_CORE_META.random.typeLabel
+    case "iteration":
+      return WORKFLOW_NODE_CORE_META.iteration.typeLabel
     case "decision":
       return WORKFLOW_NODE_CORE_META.decision.typeLabel
     case "switch":
@@ -397,6 +417,8 @@ export function getWorkflowNodeCategoryLabel({ type }: GetWorkflowNodeCategoryLa
     case "ai":
       return WORKFLOW_STEP_GROUP_META.ai.title
     case "code":
+    case "random":
+    case "iteration":
       return WORKFLOW_STEP_GROUP_META.code.title
     case "action":
       return WORKFLOW_STEP_GROUP_META.actions.title

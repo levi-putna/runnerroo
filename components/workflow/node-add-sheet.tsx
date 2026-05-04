@@ -206,6 +206,27 @@ const nodeGroups: NodeGroupDefinition[] = [
           code: "export default async function run(input: unknown) {\n  return input\n}",
         },
       },
+      {
+        type: "random",
+        label: "Random number",
+        description: "Draw a uniform value between configurable min and max bounds",
+        group: "code",
+        defaultData: {
+          label: "Random number",
+          description: "Generate a random number from resolved lower and upper bounds",
+        },
+      },
+      {
+        type: "iteration",
+        label: "Iteration",
+        description: "Add an increment (default 1) to a starting number from the inputs",
+        group: "code",
+        defaultData: {
+          label: "Iteration",
+          description: "Advance a numeric counter by an expression-backed increment",
+          iterationIncrement: "1",
+        },
+      },
     ],
   },
   {

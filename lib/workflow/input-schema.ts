@@ -167,6 +167,88 @@ export function buildDefaultGenerateTextOutputSchemaFields(): NodeInputField[] {
   ]
 }
 
+/**
+ * Default declared inputs for a **Random number** step: inclusive bounds resolved from literals or tags.
+ */
+export function buildDefaultRandomNumberInputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "min",
+        label: "Min",
+        type: "number",
+        required: true,
+        description: "Lower bound (inclusive). May be a literal or a tagged expression.",
+        value: "0",
+      },
+    }),
+    createEmptyNodeInputField({
+      partial: {
+        key: "max",
+        label: "Max",
+        type: "number",
+        required: true,
+        description: "Upper bound (inclusive). May be a literal or a tagged expression.",
+        value: "100",
+      },
+    }),
+  ]
+}
+
+/**
+ * Default outbound mapping for **Random number** steps: one field bound to the generated value via `{{exe.number}}`.
+ */
+export function buildDefaultRandomNumberOutputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "random_number",
+        label: "Random number",
+        type: "number",
+        required: false,
+        description: "Uniform draw between min and max when both resolve to integers; otherwise a fractional value in the continuous range.",
+        value: "{{exe.number}}",
+      },
+    }),
+  ]
+}
+
+/**
+ * Default declared inputs for an **Iteration** step: the value advanced by the configured increment.
+ */
+export function buildDefaultIterationInputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "starting_number",
+        label: "Starting number",
+        type: "number",
+        required: true,
+        description: "Base value before adding the increment. May be a literal or a tagged expression.",
+        value: "",
+      },
+    }),
+  ]
+}
+
+/**
+ * Default outbound mapping for **Iteration** steps: exposed result after `starting_number + increment`.
+ */
+export function buildDefaultIterationOutputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "number",
+        label: "Number",
+        type: "number",
+        required: false,
+        description: "Result of starting number plus the resolved increment from the Execution tab.",
+        value: "{{exe.number}}",
+      },
+    }),
+  ]
+}
+
 /** Shape accepted in JSON mode (ids are refreshed when missing). */
 export interface InputSchemaJsonItem {
   id?: string

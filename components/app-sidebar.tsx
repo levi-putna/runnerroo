@@ -56,8 +56,8 @@ const navItems: NavItem[] = [
   },
   {
     id: "runs",
-    title: "Run History",
-    url: "/runs",
+    title: "Runs",
+    url: "/run",
     icon: <Activity className="size-4" />,
   },
   {

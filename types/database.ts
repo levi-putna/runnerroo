@@ -44,6 +44,8 @@ export interface Database {
           error: string | null
           node_results: Json
           wdk_run_id: string | null
+          /** Manual or webhook payload snapshot at run start */
+          trigger_inputs: Json | null
         }
         Insert: Omit<Database["public"]["Tables"]["workflow_runs"]["Row"], "id" | "started_at">
         Update: Partial<Database["public"]["Tables"]["workflow_runs"]["Insert"]>

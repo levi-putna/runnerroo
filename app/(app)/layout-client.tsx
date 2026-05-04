@@ -36,16 +36,33 @@ function useBreadcrumbs(pathname: string) {
     profile: "Profile",
     integrations: "Integrations",
     runs: "Run history",
+    run: "Runs",
     analytics: "Analytics",
     triggers: "Triggers",
     new: "New workflow",
   }
 
+  const isLikelyWorkflowOrRunUuid = (s: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      s
+    )
+
   let path = ""
-  for (const seg of segments) {
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]
     path += `/${seg}`
-    const isId = seg.length > 8 && !labelMap[seg]
-    crumbs.push({ label: isId ? "Editor" : (labelMap[seg] ?? seg), href: path })
+    const prev = i > 0 ? segments[i - 1] : null
+    let label: string
+    if (labelMap[seg]) {
+      label = labelMap[seg]
+    } else if (prev === "run" && isLikelyWorkflowOrRunUuid(seg)) {
+      label = `Run ${seg.slice(0, 8)}…`
+    } else if (seg.length > 8 && !labelMap[seg]) {
+      label = "Editor"
+    } else {
+      label = seg
+    }
+    crumbs.push({ label, href: path })
   }
   return crumbs
 }

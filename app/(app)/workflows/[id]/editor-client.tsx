@@ -13,7 +13,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ArrowLeft, Play, Save, History } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { ArrowLeft, Play, Save, History, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   defaultWorkflowCanvasNodes,
@@ -22,6 +32,14 @@ import {
   workflowGraphBaseline,
 } from "@/lib/workflow/persist"
 import type { Database } from "@/types/database"
+import { ManualWorkflowRunDialog } from "@/components/workflow/run-dialog"
+import { readInputSchemaFromNodeData, type NodeInputField } from "@/lib/workflow/input-schema"
+import { normaliseEntryKind } from "@/lib/workflow/node-type-registry"
+import { mergeNodeResult } from "@/lib/workflow/runner"
+import type { NodeResult } from "@/lib/workflow/types"
+import {
+  WorkflowEditorActionsContext,
+} from "@/lib/workflow/run-context"
 
 type WorkflowRow = Database["public"]["Tables"]["workflows"]["Row"]
 
@@ -78,6 +96,23 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
 
   const [leaveDialogOpen, setLeaveDialogOpen] = React.useState(false)
   const [pendingHref, setPendingHref] = React.useState<string | null>(null)
+
+  /** Shown when Run is requested while the graph or name differs from the last saved baseline. */
+  const [runSavePromptOpen, setRunSavePromptOpen] = React.useState(false)
+
+  const [manualRunOpen, setManualRunOpen] = React.useState(false)
+  const [manualRunFields, setManualRunFields] = React.useState<NodeInputField[]>([])
+  /** Bumps whenever the modal opens so draft state resets without effect hooks */
+  const [manualRunNonce, setManualRunNonce] = React.useState(0)
+  const [manualRunSubmitting, setManualRunSubmitting] = React.useState(false)
+  /** Confirmation dialog shown before aborting an in-flight run */
+  const [stopConfirmOpen, setStopConfirmOpen] = React.useState(false)
+  /** Holds the AbortController for the current streamed run request */
+  const abortControllerRef = React.useRef<AbortController | null>(null)
+
+  const [runStateMap, setRunStateMap] = React.useState(() => new Map<string, NodeResult>())
+  /** Persisted run row id from the latest streamed execution (for linking step I/O in the editor). */
+  const [liveRunId, setLiveRunId] = React.useState<string | null>(null)
 
   const isDirty =
     workflowName.trim() !== baselineName.trim() || graphStr !== baselineGraph
@@ -144,10 +179,12 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
 
   /**
    * Persists the current graph and metadata to the API.
+   *
+   * @returns Whether the workflow was saved successfully (false if validation failed or the request errored).
    */
-  async function handleSave() {
+  async function handleSave(): Promise<boolean> {
     const graph = canvasRef.current?.getGraph()
-    if (!graph) return
+    if (!graph) return false
     setIsSaving(true)
     try {
       if (isNew) {
@@ -168,14 +205,14 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
         const json = (await res.json()) as { workflow?: WorkflowRow; error?: string }
         if (!res.ok) {
           window.alert(json.error ?? "Could not create workflow")
-          return
+          return false
         }
-        if (!json.workflow) return
+        if (!json.workflow) return false
         setBaselineName(workflowName.trim())
         setBaselineGraph(workflowGraphBaseline({ nodes: graph.nodes, edges: graph.edges }))
         router.replace(`/workflows/${json.workflow.id}`)
         router.refresh()
-        return
+        return true
       }
 
       const res = await fetch(`/api/workflows/${workflowId}`, {
@@ -191,18 +228,250 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
       const json = (await res.json()) as { workflow?: WorkflowRow; error?: string }
       if (!res.ok) {
         window.alert(json.error ?? "Could not save workflow")
-        return
+        return false
       }
       setBaselineName(workflowName.trim())
       setBaselineGraph(workflowGraphBaseline({ nodes: graph.nodes, edges: graph.edges }))
       router.refresh()
+      return true
     } finally {
       setIsSaving(false)
     }
   }
 
+  /** Reads the current graph from the canvas so trigger inputs stay in sync with unsaved edits */
+  const resolveManualEntryInputFields = React.useCallback(() => {
+    const graph = canvasRef.current?.getGraph()
+    const entry = graph?.nodes.find((n) => n.type === "entry") ?? null
+    if (!entry?.data || typeof entry.data !== "object") {
+      return readInputSchemaFromNodeData({ value: [] })
+    }
+    const raw = (entry.data as Record<string, unknown>).inputSchema
+    return readInputSchemaFromNodeData({ value: raw })
+  }, [])
+
+  /** True when the visible entry node is configured for manual runs */
+  const isManualEntryGraph = React.useCallback(() => {
+    const graph = canvasRef.current?.getGraph()
+    const entry = graph?.nodes.find((n) => n.type === "entry") ?? null
+    if (!entry?.data || typeof entry.data !== "object") return false
+    const et = (entry.data as Record<string, unknown>).entryType
+    const entryType = typeof et === "string" ? et : undefined
+    return normaliseEntryKind({ value: entryType }) === "manual"
+  }, [])
+
+  /**
+   * Opens the manual-trigger input modal (caller has already validated entry type and persistence).
+   */
+  const openManualRunForm = React.useCallback(() => {
+    setManualRunFields(resolveManualEntryInputFields())
+    setManualRunNonce((x) => x + 1)
+    setManualRunOpen(true)
+  }, [resolveManualEntryInputFields])
+
+  /**
+   * Opens the manual trigger form (toolbar or entry node button).
+   */
+  const openManualRunDialog = React.useCallback(() => {
+    if (isNew) {
+      window.alert("Save the workflow before running it.")
+      return
+    }
+    if (!isManualEntryGraph()) {
+      window.alert("Manual runs are only available when the entry trigger is set to manual.")
+      return
+    }
+    if (isDirty) {
+      setRunSavePromptOpen(true)
+      return
+    }
+    openManualRunForm()
+  }, [isDirty, isManualEntryGraph, isNew, openManualRunForm])
+
+  /**
+   * Streams a simulated execution from the server and mirrors node status on the canvas.
+   * Closes the input dialog immediately so the user can watch the run unfold on the canvas.
+   */
+  const runWorkflow = React.useCallback(async (p: { inputs: Record<string, unknown> }) => {
+    // Close the input dialog straight away so the canvas is visible during the run
+    setManualRunOpen(false)
+    setManualRunSubmitting(true)
+    setLiveRunId(null)
+    setRunStateMap(new Map())
+
+    const ac = new AbortController()
+    abortControllerRef.current = ac
+
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputs: p.inputs }),
+        signal: ac.signal,
+      })
+      if (!res.ok) {
+        let message = await res.text()
+        try {
+          const j = JSON.parse(message) as { error?: string }
+          if (j?.error) message = j.error
+        } catch {
+          /* Plain text payload */
+        }
+        window.alert(message || "Run request failed")
+        return
+      }
+      const reader = res.body?.getReader()
+      if (!reader) {
+        window.alert("No response stream from server.")
+        return
+      }
+      const decoder = new TextDecoder()
+      let buffer = ""
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split("\n\n")
+        buffer = parts.pop() ?? ""
+        for (const block of parts) {
+          const line = block.split("\n").find((l) => l.startsWith("data: "))
+          if (!line) continue
+          let payload: unknown
+          try {
+            payload = JSON.parse(line.slice(6)) as unknown
+          } catch {
+            continue
+          }
+          if (!payload || typeof payload !== "object") continue
+          const rec = payload as Record<string, unknown>
+          if (rec.kind === "run" && typeof rec.runId === "string" && rec.runId.trim()) {
+            setLiveRunId(rec.runId.trim())
+          }
+          if (rec.kind === "node_result" && rec.result && typeof rec.result === "object") {
+            const result = rec.result as NodeResult
+            setRunStateMap((prev) => {
+              const next = new Map(prev)
+              const existing = next.get(result.node_id)
+              next.set(
+                result.node_id,
+                existing ? mergeNodeResult({ prev: existing, next: result }) : result
+              )
+              return next
+            })
+          }
+          if (rec.kind === "error" && typeof rec.message === "string") {
+            window.alert(rec.message)
+          }
+        }
+      }
+    } catch (err) {
+      // Ignore abort errors — the user intentionally stopped the run
+      if (err instanceof Error && err.name === "AbortError") return
+      throw err
+    } finally {
+      abortControllerRef.current = null
+      setManualRunSubmitting(false)
+    }
+  }, [workflowId])
+
+  /** Requests user confirmation before cancelling the active run. */
+  const stopRun = React.useCallback(() => {
+    if (!manualRunSubmitting) return
+    setStopConfirmOpen(true)
+  }, [manualRunSubmitting])
+
+  /** Aborts the in-flight fetch after the user confirms they want to stop. */
+  const confirmStopRun = React.useCallback(() => {
+    abortControllerRef.current?.abort()
+    setStopConfirmOpen(false)
+  }, [])
+
+  const editorRunActions = React.useMemo(
+    () => ({
+      openManualRunDialog,
+      runWorkflow,
+      isRunning: manualRunSubmitting,
+      stopRun,
+    }),
+    [openManualRunDialog, runWorkflow, manualRunSubmitting, stopRun]
+  )
+
   return (
+    <WorkflowEditorActionsContext.Provider value={editorRunActions}>
     <div className="flex flex-col h-full">
+      {/* Manual run — streamed execution */}
+      <ManualWorkflowRunDialog
+        key={manualRunNonce}
+        open={manualRunOpen}
+        onOpenChange={setManualRunOpen}
+        fields={manualRunFields}
+        isSubmitting={manualRunSubmitting}
+        onRun={async ({ values }) => {
+          await runWorkflow({ inputs: values })
+        }}
+      />
+
+      {/* Unsaved edits: confirm save before opening the manual run form */}
+      <Dialog open={runSavePromptOpen} onOpenChange={setRunSavePromptOpen}>
+        <DialogContent showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Save before running?</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes. Save your workflow first so the run uses your latest graph,
+              or cancel to keep editing without running.
+            </DialogDescription>
+          </DialogHeader>
+          {/* Footer actions */}
+          <DialogFooter className="sm:justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRunSavePromptOpen(false)}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={isSaving}
+              onClick={() =>
+                void (async () => {
+                  const ok = await handleSave()
+                  if (ok) {
+                    setRunSavePromptOpen(false)
+                    openManualRunForm()
+                  }
+                })()
+              }
+            >
+              {isSaving ? "Saving…" : "Save and run"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stop run — confirm before aborting the in-flight stream */}
+      <AlertDialog open={stopConfirmOpen} onOpenChange={setStopConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop this run?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The workflow is still executing. Stopping it now will abort the current run — any
+              steps already completed will not be rolled back.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep running</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmStopRun}
+            >
+              Stop run
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Unsaved changes: confirm before leaving via in-app links */}
       <Dialog open={leaveDialogOpen} onOpenChange={(o) => !o && cancelLeave()}>
         <DialogContent showCloseButton>
@@ -279,6 +548,9 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           size="icon-sm"
           className="text-muted-foreground hover:text-foreground"
           title="Run history"
+          aria-label="Run history"
+          disabled={isNew}
+          onClick={() => router.push(`/workflows/${workflowId}/history`)}
         >
           <History className="size-4" />
         </Button>
@@ -295,10 +567,30 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           {isSaving ? "Saving…" : "Save"}
         </Button>
 
-        <Button type="button" size="sm" className="gap-1.5 h-7 text-xs">
-          <Play className="size-3.5 fill-current" />
-          Run
-        </Button>
+        {/* Run / Stop button — swaps to destructive Stop while a run is in flight */}
+        {manualRunSubmitting ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            className="gap-1.5 h-7 text-xs"
+            onClick={() => stopRun()}
+          >
+            <Square className="size-3.5 fill-current" />
+            Stop
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            className="gap-1.5 h-7 text-xs"
+            disabled={isNew}
+            onClick={() => openManualRunDialog()}
+          >
+            <Play className="size-3.5 fill-current" />
+            Run
+          </Button>
+        )}
       </div>
 
       {/* React Flow canvas — remount when switching between new and persisted id */}
@@ -310,8 +602,11 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           initialNodes={seedNodes}
           initialEdges={seedEdges}
           onGraphChange={onGraphChange}
+          runState={runStateMap}
+          liveRunId={liveRunId}
         />
       </div>
     </div>
+    </WorkflowEditorActionsContext.Provider>
   )
 }

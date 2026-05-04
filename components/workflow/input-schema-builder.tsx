@@ -18,7 +18,7 @@ import { InputSchemaEditor } from "@/components/workflow/input-schema-editor"
 export interface InputSchemaBuilderProps {
   fields: NodeInputField[]
   onChange: ({ fields }: { fields: NodeInputField[] }) => void
-  usageContext?: "prompt" | "code" | "trigger" | "output"
+  usageContext?: "prompt" | "code" | "trigger" | "output" | "globals"
   /** Custom title for this panel (falls back from `usageContext` to Input schema or Output schema). */
   panelTitle?: string
   /** Tags for the inbound predecessor output (`{{prev.*}}`) for default-value autocomplete. */
@@ -45,7 +45,11 @@ export function InputSchemaBuilder({
 
   const resolvedPanelTitle =
     panelTitle ??
-    (usageContext === "output" ? "Output schema" : "Input schema")
+    (usageContext === "output"
+      ? "Output schema"
+      : usageContext === "globals"
+        ? "Workflow globals"
+        : "Input schema")
 
   const shellSubtitle =
     usageContext === "trigger"
@@ -54,7 +58,9 @@ export function InputSchemaBuilder({
         ? "Define typed inputs merged into the code sandbox `input` object."
         : usageContext === "output"
           ? "Describe what leaves this step. Sync from Input to mirror keys; use {{input.*}} placeholders where helpful."
-          : "Define typed inputs as {{input.*}} on this step and {{prev.*}} from the inbound predecessor when connected."
+          : usageContext === "globals"
+            ? "Optional tag names and expressions. Each key becomes {{global.key}} for any later step; the same key from a later step overrides earlier values."
+            : "Define typed inputs as {{input.*}} on this step and {{prev.*}} from the inbound predecessor when connected."
 
   /** Keeps the JSON textarea aligned with the latest visual edits whenever the user opens that tab. */
   function handleEditorTabChange({ next }: { next: string }) {

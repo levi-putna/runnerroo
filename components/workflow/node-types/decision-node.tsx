@@ -5,7 +5,11 @@ import { cn } from "@/lib/utils"
 import { resolveWorkflowNodeTilePresentation } from "@/lib/workflow/node-type-registry"
 import { WorkflowNodeGlyph } from "@/components/workflow/node-type-presentation"
 import { InputHandle, WorkflowSourceHandle } from "./handles"
-import { WORKFLOW_NODE_SURFACE } from "./base-node"
+import {
+  WORKFLOW_NODE_SURFACE,
+  useWorkflowNodeRunRingClassName,
+  workflowStepShellClassName,
+} from "./base-node"
 
 export interface DecisionNodeData {
   label: string
@@ -19,12 +23,14 @@ export interface DecisionNodeData {
 /**
  * Conditional branch marker — rotated tile reads as the diamond checkpoints in the reference UI.
  */
-export function DecisionNode({ data, selected }: NodeProps) {
+export function DecisionNode({ id, data, selected }: NodeProps) {
   const nodeData = data as DecisionNodeData
   const descriptionText = nodeData.description?.trim()
   const trueLabel = nodeData.trueLabel ?? "True"
   const falseLabel = nodeData.falseLabel ?? "False"
   const { accentBg: decisionAccentBg } = resolveWorkflowNodeTilePresentation({ type: "decision" })
+  const runRing = useWorkflowNodeRunRingClassName(id)
+  const shellClassName = workflowStepShellClassName({ selected, runRingClassName: runRing })
 
   return (
     <div className="flex flex-col items-stretch gap-2 w-[280px]">
@@ -35,9 +41,7 @@ export function DecisionNode({ data, selected }: NodeProps) {
         className={cn(
           WORKFLOW_NODE_SURFACE,
           "w-full",
-          selected
-            ? "ring-[6.75px] ring-blue-500/50 shadow-[0_8px_28px_oklch(0_0_0/12%)]"
-            : "hover:border-border hover:shadow-[0_4px_16px_oklch(0_0_0/8%)]"
+          shellClassName,
         )}
       >
         {/* Header — diamond motif + stacked labels */}

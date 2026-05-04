@@ -7,7 +7,10 @@ import { cn } from "@/lib/utils"
 import { WORKFLOW_NODE_CORE_META } from "@/lib/workflow/node-type-registry"
 import { WorkflowNodeIconTile } from "@/components/workflow/node-type-presentation"
 import { InputHandle, OutputHandle } from "./handles"
-import { WORKFLOW_NODE_SURFACE } from "./base-node"
+import {
+  WORKFLOW_NODE_SURFACE,
+  useWorkflowNodeRunRingClassName,
+} from "./base-node"
 
 export interface CodeNodeData {
   label: string
@@ -60,26 +63,27 @@ function CodeBodyField({ value }: { value?: string }) {
   )
 }
 
-export function CodeNode({ data, selected }: NodeProps) {
+export function CodeNode({ id, data, selected }: NodeProps) {
   const nodeData = data as CodeNodeData
   const lang = nodeData.language ?? "typescript"
   const mono = LABELS[lang]
   const descriptionText = nodeData.description?.trim()
+  const runRing = useWorkflowNodeRunRingClassName(id)
+  /** Code step keeps tinted selection chrome unless a simulated run overlays it */
+  const selectionAndRunShell =
+    runRing ??
+    (selected
+      ? "ring-2 ring-primary/35 shadow-[0_0_0_1px_var(--workflow-node-selected,_oklch(0.55_0.15_252)),0_8px_28px_oklch(0_0_0/12%)]"
+      : "hover:border-border hover:shadow-[0_4px_16px_oklch(0_0_0/8%)]")
 
   return (
     <>
       <InputHandle />
       {/* Code step — header row, divider, optional description as text, monospace body */}
       <div
-        className={cn(
-          WORKFLOW_NODE_SURFACE,
-          "w-[300px]",
-          selected
-            ? "ring-2 ring-primary/35 shadow-[0_0_0_1px_var(--workflow-node-selected,_oklch(0.55_0.15_252)),0_8px_28px_oklch(0_0_0/12%)]"
-            : "hover:border-border hover:shadow-[0_4px_16px_oklch(0_0_0/8%)]"
-        )}
+        className={cn(WORKFLOW_NODE_SURFACE, "w-[300px]", selectionAndRunShell)}
         style={
-          selected
+          selected && !runRing
             ? ({ "--workflow-node-selected": CODE_META.accentHex } as React.CSSProperties)
             : undefined
         }

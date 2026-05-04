@@ -9,7 +9,11 @@ import {
 } from "@/lib/workflow/node-type-registry"
 import { findModelById } from "@/lib/ai-gateway/models"
 import { WorkflowNodeGlyph } from "@/components/workflow/node-type-presentation"
-import { BaseNode } from "./base-node"
+import {
+  BaseNode,
+  useWorkflowNodeRunRingClassName,
+  workflowStepShellClassName,
+} from "./base-node"
 import { InputHandle, OutputHandle } from "./handles"
 
 /** @deprecated Prefer `WorkflowAiSubtype` from `@/lib/workflow/node-type-registry`. */
@@ -24,7 +28,7 @@ export interface AiNodeData {
   [key: string]: unknown
 }
 
-export function AiNode({ data, selected }: NodeProps) {
+export function AiNode({ id, data, selected }: NodeProps) {
   const nodeData = data as AiNodeData
   const subtype = normaliseAiSubtype({ value: nodeData.subtype })
   const row = WORKFLOW_AI_SUBTYPE_META[subtype]
@@ -36,6 +40,8 @@ export function AiNode({ data, selected }: NodeProps) {
         : ""
 
   const metadataRows = buildAiCanvasMetadataRows({ model: nodeData.model })
+  const runRing = useWorkflowNodeRunRingClassName(id)
+  const shellClassName = workflowStepShellClassName({ selected, runRingClassName: runRing })
 
   return (
     <>
@@ -46,7 +52,7 @@ export function AiNode({ data, selected }: NodeProps) {
         label={nodeData.label || row.defaultLabel}
         description={description}
         descriptionClassName="line-clamp-none max-h-[7.5rem] overflow-y-auto"
-        selected={selected}
+        shellClassName={shellClassName}
         accentColor={WORKFLOW_AI_FAMILY_META.accentBg}
       >
         {/* Footer metadata — omit entire block when every value is blank */}

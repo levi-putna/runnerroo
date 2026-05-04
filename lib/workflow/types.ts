@@ -86,11 +86,15 @@ export interface WorkflowRun {
   node_results: NodeResult[]
 }
 
+/** One persisted step observation inside `workflow_runs.node_results`. */
 export interface NodeResult {
   node_id: string
   status: "pending" | "running" | "success" | "failed" | "skipped"
   started_at?: string
   completed_at?: string
+  /** Payload entering this step from upstream (manual trigger snapshot for entry). */
+  input?: unknown
+  /** Payload leaving this step toward downstream successors. */
   output?: unknown
   error?: string
 }

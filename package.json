@@ -21,8 +21,6 @@
     "sb:diff": "supabase db diff"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.73",
-    "@ai-sdk/openai": "^3.0.55",
     "@ai-sdk/react": "^3.0.174",
     "@ark-ui/react": "^5.36.2",
     "@base-ui/react": "^1.4.1",

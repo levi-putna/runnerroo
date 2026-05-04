@@ -6,7 +6,11 @@ import { cn } from "@/lib/utils"
 import { resolveWorkflowNodeTilePresentation } from "@/lib/workflow/node-type-registry"
 import { WorkflowNodeGlyph } from "@/components/workflow/node-type-presentation"
 import { InputHandle, WorkflowSourceHandle } from "./handles"
-import { WORKFLOW_NODE_SURFACE } from "./base-node"
+import {
+  WORKFLOW_NODE_SURFACE,
+  useWorkflowNodeRunRingClassName,
+  workflowStepShellClassName,
+} from "./base-node"
 
 /** One parallel exit from a split — each receives the same upstream payload at runtime. */
 export interface SplitPath {
@@ -41,6 +45,8 @@ export function SplitNode({ id, data, selected }: NodeProps) {
         { id: "sp-b", label: "Path B" },
       ]
   const { accentBg: splitAccentBg } = resolveWorkflowNodeTilePresentation({ type: "split" })
+  const runRing = useWorkflowNodeRunRingClassName(id)
+  const shellClassName = workflowStepShellClassName({ selected, runRingClassName: runRing })
 
   const headerRef = React.useRef<HTMLDivElement>(null)
   const [headerH, setHeaderH] = React.useState(0)
@@ -68,9 +74,7 @@ export function SplitNode({ id, data, selected }: NodeProps) {
         className={cn(
           WORKFLOW_NODE_SURFACE,
           "w-full",
-          selected
-            ? "ring-[6.75px] ring-blue-500/50 shadow-[0_8px_28px_oklch(0_0_0/12%)]"
-            : "hover:border-border hover:shadow-[0_4px_16px_oklch(0_0_0/8%)]",
+          shellClassName,
         )}
       >
         {/* Header — measured via ResizeObserver so handles stay aligned when description reflows */}

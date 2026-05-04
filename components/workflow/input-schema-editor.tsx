@@ -39,7 +39,7 @@ export interface InputSchemaEditorProps {
   fields: NodeInputField[]
   onChange: ({ fields }: { fields: NodeInputField[] }) => void
   /** Where the user will reference `{{input.*}}` — adjusts the hint copy. */
-  usageContext?: "prompt" | "code" | "trigger" | "output"
+  usageContext?: "prompt" | "code" | "trigger" | "output" | "globals"
   /** When false, hides the outer section heading when composed inside a parent schema editor shell. */
   showHeader?: boolean
   /** Inbound predecessor output tags (`prev`, `prev.text`, …) for mapping cell autocomplete. */
@@ -160,6 +160,8 @@ interface SchemaValueFunctionInputProps {
   upstreamPromptTags?: PromptTagDefinition[]
   /** Tags merged after upstream tags — execution outputs (`{{exe.*}}`), declared inputs to reuse as expressions, etc. */
   contextualPromptTags?: PromptTagDefinition[]
+  /** When `globals`, value editor copy targets workflow global tag expressions. */
+  expressionMode?: "standard" | "globals"
   value: string
   onChange: ({ value }: { value: string }) => void
   placeholder: string
@@ -176,6 +178,7 @@ function SchemaValueFunctionInput({
   fields,
   upstreamPromptTags = [],
   contextualPromptTags = [],
+  expressionMode = "standard",
   value,
   onChange,
   placeholder,
@@ -204,9 +207,11 @@ function SchemaValueFunctionInput({
   )
 
   const expressionDialogDescription =
-    contextualPromptTags.length > 0
-      ? "Mix literals with workflow tags — {{exe.*}} values come from this step’s AI execution result (tokens, model id, assistant text). Combine with {{prev.*}} from upstream, sibling rows as {{input.other_field}}, globals {{now.iso}}, etc. Resolution order is defined by the runner."
-      : "Mix literals with workflow tags — for example {{now.iso}}, {{prev.text}} from the inbound step, or sibling inputs {{input.other_field}}. Boolean rows accept true/false literals or tags that resolve to booleans at runtime. Resolution order is defined by the runner."
+    expressionMode === "globals"
+      ? "Each row writes one key on the run-wide globals map ({{global.this_key}} for later nodes). Use the same tags as the Output schema above: {{input.*}} (Input tab and output row keys on AI steps), {{prev.*}} inbound, {{exe.*}} after the model runs, incoming {{global.*}} from earlier steps, and {{now.*}}. Rows on this tab only see incoming globals, not other rows on this tab. Resolution order is defined by the runner."
+      : contextualPromptTags.length > 0
+        ? "Mix literals with workflow tags — {{exe.*}} values come from this step’s AI execution result (tokens, model id, assistant text). Combine with {{prev.*}} from upstream, sibling rows as {{input.other_field}}, globals {{now.iso}}, etc. Resolution order is defined by the runner."
+        : "Mix literals with workflow tags — for example {{now.iso}}, {{prev.text}} from the inbound step, or sibling inputs {{input.other_field}}. Boolean rows accept true/false literals or tags that resolve to booleans at runtime. Resolution order is defined by the runner."
 
   return (
     <FunctionInput
@@ -387,7 +392,7 @@ export function InputSchemaEditor({
       {showHeader ? (
         <div className="space-y-1">
           <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Input fields
+            {usageContext === "globals" ? "Global tags" : "Input fields"}
           </Label>
           <p className="text-xs text-muted-foreground leading-relaxed">
             {usageContext === "trigger"
@@ -396,7 +401,9 @@ export function InputSchemaEditor({
                 ? "Declare the variables this step receives at runtime; they become `input` in your code. Use tag expressions such as {{input.other_key}}."
                 : usageContext === "output"
                   ? "Outbound keys forwarded after a manual run. Align them with the Input tab payload so downstream placeholders stay consistent."
-                  : "Declare the variables this step receives at runtime. Use tag expressions such as {{input.other_key}} or {{now.iso}}."}
+                  : usageContext === "globals"
+                    ? "Each key becomes {{global.key}} for any downstream step. Omit this section when you do not need shared state across the graph."
+                    : "Declare the variables this step receives at runtime. Use tag expressions such as {{input.other_key}} or {{now.iso}}."}
           </p>
         </div>
       ) : null}
@@ -405,7 +412,9 @@ export function InputSchemaEditor({
       <div className="space-y-2">
         {fields.length === 0 && !showAddForm ? (
           <p className="text-xs text-muted-foreground rounded-md border border-dashed border-border/80 bg-muted/20 px-3 py-6 text-center">
-            No input fields yet. Add a field to shape the object this step expects.
+            {usageContext === "globals"
+              ? "No workflow globals yet. Add a tag name and expression — later steps read values as {{global.tag_key}}."
+              : "No input fields yet. Add a field to shape the object this step expects."}
           </p>
         ) : null}
 
@@ -514,6 +523,7 @@ export function InputSchemaEditor({
                       fields={fields}
                       upstreamPromptTags={upstreamPromptTags}
                       contextualPromptTags={contextualPromptTags}
+                      expressionMode={usageContext === "globals" ? "globals" : "standard"}
                       id={`edit-schema-value-${field.id}`}
                       value={editDraft.value}
                       onChange={({ value }) =>
@@ -717,6 +727,7 @@ export function InputSchemaEditor({
                 fields={fields}
                 upstreamPromptTags={upstreamPromptTags}
                 contextualPromptTags={contextualPromptTags}
+                expressionMode={usageContext === "globals" ? "globals" : "standard"}
                 id="add-schema-value-tagged"
                 value={addDraft.value}
                 onChange={({ value }) => setAddDraft((d) => ({ ...d, value: value ?? "" }))}
@@ -774,6 +785,18 @@ export function InputSchemaEditor({
           <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{prev.field_key}}"}</code>{" "}
           matching the keys you declare here.
         </p>
+      ) : usageContext === "globals" ? (
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Keys you add here are exposed downstream as{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{global.your_key}}"}</code>. Value
+          expressions support the same tags as the Output schema on this step (for example{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{input.*}}"}</code>,{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{prev.*}}"}</code>,{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{exe.*}}"}</code> on AI generate,
+          and <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{now.*}}"}</code>) plus other
+          declared workflow globals. A later step can set the same key again to override the value for everything
+          after it.
+        </p>
         ) : usageContext === "output" && contextualPromptTags.length > 0 ? (
           <p className="text-xs text-muted-foreground leading-relaxed">
             Map outbound keys with{" "}
@@ -781,8 +804,8 @@ export function InputSchemaEditor({
             (and other{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{exe.*}}"}</code>) from this
             step’s AI execution, plus inbound{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{prev.*}}"}</code>, this step’s
-            Input tab as{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{prev.*}}"}</code>, this
+            step&apos;s Input tab as{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{input.*}}"}</code>, sibling
             output rows as{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{input.field_key}}"}</code>, and

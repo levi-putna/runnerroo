@@ -36,6 +36,11 @@ import { buildDefaultGenerateTextOutputSchemaFields } from "@/lib/workflow/input
 import { Plus } from "lucide-react"
 import { getWorkflowMinimapNodeColour } from "@/lib/workflow/node-type-registry"
 import { defaultWorkflowCanvasNodes, workflowGraphBaseline } from "@/lib/workflow/persist"
+import type { NodeResult } from "@/lib/workflow/types"
+import { WorkflowRunContext } from "@/lib/workflow/run-context"
+
+/** Stable empty map for providers when no run overlay is active. */
+const EMPTY_RUN_MAP = new Map<string, NodeResult>()
 
 const nodeTypes = {
   entry: EntryNode,
@@ -75,6 +80,10 @@ interface WorkflowCanvasProps {
   initialEdges?: Edge[]
   /** Called after mount when the user changes nodes or edges (not on initial mount). */
   onGraphChange?: (p: { graphBaseline: string }) => void
+  /** Latest persisted node execution visuals for simulated runs */
+  runState?: Map<string, NodeResult>
+  /** Latest persisted run id from the current editor execution stream (optional). */
+  liveRunId?: string | null
 }
 
 /**
@@ -82,7 +91,14 @@ interface WorkflowCanvasProps {
  */
 export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps>(
   function WorkflowCanvas(
-    { workflowId: _workflowId, initialNodes: initialNodesProp, initialEdges: initialEdgesProp, onGraphChange },
+    {
+      workflowId: _workflowId,
+      initialNodes: initialNodesProp,
+      initialEdges: initialEdgesProp,
+      onGraphChange,
+      runState,
+      liveRunId,
+    },
     ref
   ) {
     void _workflowId
@@ -92,11 +108,13 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
 
     const [nodes, setNodes, onNodesChange] = useNodesState(seedNodes)
     const [edges, setEdges, onEdgesChange] = useEdgesState(seedEdges)
-  const [selectedNode, setSelectedNode] = React.useState<Node | null>(null)
-  const [detailSheetOpen, setDetailSheetOpen] = React.useState(false)
-  const [addSheetOpen, setAddSheetOpen] = React.useState(false)
-  const rfInstance = React.useRef<ReactFlowInstance | null>(null)
-  const graphHydratedRef = React.useRef(false)
+    const [selectedNode, setSelectedNode] = React.useState<Node | null>(null)
+    const [detailSheetOpen, setDetailSheetOpen] = React.useState(false)
+    const [addSheetOpen, setAddSheetOpen] = React.useState(false)
+    const rfInstance = React.useRef<ReactFlowInstance | null>(null)
+    const graphHydratedRef = React.useRef(false)
+
+    const effectiveRunMap = runState ?? EMPTY_RUN_MAP
 
   React.useImperativeHandle(
     ref,
@@ -147,10 +165,10 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
     [setEdges]
   )
 
-  function handleNodeClick(_: React.MouseEvent, node: Node) {
-    setSelectedNode(node)
-    setDetailSheetOpen(true)
-  }
+    function handleNodeClick(_: React.MouseEvent, node: Node) {
+      setSelectedNode(node)
+      setDetailSheetOpen(true)
+    }
 
   function handlePaneClick() {
     setSelectedNode(null)
@@ -246,6 +264,7 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
   }
 
   return (
+    <WorkflowRunContext.Provider value={effectiveRunMap}>
     <div className="w-full h-full relative">
       <ReactFlow
         nodes={nodes}
@@ -317,6 +336,7 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
         onDelete={handleDeleteNode}
         graphNodes={nodes}
         graphEdges={edges}
+        liveRunId={liveRunId}
       />
 
       {/* Add step sheet */}
@@ -326,6 +346,7 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
         onAdd={handleAddNode}
       />
     </div>
+    </WorkflowRunContext.Provider>
   )
   }
 )

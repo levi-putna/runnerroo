@@ -2,11 +2,18 @@
 
 import * as React from "react"
 import { type NodeProps } from "@xyflow/react"
+import { Play, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { WORKFLOW_ENTRY_KIND_META, normaliseEntryKind } from "@/lib/workflow/node-type-registry"
 import { WorkflowNodeIconTile } from "@/components/workflow/node-type-presentation"
 import { OutputHandle } from "./handles"
-import { WORKFLOW_NODE_SURFACE } from "./base-node"
+import {
+  WORKFLOW_NODE_SURFACE,
+  useWorkflowNodeRunRingClassName,
+  workflowStepShellClassName,
+} from "./base-node"
+import { useOptionalWorkflowEditorActions } from "@/lib/workflow/run-context"
+import { Button } from "@/components/ui/button"
 
 export interface EntryNodeData {
   label?: string
@@ -17,11 +24,17 @@ export interface EntryNodeData {
 /**
  * Starts the graph — rectangular trigger card harmonised with the main step styling.
  */
-export function EntryNode({ data, selected }: NodeProps) {
+export function EntryNode({ id, data, selected }: NodeProps) {
   const nodeData = data as EntryNodeData
+  const editorActions = useOptionalWorkflowEditorActions()
   const kind = normaliseEntryKind({ value: nodeData.entryType })
   const cfg = WORKFLOW_ENTRY_KIND_META[kind]
   const title = (nodeData.label ?? cfg.defaultLabel).toUpperCase()
+  const manualTrigger = kind === "manual"
+
+  /** Simulated-run halo synced with downstream steps */
+  const runRing = useWorkflowNodeRunRingClassName(id)
+  const shellClassName = workflowStepShellClassName({ selected, runRingClassName: runRing })
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -30,9 +43,7 @@ export function EntryNode({ data, selected }: NodeProps) {
         className={cn(
           WORKFLOW_NODE_SURFACE,
           "w-[260px] !rounded-none",
-          selected
-            ? "ring-[6.75px] ring-blue-500/50 shadow-[0_8px_28px_oklch(0_0_0/12%)]"
-            : "hover:border-border hover:shadow-[0_4px_16px_oklch(0_0_0/8%)]"
+          shellClassName,
         )}
       >
 
@@ -46,9 +57,45 @@ export function EntryNode({ data, selected }: NodeProps) {
             frameClassName="flex size-9 shrink-0 items-center justify-center rounded-none shadow-inner"
           />
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold uppercase tracking-wide truncate">
-              {title}
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[13px] font-semibold uppercase tracking-wide truncate min-w-0">
+                {title}
+              </p>
+              {/* Manual trigger — Play to launch run dialog; swaps to Stop while a run is in flight */}
+              {manualTrigger && editorActions ? (
+                editorActions.isRunning ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="shrink-0 rounded-none border-destructive/40 text-destructive hover:bg-destructive/10"
+                    aria-label="Stop workflow run"
+                    title="Stop workflow run"
+                    onClick={(evt) => {
+                      evt.stopPropagation()
+                      editorActions.stopRun()
+                    }}
+                  >
+                    <Square className="size-3.5 fill-current" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="shrink-0 rounded-none border-emerald-600/35 text-emerald-700 hover:bg-emerald-500/10"
+                    aria-label="Run workflow manually"
+                    title="Run workflow manually"
+                    onClick={(evt) => {
+                      evt.stopPropagation()
+                      editorActions.openManualRunDialog()
+                    }}
+                  >
+                    <Play className="size-3.5 fill-current" />
+                  </Button>
+                )
+              ) : null}
+            </div>
             <span className="mt-2 inline-flex rounded-sm border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               {cfg.canvasBadge}
             </span>

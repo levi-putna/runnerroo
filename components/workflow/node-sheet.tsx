@@ -39,7 +39,14 @@ import { DEFAULT_MODEL_ID } from "@/lib/ai-gateway/models"
 import { InputSchemaBuilder } from "@/components/workflow/input-schema-builder"
 import { SystemPromptField } from "@/components/workflow/system-prompt-field"
 import { readInputSchemaFromNodeData } from "@/lib/workflow/input-schema"
-import { mergePromptTagDefinitions, generateTextExecutionPromptTags, nodeInputFieldsToPromptTags, prevPromptTagsFromPredecessorNode, type PromptTagDefinition } from "@/lib/workflow/prompt-tags"
+import {
+  mergePromptTagDefinitions,
+  generateTextExecutionPromptTags,
+  nodeInputFieldsToPromptTags,
+  prevPromptTagsFromPredecessorNode,
+  workflowGlobalsPromptTagsFromNodes,
+  type PromptTagDefinition,
+} from "@/lib/workflow/prompt-tags"
 import {
   inferPreviousStepOutputFields,
   listInboundSourcesForNode,
@@ -47,6 +54,9 @@ import {
 } from "@/lib/workflow/previous-step-import"
 import { mergeEntryOutputSchemaFromInputFields } from "@/lib/workflow/schema-mapping-merge"
 import { WorkflowSchemaImportButtonWithDialog } from "@/components/workflow/workflow-schema-import-button-with-dialog"
+import { WorkflowRunContext } from "@/lib/workflow/run-context"
+import { RunStepDetailSheetBody } from "@/components/workflow/run-step-detail-sheet-body"
+import { resolveRunStepTimelineLabel } from "@/lib/workflow/run-timeline"
 
 interface NodeSheetProps {
   node: Node | null
@@ -57,6 +67,11 @@ interface NodeSheetProps {
   /** When set, enables wiring Generate text inputs to upstream step outputs. */
   graphNodes?: Node[]
   graphEdges?: Edge[]
+  /**
+   * Persisted workflow run id for the latest editor execution stream.
+   * Together with {@link WorkflowRunContext}, enables the Run tab for step I/O.
+   */
+  liveRunId?: string | null
 }
 
 /**
@@ -159,7 +174,8 @@ function getNodeSheetTabVisibility({
 }
 
 /**
- * Right-hand sheet editor for workflow nodes with General / Input / Execution / Output tabs when exposed.
+ * Right-hand sheet for workflow nodes: General / Input / Execution / Output when applicable,
+ * plus **Run** (captured input, output, errors) when this step has data from the latest editor execution.
  */
 export function NodeSheet({
   node,
@@ -169,8 +185,14 @@ export function NodeSheet({
   onDelete,
   graphNodes = [],
   graphEdges = [],
+  liveRunId,
 }: NodeSheetProps) {
   const [localData, setLocalData] = React.useState<Record<string, unknown>>({})
+  const runMap = React.useContext(WorkflowRunContext)
+  /** Active primary tab in the node sheet (includes Run when execution data exists for this node). */
+  const [activeSheetTab, setActiveSheetTab] = React.useState<
+    "general" | "input" | "execution" | "output" | "run"
+  >("general")
 
   // Sync local state when the selected node changes
   React.useEffect(() => {
@@ -178,6 +200,12 @@ export function NodeSheet({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- draft reset when switching nodes
     setLocalData({ ...node.data })
   }, [node?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Land on General when switching nodes; drop Run if this step no longer has run data. */
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tab strip should reset with selected node id
+    setActiveSheetTab("general")
+  }, [node?.id])
 
   const inboundPick = useInboundPredecessorSelection({
     targetNodeId: node?.id ?? "",
@@ -194,44 +222,78 @@ export function NodeSheet({
     [inboundPick.selectedPredecessor],
   )
 
+  const workflowGlobalPromptTags = React.useMemo(
+    () => workflowGlobalsPromptTagsFromNodes({ nodes: graphNodes }),
+    [graphNodes],
+  )
+
+  /** Fall back to General when this node no longer has run snapshots (e.g. run map cleared). */
+  const showRunTabForEffect = node != null && runMap.has(node.id)
+  React.useEffect(() => {
+    if (!showRunTabForEffect && activeSheetTab === "run") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- avoid Run tab when snapshot is absent
+      setActiveSheetTab("general")
+    }
+  }, [showRunTabForEffect, activeSheetTab])
+
   if (!node) return null
 
-  const sheetTypeLabel = getWorkflowSheetTypeLabel({ type: node.type })
+  const sheetNode = node
+
+  const sheetTypeLabel = getWorkflowSheetTypeLabel({ type: sheetNode.type })
   const entryKindForTabs =
-    node.type === "entry"
+    sheetNode.type === "entry"
       ? normaliseEntryKind({ value: localData.entryType as string | undefined })
       : null
   const { showInput, showExecution, showOutput } = getNodeSheetTabVisibility({
-    nodeType: node.type,
+    nodeType: sheetNode.type,
     entryKind: entryKindForTabs,
-    aiSubtype: node.type === "ai" ? (localData.subtype as string | undefined) : undefined,
+    aiSubtype: sheetNode.type === "ai" ? (localData.subtype as string | undefined) : undefined,
   })
   const useTabs = showInput || showExecution || showOutput
+  const stepRunResult = runMap.get(sheetNode.id)
+  const showRunTab = stepRunResult !== undefined
+  const useTabStrip = useTabs || showRunTab
   const tabCount =
     1 +
     (showInput ? 1 : 0) +
     (showExecution ? 1 : 0) +
-    (showOutput ? 1 : 0)
+    (showOutput ? 1 : 0) +
+    (showRunTab ? 1 : 0)
 
   function set(key: string, value: unknown) {
     setLocalData((prev) => ({ ...prev, [key]: value }))
   }
 
   function handleSave() {
-    if (!node) return
-    onUpdate(node.id, localData)
+    onUpdate(sheetNode.id, localData)
     onClose()
   }
 
+  /** Applies only recognised sheet tab values from Radix. */
+  function handleSheetTabChange(value: string) {
+    if (
+      value === "general" ||
+      value === "input" ||
+      value === "execution" ||
+      value === "output" ||
+      value === "run"
+    ) {
+      setActiveSheetTab(value)
+    }
+  }
+
+  const persistedRunIdForIo = liveRunId?.trim() ?? ""
+
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="w-full sm:min-w-[600px] sm:max-w-[600px] flex flex-col gap-0 p-0">
+      <SheetContent className="flex h-full max-h-[100dvh] min-h-0 w-full flex-col gap-0 p-0 sm:min-w-[600px] sm:max-w-[600px]">
         <SheetHeader className="px-5 pt-5 pb-4 border-b">
           {/* Large type icon left; title + type tag stacked beside it; vertical centre alignment */}
           <div className="flex min-h-12 items-center gap-4">
             {/* Header tile — same accent + glyph rules as canvas / add sheet */}
             <WorkflowNodeIconTile
-              type={node.type ?? "action"}
+              type={sheetNode.type ?? "action"}
               size="lg"
               stroke="emphasis"
               frameClassName="flex size-12 shrink-0 items-center justify-center rounded-xl shadow-sm"
@@ -250,153 +312,195 @@ export function NodeSheet({
           <SheetDescription className="sr-only">Configure node settings</SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {useTabs ? (
-            <Tabs key={node.id} defaultValue="general" className="w-full gap-0">
-              {/* Tab bar: full width of the padded sheet body; equal columns; aligns with fields below */}
-              <TabsList
-                className={cn(
-                  "grid h-auto min-h-9 w-full shrink-0 gap-1",
-                  tabCount === 2 && "grid-cols-2",
-                  tabCount === 3 && "grid-cols-3",
-                  tabCount === 4 && "grid-cols-4",
-                  tabCount >= 5 && "grid-cols-5",
-                )}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            {useTabStrip ? (
+              <Tabs
+                value={activeSheetTab}
+                onValueChange={handleSheetTabChange}
+                className="w-full gap-0"
               >
-                <TabsTrigger value="general" className="w-full min-h-8 shrink-0">
-                  General
-                </TabsTrigger>
+                {/* Primary tabs — Run appears only when this step has execution data */}
+                <TabsList
+                  className={cn(
+                    "grid h-auto min-h-9 w-full shrink-0 gap-1",
+                    tabCount === 2 && "grid-cols-2",
+                    tabCount === 3 && "grid-cols-3",
+                    tabCount === 4 && "grid-cols-4",
+                    tabCount === 5 && "grid-cols-5",
+                    tabCount >= 6 && "grid-cols-6",
+                  )}
+                >
+                  <TabsTrigger value="general" className="w-full min-h-8 shrink-0">
+                    General
+                  </TabsTrigger>
+                  {showInput ? (
+                    <TabsTrigger value="input" className="w-full min-h-8 shrink-0">
+                      Input
+                    </TabsTrigger>
+                  ) : null}
+                  {showExecution ? (
+                    <TabsTrigger value="execution" className="w-full min-h-8 shrink-0">
+                      Execution
+                    </TabsTrigger>
+                  ) : null}
+                  {showOutput ? (
+                    <TabsTrigger value="output" className="w-full min-h-8 shrink-0">
+                      Output
+                    </TabsTrigger>
+                  ) : null}
+                  {showRunTab ? (
+                    <TabsTrigger value="run" className="w-full min-h-8 shrink-0">
+                      Run
+                    </TabsTrigger>
+                  ) : null}
+                </TabsList>
+
+                {/* General: label & description */}
+                <TabsContent value="general" className="mt-4 space-y-3 outline-none">
+                  <div className="space-y-1.5">
+                    <Label>Label</Label>
+                    <Input
+                      value={String(localData.label ?? "")}
+                      onChange={(e) => set("label", e.target.value)}
+                      placeholder="Node name"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Description</Label>
+                    <Textarea
+                      value={String(localData.description ?? "")}
+                      onChange={(e) => set("description", e.target.value)}
+                      placeholder="Describe what this step does..."
+                      rows={3}
+                      className="resize-none"
+                    />
+                  </div>
+                </TabsContent>
+
+                {/* Input: upstream / payload shaping */}
                 {showInput ? (
-                  <TabsTrigger value="input" className="w-full min-h-8 shrink-0">
-                    Input
-                  </TabsTrigger>
+                  <TabsContent value="input" className="mt-4 space-y-4 outline-none">
+                    {sheetNode.type === "entry" ? <EntryInputConfig data={localData} set={set} /> : null}
+                    {sheetNode.type === "ai" ? (
+                      <AiInputConfig
+                        data={localData}
+                        set={set}
+                        inboundPick={inboundPick}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "code" ? (
+                      <CodeInputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
+                    ) : null}
+                    {sheetNode.type === "decision" ? (
+                      <DecisionInputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
+                    ) : null}
+                    {sheetNode.type === "switch" ? (
+                      <SwitchInputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
+                    ) : null}
+                  </TabsContent>
                 ) : null}
+
                 {showExecution ? (
-                  <TabsTrigger value="execution" className="w-full min-h-8 shrink-0">
-                    Execution
-                  </TabsTrigger>
+                  <TabsContent value="execution" className="mt-4 space-y-4 outline-none">
+                    {sheetNode.type === "ai" ? (
+                      <AiExecutionConfig
+                        data={localData}
+                        set={set}
+                        nodeId={sheetNode.id}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "code" ? <CodeExecutionConfig data={localData} set={set} /> : null}
+                  </TabsContent>
                 ) : null}
+
+                {/* Output: branching */}
                 {showOutput ? (
-                  <TabsTrigger value="output" className="w-full min-h-8 shrink-0">
-                    Output
-                  </TabsTrigger>
+                  <TabsContent value="output" className="mt-4 space-y-4 outline-none">
+                    {sheetNode.type === "entry" ? (
+                      <EntryManualOutputConfig
+                        data={localData}
+                        set={set}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "ai" &&
+                    normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "generate" ? (
+                      <AiGenerateOutputConfig
+                        data={localData}
+                        set={set}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "decision" ? <DecisionOutputConfig data={localData} set={set} /> : null}
+                    {sheetNode.type === "switch" ? <SwitchOutputConfig data={localData} set={set} /> : null}
+                    {sheetNode.type === "split" ? <SplitOutputConfig data={localData} set={set} /> : null}
+                  </TabsContent>
                 ) : null}
-              </TabsList>
 
-              {/* General: label & description */}
-              <TabsContent value="general" className="mt-4 space-y-3 outline-none">
-                <div className="space-y-1.5">
-                  <Label>Label</Label>
-                  <Input
-                    value={String(localData.label ?? "")}
-                    onChange={(e) => set("label", e.target.value)}
-                    placeholder="Node name"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Description</Label>
-                  <Textarea
-                    value={String(localData.description ?? "")}
-                    onChange={(e) => set("description", e.target.value)}
-                    placeholder="Describe what this step does..."
-                    rows={3}
-                    className="resize-none"
-                  />
-                </div>
-              </TabsContent>
-
-              {/* Input: upstream / payload shaping */}
-              {showInput ? (
-                <TabsContent value="input" className="mt-4 space-y-4 outline-none">
-                  {node.type === "entry" ? <EntryInputConfig data={localData} set={set} /> : null}
-                  {node.type === "ai" ? (
-                    <AiInputConfig
-                      data={localData}
-                      set={set}
-                      inboundPick={inboundPick}
-                      upstreamPromptTags={upstreamPromptTags}
+                {showRunTab ? (
+                  <TabsContent value="run" className="mt-4 outline-none">
+                    <div className="-mx-5 min-h-[min(520px,calc(100dvh-220px))] overflow-hidden rounded-lg border border-border/80">
+                      <RunStepDetailSheetBody
+                        stepLabel={resolveRunStepTimelineLabel(stepRunResult)}
+                        result={stepRunResult}
+                        runId={persistedRunIdForIo || "—"}
+                      />
+                    </div>
+                  </TabsContent>
+                ) : null}
+              </Tabs>
+            ) : (
+              <div className="space-y-5">
+                {/* Single-column mode: general fields only */}
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Label</Label>
+                    <Input
+                      value={String(localData.label ?? "")}
+                      onChange={(e) => set("label", e.target.value)}
+                      placeholder="Node name"
                     />
-                  ) : null}
-                  {node.type === "code" ? (
-                    <CodeInputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
-                  ) : null}
-                  {node.type === "decision" ? (
-                    <DecisionInputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
-                  ) : null}
-                  {node.type === "switch" ? (
-                    <SwitchInputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
-                  ) : null}
-                </TabsContent>
-              ) : null}
-
-              {showExecution ? (
-                <TabsContent value="execution" className="mt-4 space-y-4 outline-none">
-                  {node.type === "ai" ? (
-                    <AiExecutionConfig
-                      data={localData}
-                      set={set}
-                      nodeId={node.id}
-                      upstreamPromptTags={upstreamPromptTags}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Description</Label>
+                    <Textarea
+                      value={String(localData.description ?? "")}
+                      onChange={(e) => set("description", e.target.value)}
+                      placeholder="Describe what this step does..."
+                      rows={3}
+                      className="resize-none"
                     />
-                  ) : null}
-                  {node.type === "code" ? <CodeExecutionConfig data={localData} set={set} /> : null}
-                </TabsContent>
-              ) : null}
-
-              {/* Output: branching */}
-              {showOutput ? (
-                <TabsContent value="output" className="mt-4 space-y-4 outline-none">
-                  {node.type === "entry" ? <EntryManualOutputConfig data={localData} set={set} /> : null}
-                  {node.type === "ai" &&
-                  normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "generate" ? (
-                    <AiGenerateOutputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
-                  ) : null}
-                  {node.type === "decision" ? <DecisionOutputConfig data={localData} set={set} /> : null}
-                  {node.type === "switch" ? <SwitchOutputConfig data={localData} set={set} /> : null}
-                  {node.type === "split" ? <SplitOutputConfig data={localData} set={set} /> : null}
-                </TabsContent>
-              ) : null}
-            </Tabs>
-          ) : (
-            <div className="space-y-5">
-              {/* Single-column mode: general fields only */}
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label>Label</Label>
-                  <Input
-                    value={String(localData.label ?? "")}
-                    onChange={(e) => set("label", e.target.value)}
-                    placeholder="Node name"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Description</Label>
-                  <Textarea
-                    value={String(localData.description ?? "")}
-                    onChange={(e) => set("description", e.target.value)}
-                    placeholder="Describe what this step does..."
-                    rows={3}
-                    className="resize-none"
-                  />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Footer actions */}
-        <div className="border-t px-5 py-4 flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            onClick={() => { onDelete(node.id); onClose() }}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-          <div className="flex-1" />
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave}>Save</Button>
+          {/* Footer */}
+          <div className="flex shrink-0 items-center gap-2 border-t px-5 py-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={() => {
+                onDelete(sheetNode.id)
+                onClose()
+              }}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+            <div className="flex-1" />
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave}>Save</Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -408,17 +512,30 @@ function AiGenerateOutputConfig({
   data,
   set,
   upstreamPromptTags,
+  workflowGlobalPromptTags,
 }: {
   data: Record<string, unknown>
   set: (k: string, v: unknown) => void
   upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
 }) {
   const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
+  const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
 
   const contextualPromptTags = React.useMemo(() => {
     const inputFieldsForTags = readInputSchemaFromNodeData({ value: data.inputSchema })
     return [...generateTextExecutionPromptTags(), ...nodeInputFieldsToPromptTags({ fields: inputFieldsForTags })]
   }, [data.inputSchema])
+
+  /** Same tag palette as the Output schema row (prev, exe, Input tab, now) plus declared `global.*` and output keys as `input.*`. */
+  const globalsContextualTags = React.useMemo(
+    () => [
+      ...workflowGlobalPromptTags,
+      ...nodeInputFieldsToPromptTags({ fields: outputSchemaFields }),
+      ...contextualPromptTags,
+    ],
+    [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
 
   return (
     <div className="space-y-6">
@@ -430,6 +547,14 @@ function AiGenerateOutputConfig({
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={contextualPromptTags}
       />
+      {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
+      <InputSchemaBuilder
+        fields={globalsSchemaFields}
+        onChange={({ fields }) => set("globalsSchema", fields)}
+        usageContext="globals"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={globalsContextualTags}
+      />
     </div>
   )
 }
@@ -440,12 +565,25 @@ function AiGenerateOutputConfig({
 function EntryManualOutputConfig({
   data,
   set,
+  workflowGlobalPromptTags,
 }: {
   data: Record<string, unknown>
   set: (k: string, v: unknown) => void
+  workflowGlobalPromptTags: PromptTagDefinition[]
 }) {
   const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
+  const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
   const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
+
+  /** Match the manual output row tag palette: Input tab, output keys, declared `global.*`, and `now.*` (via merge inside the editor). */
+  const globalsContextualTags = React.useMemo(
+    () => [
+      ...workflowGlobalPromptTags,
+      ...nodeInputFieldsToPromptTags({ fields: inputSchemaFields }),
+      ...nodeInputFieldsToPromptTags({ fields: outputSchemaFields }),
+    ],
+    [workflowGlobalPromptTags, inputSchemaFields, outputSchemaFields],
+  )
 
   const canSyncFromPayload = inputSchemaFields.length > 0
 
@@ -492,6 +630,13 @@ function EntryManualOutputConfig({
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}
         usageContext="output"
+      />
+      {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
+      <InputSchemaBuilder
+        fields={globalsSchemaFields}
+        onChange={({ fields }) => set("globalsSchema", fields)}
+        usageContext="globals"
+        contextualPromptTags={globalsContextualTags}
       />
     </div>
   )
@@ -558,11 +703,13 @@ function AiInputConfig({
   set,
   inboundPick,
   upstreamPromptTags,
+  workflowGlobalPromptTags,
 }: {
   data: Record<string, unknown>
   set: (k: string, v: unknown) => void
   inboundPick: ReturnType<typeof useInboundPredecessorSelection>
   upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
 }) {
   const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
   const subtype = normaliseAiSubtype({ value: data.subtype as string | undefined })
@@ -636,6 +783,7 @@ function AiInputConfig({
         onChange={({ fields }) => set("inputSchema", fields)}
         usageContext="prompt"
         upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={workflowGlobalPromptTags}
       />
     </div>
   )
@@ -643,26 +791,32 @@ function AiInputConfig({
 
 /**
  * Model and prompt / instruction body for an AI step.
- * Tag autocomplete for instructions lists inbound `prev.*` plus declared `input.*` from the Input tab.
+ * Tag autocomplete lists `{{global.*}}` from any node globals schema, inbound `{{prev.*}}`, and `{{input.*}}`.
  */
 function AiExecutionConfig({
   data,
   set,
   nodeId,
   upstreamPromptTags,
+  workflowGlobalPromptTags,
 }: {
   data: Record<string, unknown>
   set: (k: string, v: unknown) => void
   nodeId: string
   upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
 }) {
   // Stable reference unless `inputSchema` or predecessor tags change — avoids remounting Tiptap on every `localData` keystroke.
   const promptTags = React.useMemo(() => {
     const fields = readInputSchemaFromNodeData({ value: data.inputSchema })
     return mergePromptTagDefinitions({
-      contextual: [...upstreamPromptTags, ...nodeInputFieldsToPromptTags({ fields })],
+      contextual: [
+        ...workflowGlobalPromptTags,
+        ...upstreamPromptTags,
+        ...nodeInputFieldsToPromptTags({ fields }),
+      ],
     })
-  }, [data.inputSchema, upstreamPromptTags])
+  }, [data.inputSchema, upstreamPromptTags, workflowGlobalPromptTags])
 
   return (
     <div className="w-full space-y-6">
@@ -687,11 +841,11 @@ function AiExecutionConfig({
           fieldInstanceId={nodeId}
           rows={14}
           helperText={
-            "Type {{ to pick inbound {{prev.*}} tags from the wired predecessor and {{input.*}} from the Input tab, or write placeholders manually so they match that schema. Globals such as {{now.iso}} are included too."
+            "Type {{ to pick inbound {{prev.*}} from the wired predecessor, {{input.*}} from the Input tab, workflow {{global.*}} keys declared on any step, and {{now.*}}."
           }
           expressionDialogTitle="Instructions"
           expressionDialogDescription={
-            "Insert {{prev.*}} values from the inbound step and {{input.*}} from the Input tab, plus globals {{now.iso}}, {{now.unix_ms}}, and {{now.date}}."
+            "Insert {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} from Workflow globals on any step, and built-in {{now.*}} timestamps."
           }
         />
       </div>

@@ -6,7 +6,11 @@ import { cn } from "@/lib/utils"
 import { resolveWorkflowNodeTilePresentation } from "@/lib/workflow/node-type-registry"
 import { WorkflowNodeGlyph } from "@/components/workflow/node-type-presentation"
 import { InputHandle, WorkflowSourceHandle } from "./handles"
-import { WORKFLOW_NODE_SURFACE } from "./base-node"
+import {
+  WORKFLOW_NODE_SURFACE,
+  useWorkflowNodeRunRingClassName,
+  workflowStepShellClassName,
+} from "./base-node"
 
 /** One guarded exit from a switch — evaluated top-to-bottom; first match wins at runtime. */
 export interface SwitchBranch {
@@ -44,6 +48,8 @@ export function SwitchNode({ id, data, selected }: NodeProps) {
     : [{ id: "initial-case", label: "Case 1", condition: "" }]
   const defaultLabel = nodeData.defaultBranchLabel ?? "Else"
   const { accentBg: switchAccentBg } = resolveWorkflowNodeTilePresentation({ type: "switch" })
+  const runRing = useWorkflowNodeRunRingClassName(id)
+  const shellClassName = workflowStepShellClassName({ selected, runRingClassName: runRing })
 
   const headerRef = React.useRef<HTMLDivElement>(null)
   const [headerH, setHeaderH] = React.useState(0)
@@ -71,9 +77,7 @@ export function SwitchNode({ id, data, selected }: NodeProps) {
         className={cn(
           WORKFLOW_NODE_SURFACE,
           "w-full",
-          selected
-            ? "ring-[6.75px] ring-blue-500/50 shadow-[0_8px_28px_oklch(0_0_0/12%)]"
-            : "hover:border-border hover:shadow-[0_4px_16px_oklch(0_0_0/8%)]"
+          shellClassName,
         )}
       >
         {/* Header — measured via ResizeObserver so handles stay aligned when description reflows */}

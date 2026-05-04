@@ -463,3 +463,24 @@ export function getFeaturedModels(type?: GatewayModel['type']): GatewayModel[] {
 export function findModelById(id: string): GatewayModel | undefined {
   return GATEWAY_MODELS.find((m) => m.id === id);
 }
+
+/**
+ * Normalises a stored workflow model identifier to a `provider/model` slug for the Vercel AI Gateway.
+ *
+ * The Model selector already persists gateway-qualified IDs; older graphs may store shorthand IDs
+ * (for example Claude or GPT base names without a provider prefix).
+ */
+export function resolveWorkflowGatewayModelId({ modelId }: { modelId: string }): string {
+  const trimmed = modelId.trim();
+  if (!trimmed) return DEFAULT_MODEL_ID;
+
+  // Already gateway-qualified (catalogue IDs and any explicit provider/model slug).
+  if (trimmed.includes('/')) return trimmed;
+
+  if (trimmed.startsWith('claude')) return `anthropic/${trimmed}`;
+  if (trimmed.startsWith('gpt') || trimmed.startsWith('o1') || trimmed.startsWith('o3')) {
+    return `openai/${trimmed}`;
+  }
+
+  return DEFAULT_MODEL_ID;
+}

@@ -1,6 +1,6 @@
 import type { Node } from "@xyflow/react"
 
-import type { NodeInputField } from "@/lib/workflow/input-schema"
+import { readInputSchemaFromNodeData, type NodeInputField } from "@/lib/workflow/input-schema"
 import { inferPreviousStepOutputFields } from "@/lib/workflow/previous-step-import"
 
 /**
@@ -59,6 +59,36 @@ export function mergePromptTagDefinitions({
     if (seen.has(t.id)) continue
     seen.add(t.id)
     out.push(t)
+  }
+  return out
+}
+
+export interface WorkflowGlobalsPromptTagsFromNodesParams {
+  nodes: Node[]
+}
+
+/**
+ * Collects distinct `globalsSchema` keys from every node so authors get `{{global.key}}` suggestions.
+ */
+export function workflowGlobalsPromptTagsFromNodes({
+  nodes,
+}: WorkflowGlobalsPromptTagsFromNodesParams): PromptTagDefinition[] {
+  const seenKeys = new Set<string>()
+  const out: PromptTagDefinition[] = []
+  for (const n of nodes) {
+    const data = n.data as Record<string, unknown> | undefined
+    const fields = readInputSchemaFromNodeData({ value: data?.globalsSchema })
+    for (const field of fields) {
+      const key = field.key.trim()
+      if (!key || seenKeys.has(key)) continue
+      seenKeys.add(key)
+      const token = `global.${key}`
+      out.push({
+        id: token,
+        label: field.label?.trim() || key,
+        description: `Workflow global “${key}”, referenced as {{${token}}}. Values shallow-merge along the run; a later step can override this key.`,
+      })
+    }
   }
   return out
 }

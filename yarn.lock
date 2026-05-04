@@ -2,14 +2,6 @@
 # yarn lockfile v1
 
 
-"@ai-sdk/anthropic@^3.0.73":
-  version "3.0.74"
-  resolved "https://registry.yarnpkg.com/@ai-sdk/anthropic/-/anthropic-3.0.74.tgz#d232837599fda07df3c11dca01750bfa20c4df70"
-  integrity sha512-Xew9rfz9WWhDSyF8rNhjT/XWOWelNfJrMlmG0Ahw210hStisRpQZ1s+7VeI9JTJOZ5y5tXqBi5kfPwYnCfyRTA==
-  dependencies:
-    "@ai-sdk/provider" "3.0.10"
-    "@ai-sdk/provider-utils" "4.0.26"
-
 "@ai-sdk/gateway@3.0.109":
   version "3.0.109"
   resolved "https://registry.yarnpkg.com/@ai-sdk/gateway/-/gateway-3.0.109.tgz#7f623a166a7d8322b3e774ba5f1edb72d3aa0608"
@@ -18,14 +10,6 @@
     "@ai-sdk/provider" "3.0.10"
     "@ai-sdk/provider-utils" "4.0.26"
     "@vercel/oidc" "3.2.0"
-
-"@ai-sdk/openai@^3.0.55":
-  version "3.0.58"
-  resolved "https://registry.yarnpkg.com/@ai-sdk/openai/-/openai-3.0.58.tgz#961a81ce04e54018f21a26c0a50e30eef17bdf50"
-  integrity sha512-2+5xGMROmrBboJuoOwqLL3b/o3i56+NRdxXDNVAiTyYjLiBj6KzembeuyuBT217be1X+zkEfAqD1H0irJlGIyw==
-  dependencies:
-    "@ai-sdk/provider" "3.0.10"
-    "@ai-sdk/provider-utils" "4.0.26"
 
 "@ai-sdk/provider-utils@4.0.26":
   version "4.0.26"

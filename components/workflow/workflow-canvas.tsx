@@ -1,0 +1,333 @@
+"use client"
+
+import * as React from "react"
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  type Connection,
+  type Edge,
+  type IsValidConnection,
+  type Node,
+  BackgroundVariant,
+  Panel,
+  type ReactFlowInstance,
+  ConnectionLineType,
+  ConnectionMode,
+} from "@xyflow/react"
+import "@xyflow/react/dist/style.css"
+import { EntryNode } from "./node-types/entry-node"
+import { ActionNode } from "./node-types/action-node"
+import { CodeNode } from "./node-types/code-node"
+import { AiNode } from "./node-types/ai-node"
+import { DecisionNode } from "./node-types/decision-node"
+import { SwitchNode, type SwitchBranch } from "./node-types/switch-node"
+import { SplitNode, type SplitPath } from "./node-types/split-node"
+import { EndNode } from "./node-types/end-node"
+import { WorkflowSmoothEdge } from "./workflow-edge"
+import { NodeSheet } from "./node-sheet"
+import { NodeAddSheet, type NodeDefinition } from "./node-add-sheet"
+import { Button } from "@/components/ui/button"
+import { buildDefaultGenerateTextOutputSchemaFields } from "@/lib/workflow/input-schema"
+import { Plus } from "lucide-react"
+import { getWorkflowMinimapNodeColour } from "@/lib/workflow/node-type-registry"
+import { defaultWorkflowCanvasNodes, workflowGraphBaseline } from "@/lib/workflow/persist"
+
+const nodeTypes = {
+  entry: EntryNode,
+  action: ActionNode,
+  code: CodeNode,
+  ai: AiNode,
+  decision: DecisionNode,
+  switch: SwitchNode,
+  split: SplitNode,
+  end: EndNode,
+}
+
+const edgeTypes = {
+  workflow: WorkflowSmoothEdge,
+}
+
+const defaultEdgeOptions = {
+  type: "workflow" as const,
+  animated: false,
+}
+
+const initialNodes: Node[] = defaultWorkflowCanvasNodes()
+
+const initialEdges: Edge[] = []
+
+export type WorkflowCanvasHandle = {
+  /** Returns the current React Flow graph for persistence. */
+  getGraph: () => { nodes: Node[]; edges: Edge[] }
+  /** Replaces the canvas graph (e.g. after loading from the server). */
+  setGraph: (p: { nodes: Node[]; edges: Edge[] }) => void
+}
+
+interface WorkflowCanvasProps {
+  workflowId?: string
+  /** When provided, seeds the canvas (use a parent `key` when the workflow identity changes). */
+  initialNodes?: Node[]
+  initialEdges?: Edge[]
+  /** Called after mount when the user changes nodes or edges (not on initial mount). */
+  onGraphChange?: (p: { graphBaseline: string }) => void
+}
+
+/**
+ * Node-based workflow editor (React Flow). Edges use theme `oklch` tokens via `var` / `color-mix`, not `hsl(var(--…))`, so strokes and connection previews render correctly.
+ */
+export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps>(
+  function WorkflowCanvas(
+    { workflowId: _workflowId, initialNodes: initialNodesProp, initialEdges: initialEdgesProp, onGraphChange },
+    ref
+  ) {
+    void _workflowId
+
+    const seedNodes = initialNodesProp ?? initialNodes
+    const seedEdges = initialEdgesProp ?? initialEdges
+
+    const [nodes, setNodes, onNodesChange] = useNodesState(seedNodes)
+    const [edges, setEdges, onEdgesChange] = useEdgesState(seedEdges)
+  const [selectedNode, setSelectedNode] = React.useState<Node | null>(null)
+  const [detailSheetOpen, setDetailSheetOpen] = React.useState(false)
+  const [addSheetOpen, setAddSheetOpen] = React.useState(false)
+  const rfInstance = React.useRef<ReactFlowInstance | null>(null)
+  const graphHydratedRef = React.useRef(false)
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      getGraph: () => ({ nodes, edges }),
+      setGraph: ({ nodes: nextNodes, edges: nextEdges }) => {
+        setNodes(nextNodes)
+        setEdges(nextEdges)
+      },
+    }),
+    [nodes, edges, setNodes, setEdges]
+  )
+
+  React.useEffect(() => {
+    if (!onGraphChange) return
+    if (!graphHydratedRef.current) {
+      graphHydratedRef.current = true
+      return
+    }
+    onGraphChange({
+      graphBaseline: workflowGraphBaseline({ nodes, edges }),
+    })
+  }, [nodes, edges, onGraphChange])
+
+  /** Only one outbound edge per source handle; many inbound edges allowed per target. */
+  const isValidConnection = React.useCallback<IsValidConnection<Edge>>(
+    (edgeOrConnection) => {
+      const source = edgeOrConnection.source
+      const sourceHandle = edgeOrConnection.sourceHandle ?? "__default"
+      return !edges.some(
+        (edge) => edge.source === source && (edge.sourceHandle ?? "__default") === sourceHandle
+      )
+    },
+    [edges]
+  )
+
+  const onConnect = React.useCallback(
+    (params: Connection) =>
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...params,
+            ...defaultEdgeOptions,
+          },
+          eds
+        )
+      ),
+    [setEdges]
+  )
+
+  function handleNodeClick(_: React.MouseEvent, node: Node) {
+    setSelectedNode(node)
+    setDetailSheetOpen(true)
+  }
+
+  function handlePaneClick() {
+    setSelectedNode(null)
+    setDetailSheetOpen(false)
+  }
+
+  function handleAddNode(def: NodeDefinition) {
+    const id = `${def.type}-${Date.now()}`
+
+    // Place new node below the lowest existing node, centred
+    let x = 300
+    let y = 200
+    if (nodes.length > 0) {
+      const maxY = Math.max(...nodes.map((n) => n.position.y))
+      const lowestNode = nodes.find((n) => n.position.y === maxY)
+      x = lowestNode ? lowestNode.position.x : x
+      y = maxY + 160
+    }
+
+    let nodeData: Record<string, unknown> = { ...def.defaultData }
+    if (def.type === "ai" && def.subtype === "generate") {
+      nodeData = {
+        ...nodeData,
+        outputSchema: buildDefaultGenerateTextOutputSchemaFields(),
+      }
+    }
+
+    setNodes((nds) => [
+      ...nds,
+      {
+        id,
+        type: def.type,
+        position: { x, y },
+        data: nodeData,
+      },
+    ])
+
+    // Auto-scroll to new node
+    setTimeout(() => {
+      rfInstance.current?.fitView({ padding: 0.25, duration: 400 })
+    }, 50)
+  }
+
+  /**
+   * Merges data onto a node and drops outbound edges whose `sourceHandle` no longer exists
+   * (e.g. removed switch cases).
+   */
+  function handleUpdateNode(nodeId: string, data: Record<string, unknown>) {
+    let validOutbound: Set<string> | null = null
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id !== nodeId) return n
+        const merged = { ...n.data, ...data }
+        const t = n.type
+        if (t === "decision") validOutbound = new Set(["true", "false"])
+        if (t === "end") validOutbound = new Set()
+        if (t === "switch") {
+          const branches: SwitchBranch[] =
+            Array.isArray(merged.branches) && (merged.branches as SwitchBranch[]).length > 0
+              ? (merged.branches as SwitchBranch[])
+              : [{ id: "initial-case" }]
+          validOutbound = new Set([
+            ...branches.map((b) => `case-${b.id}`),
+            "default",
+          ])
+        }
+        if (t === "split") {
+          const paths: SplitPath[] =
+            Array.isArray(merged.paths) && (merged.paths as SplitPath[]).length > 0
+              ? (merged.paths as SplitPath[])
+              : [{ id: "sp-a" }, { id: "sp-b" }]
+          validOutbound = new Set(paths.map((p) => `path-${p.id}`))
+        }
+        return { ...n, data: merged }
+      })
+    )
+
+    if (validOutbound)
+      setEdges((eds) =>
+        eds.filter((e) => {
+          if (e.source !== nodeId) return true
+          const handle = e.sourceHandle ?? "__default"
+          return validOutbound!.has(handle)
+        })
+      )
+  }
+
+  function handleDeleteNode(nodeId: string) {
+    setNodes((nds) => nds.filter((n) => n.id !== nodeId))
+    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
+    setSelectedNode(null)
+  }
+
+  return (
+    <div className="w-full h-full relative">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        isValidConnection={isValidConnection}
+        onNodeClick={handleNodeClick}
+        onPaneClick={handlePaneClick}
+        onInit={(instance) => {
+          rfInstance.current = instance
+        }}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultEdgeOptions={defaultEdgeOptions}
+        connectionLineType={ConnectionLineType.SmoothStep}
+        connectionMode={ConnectionMode.Strict}
+        connectionLineStyle={{
+          strokeWidth: 1.35,
+          stroke: "color-mix(in oklch, var(--muted-foreground) 55%, var(--background))",
+        }}
+        fitView
+        fitViewOptions={{ padding: 0.4 }}
+        proOptions={{ hideAttribution: true }}
+        deleteKeyCode="Backspace"
+        className="runnerroo-workflow-flow"
+      >
+        {/* Controls — bottom left */}
+        <Controls
+          position="bottom-left"
+          showInteractive={false}
+          className="[&>button]:border-border [&>button]:bg-background [&>button]:text-foreground [&>button:hover]:bg-accent shadow border border-border rounded-lg overflow-hidden m-4"
+        />
+
+        {/* Minimap — bottom right */}
+        <MiniMap
+          position="bottom-right"
+          className="!bg-card !border !border-border !rounded-lg !shadow-sm !m-4"
+          nodeColor={(node) =>
+            getWorkflowMinimapNodeColour({
+              type: node.type,
+              data: node.data as Record<string, unknown>,
+            })
+          }
+          maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
+        />
+
+        {/* Add step button — top right */}
+        <Panel position="top-right" className="m-4">
+          <Button
+            onClick={() => setAddSheetOpen(true)}
+            className="gap-2 shadow-sm"
+          >
+            <Plus className="size-4" />
+            Add step
+          </Button>
+        </Panel>
+
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1} className="opacity-0" />
+      </ReactFlow>
+
+      {/* Node detail sheet */}
+      <NodeSheet
+        node={selectedNode}
+        open={detailSheetOpen}
+        onClose={() => setDetailSheetOpen(false)}
+        onUpdate={handleUpdateNode}
+        onDelete={handleDeleteNode}
+        graphNodes={nodes}
+        graphEdges={edges}
+      />
+
+      {/* Add step sheet */}
+      <NodeAddSheet
+        open={addSheetOpen}
+        onClose={() => setAddSheetOpen(false)}
+        onAdd={handleAddNode}
+      />
+    </div>
+  )
+  }
+)
+
+WorkflowCanvas.displayName = "WorkflowCanvas"

@@ -1,0 +1,343 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* Fixed: was var(--font-sans) — self-referential, Geist never loaded */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.95 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.95 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.93 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.3125rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.93 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  /* Prompt tag “mention” chips (aligned with TipTap mention look) */
+  --purple: oklch(0.48 0.2 303);
+  --purple-light: oklch(0.94 0.05 303);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+  --purple: oklch(0.78 0.14 303);
+  --purple-light: oklch(0.3 0.07 303);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ─── React Flow ─────────────────────────────────────────────────── */
+
+/*
+ * Runner Roo canvas — theme tokens per React Flow theming guide:
+ * https://reactflow.dev/learn/customization/theming
+ */
+.runnerroo-workflow-flow.react-flow {
+  --xy-edge-stroke-default: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
+  --xy-edge-stroke-width-default: 1.25px;
+  --xy-edge-stroke-selected-default: color-mix(in oklch, var(--foreground) 80%, transparent);
+  --xy-connectionline-stroke-default: color-mix(
+    in oklch,
+    var(--muted-foreground) 55%,
+    var(--background)
+  );
+  --xy-handle-background-color-default: var(--background);
+  --xy-handle-border-color-default: color-mix(in oklch, var(--primary) 35%, transparent);
+  background-color: color-mix(in oklch, var(--muted) 30%, var(--background));
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--foreground) 12%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+
+.react-flow__node {
+  font-family: inherit;
+  overflow: visible;
+}
+
+/* Remove React Flow's default selection outline on the node wrapper — in all states */
+.react-flow__node,
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none !important;
+}
+
+/* RF also adds a box-shadow on the wrapper element itself for selected nodes; strip that too */
+.react-flow__node.selected {
+  box-shadow: none !important;
+}
+
+/* Strip any outline that @layer base bleeds onto direct children */
+.react-flow__node.selected > * {
+  outline: none !important;
+}
+
+/* Edge hover */
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--foreground);
+  stroke-width: 2;
+}
+
+/* Edge selected */
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--foreground);
+  stroke-width: 2;
+}
+
+/* Connection line while dragging */
+.react-flow__connection-path {
+  stroke: color-mix(
+    in oklch,
+    var(--muted-foreground) 58%,
+    var(--background)
+  ) !important;
+  stroke-width: 1.35 !important;
+}
+
+/*
+ * Handles — React Flow positions each side with translate(-50%/50%); a bare scale-on-hover
+ * replaces that transform (see xyflow base.css) and reads as scaling from the wrong corner.
+ */
+.runnerroo-workflow-flow .react-flow__handle {
+  cursor: crosshair;
+  transform-origin: center;
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.runnerroo-workflow-flow .react-flow__handle.react-flow__handle-top:hover {
+  transform: translate(-50%, -50%) scale(1.22) !important;
+}
+
+.runnerroo-workflow-flow .react-flow__handle.react-flow__handle-bottom:hover {
+  transform: translate(-50%, 50%) scale(1.22) !important;
+}
+
+.runnerroo-workflow-flow .react-flow__handle.react-flow__handle-left:hover {
+  transform: translate(-50%, -50%) scale(1.22) !important;
+}
+
+.runnerroo-workflow-flow .react-flow__handle.react-flow__handle-right:hover {
+  transform: translate(50%, -50%) scale(1.22) !important;
+}
+
+/* Switch exits: inline translateY(-50%) replaces the stock right-handle transform — keep it on hover. */
+.runnerroo-workflow-flow .react-flow__handle.runnerroo-handle-switch-exit:hover {
+  transform: translateY(-50%) scale(1.22) !important;
+}
+
+/* Controls button group */
+.react-flow__controls {
+  border-radius: 0.625rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 8%);
+}
+
+.react-flow__controls-button {
+  background: var(--background) !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--foreground) !important;
+  padding: 6px !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--accent) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor !important;
+  max-width: 14px;
+  max-height: 14px;
+}
+
+/* ─── Function input (TipTap editor) ─────────────────────────────────────── */
+
+/*
+ * The `.function-input-editor-content` div wraps TipTap's EditorContent. TipTap renders
+ * a `.ProseMirror` contenteditable inside it. We size it to match a textarea.
+ *
+ * `.function-input-editor-focus-surface` wraps EditorContent — clicks outside ProseMirror
+ * focus the editor; making the viewport a flex stack lets `.ProseMirror` grow into empty
+ * space so it stays contenteditable-sized (aligned with TipTap “style the editor surface” docs).
+ */
+.function-input-editor-focus-surface {
+  @apply flex min-h-full w-full min-w-0 flex-1 flex-col;
+}
+
+.function-input-editor-focus-surface .function-input-editor-content {
+  @apply flex min-h-0 flex-1 flex-col;
+}
+
+.function-input-editor-focus-surface .function-input-editor-content .ProseMirror {
+  flex: 1 1 auto;
+}
+
+.function-input-editor-content {
+  @apply w-full;
+}
+
+.function-input-editor-content .ProseMirror {
+  @apply text-sm text-foreground outline-none;
+  font-family: inherit;
+  line-height: 1.5;
+  word-break: break-word;
+  min-height: var(--function-input-min-height);
+}
+
+/* Reset paragraph margins — ProseMirror adds browser defaults */
+.function-input-editor-content .ProseMirror p {
+  margin: 0;
+}
+
+.function-input-editor-content .ProseMirror p + p {
+  margin-top: 0.2em;
+}
+
+/*
+ * Placeholder — TipTap's Placeholder extension adds `data-placeholder` to the
+ * first paragraph and `is-editor-empty` to the root when the editor is empty.
+ */
+.function-input-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/*
+ * Mention chip — scoped under `.ProseMirror` so `text-foreground` on the editor
+ * root does not win via specificity on nested rules; tag copy must read as purple.
+ */
+.function-input-editor-content .ProseMirror .prompt-mention-chip {
+  background-color: var(--purple-light);
+  border-radius: 0.4rem;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  color: var(--purple);
+  padding: 0.1rem 0.3rem;
+  white-space: nowrap;
+  font-size: 0.875em;
+}

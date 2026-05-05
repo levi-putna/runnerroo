@@ -957,7 +957,7 @@ function AiExecutionConfig({
         <ModelSelector
           selectedModelId={String(data.model ?? DEFAULT_MODEL_ID)}
           onModelChange={({ modelId }) => set("model", modelId)}
-          defaultModelType="text"
+          modelType="text"
           triggerClassName="w-full max-w-none"
         />
       </div>

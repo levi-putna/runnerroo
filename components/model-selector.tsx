@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon, CpuIcon, HeartIcon, SearchIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -18,13 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useFavouriteModelIds } from "@/hooks/use-favourite-model-ids";
-import {
-  DEFAULT_MODEL_ID,
-  findModelById,
-  getFeaturedModels,
-  GATEWAY_MODELS,
-  getModelsByType,
-} from "@/lib/ai-gateway/models";
+import { DEFAULT_MODEL_ID, GATEWAY_MODELS } from "@/lib/ai-gateway/models";
 import type { GatewayModel, ModelType, ProviderBucket } from "@/lib/ai-gateway/types";
 import { MODEL_TYPE_LABELS } from "@/lib/ai-gateway/types";
 
@@ -34,8 +28,14 @@ type ModelSelectorProps = {
   /** Fully qualified Gateway ID of the currently selected model, e.g. "openai/gpt-5.4-mini". */
   selectedModelId: string;
   onModelChange: ({ modelId }: { modelId: string }) => void;
-  /** Initial model type tab shown when the dropdown first opens. Defaults to "text". */
-  defaultModelType?: ModelType;
+  /**
+   * Which gateway model category this picker lists (text, image, video, or embed).
+   * The user cannot change category inside this component — pass a different `modelType` per screen
+   * or mount another selector when you need another modality.
+   *
+   * @default "text"
+   */
+  modelType?: ModelType;
   disabled?: boolean;
   /**
    * Classes merged onto the dropdown trigger button.
@@ -196,7 +196,14 @@ function ModelPickerRow({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Case-insensitive match on model ID, short name, or provider label. */
+/** Puts Featured rows in {@link GatewayModel.featuredOrder} order, then by name. */
+function compareFeaturedModels({ a, b }: { a: GatewayModel; b: GatewayModel }): number {
+  const oa = a.featuredOrder ?? 10_000;
+  const ob = b.featuredOrder ?? 10_000;
+  if (oa !== ob) return oa - ob;
+  return a.shortName.localeCompare(b.shortName);
+}
+
 function modelMatchesQuery({
   model,
   queryLower,
@@ -232,25 +239,28 @@ function buildProviderBuckets(models: GatewayModel[]): ProviderBucket[] {
   return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
-// ─── Model type tab order for the filter strip ────────────────────────────────
-const MODEL_TYPE_TABS: ModelType[] = ["text", "image", "video", "embed"];
+/** Lower-case phrase for search placeholder and empty state copy ("embedding" for embed models). */
+function modelTypeSearchPhrase(type: ModelType): string {
+  if (type === "embed") return "embedding";
+  return MODEL_TYPE_LABELS[type].toLowerCase();
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 /**
  * Reusable model selector dropdown for the Vercel AI Gateway.
  *
+ * The catalogue slice is fixed by the `modelType` prop; there is no in-menu
+ * type switch, so callers control modality per screen (e.g. text-only chat vs image-only tools).
+ *
  * Features:
- * - Filters models by type (text / image / video / embed)
- * - Search across the filtered model list
- * - Favourites (persisted to localStorage)
- * - Featured and provider-grouped browse mode
- * - Token cost and performance metadata per model
+ * - Search, favourites, featured and provider-grouped browse for the given `modelType`
+ * - Token cost and performance metadata per model (where applicable)
  */
 export function ModelSelector({
   selectedModelId,
   onModelChange,
-  defaultModelType = "text",
+  modelType = "text",
   disabled,
   triggerClassName,
 }: ModelSelectorProps) {
@@ -258,16 +268,61 @@ export function ModelSelector({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeType, setActiveType] = useState<ModelType>(defaultModelType);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  /** Live catalogue from the gateway (hourly server cache); until loaded, the static list is used. */
+  const [remoteCatalogue, setRemoteCatalogue] = useState<GatewayModel[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/ai-gateway/models");
+        if (!res.ok) return;
+        const json: unknown = await res.json();
+        if (typeof json !== "object" || json === null || !("models" in json)) return;
+        const models = (json as { models: unknown }).models;
+        if (!Array.isArray(models) || models.length === 0) return;
+        if (!cancelled) setRemoteCatalogue(models as GatewayModel[]);
+      } catch {
+        // Static fallback remains in use.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const catalogue = remoteCatalogue ?? GATEWAY_MODELS;
+
+  const modelById = useMemo(() => new Map(catalogue.map((m) => [m.id, m])), [catalogue]);
+
+  useEffect(() => {
+    const m = modelById.get(selectedModelId);
+    if (m && m.type === modelType) return;
+    const featured = catalogue
+      .filter((x) => x.featured && x.type === modelType)
+      .sort((a, b) => compareFeaturedModels({ a, b }));
+    const pool = catalogue.filter((x) => x.type === modelType);
+    const nextId = featured[0]?.id ?? pool[0]?.id;
+    if (nextId && nextId !== selectedModelId) {
+      onModelChange({ modelId: nextId });
+    }
+  }, [selectedModelId, modelType, onModelChange, modelById, catalogue]);
+
   // ── Filtered model pool for the active type ──────────────────────────────
-  const typeModels = useMemo(() => getModelsByType(activeType), [activeType]);
+  const typeModels = useMemo(
+    () => catalogue.filter((m) => m.type === modelType),
+    [catalogue, modelType]
+  );
 
   // ── Browse mode data ─────────────────────────────────────────────────────
   const featuredModels = useMemo(
-    () => getFeaturedModels(activeType),
-    [activeType]
+    () =>
+      catalogue
+        .filter((m) => m.featured && m.type === modelType)
+        .sort((a, b) => compareFeaturedModels({ a, b })),
+    [catalogue, modelType]
   );
 
   const providerBuckets = useMemo(
@@ -277,11 +332,10 @@ export function ModelSelector({
 
   const favouriteModels = useMemo<GatewayModel[]>(() => {
     if (!favouriteIds.length) return [];
-    const byId = new Map(GATEWAY_MODELS.map((m) => [m.id, m]));
     return favouriteIds
-      .map((id) => byId.get(id))
-      .filter((m): m is GatewayModel => m != null && m.type === activeType);
-  }, [favouriteIds, activeType]);
+      .map((id) => modelById.get(id))
+      .filter((m): m is GatewayModel => m != null && m.type === modelType);
+  }, [favouriteIds, modelType, modelById]);
 
   // ── Search mode data ─────────────────────────────────────────────────────
   const queryLower = searchQuery.trim().toLowerCase();
@@ -294,9 +348,9 @@ export function ModelSelector({
 
   // ── Trigger label ────────────────────────────────────────────────────────
   const triggerLabel = useMemo(() => {
-    const found = findModelById(selectedModelId);
+    const found = modelById.get(selectedModelId);
     return found?.shortName ?? selectedModelId ?? DEFAULT_MODEL_ID;
-  }, [selectedModelId]);
+  }, [selectedModelId, modelById]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleMenuOpenChange = useCallback((open: boolean) => {
@@ -312,19 +366,13 @@ export function ModelSelector({
 
   const handlePick = useCallback(
     ({ model }: { model: GatewayModel }) => {
+      if (model.type !== modelType) return;
       onModelChange({ modelId: model.id });
       setMenuOpen(false);
       setSearchQuery("");
     },
-    [onModelChange]
+    [onModelChange, modelType]
   );
-
-  const handleTypeChange = useCallback((type: ModelType) => {
-    setActiveType(type);
-    setSearchQuery("");
-    // Re-focus search after the state update settles.
-    requestAnimationFrame(() => searchInputRef.current?.focus());
-  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -356,34 +404,15 @@ export function ModelSelector({
         align="start"
         className="w-[min(calc(100vw-3rem),22rem)] p-2"
       >
-        {/* Model type filter strip */}
-        <div className="mb-2 flex gap-1 px-0.5">
-          {MODEL_TYPE_TABS.map((type) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => handleTypeChange(type)}
-              className={cn(
-                "rounded-md px-2.5 py-1 text-[11px] font-medium capitalize transition-colors",
-                activeType === type
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              {MODEL_TYPE_LABELS[type]}
-            </button>
-          ))}
-        </div>
-
-        {/* Search input */}
+        {/* Search — list is fixed to `modelType` from props */}
         <div className="px-0.5 pb-2">
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/40" />
             <input
               ref={searchInputRef}
               type="search"
-              aria-label={`Search ${MODEL_TYPE_LABELS[activeType]} models`}
-              placeholder={`Search ${MODEL_TYPE_LABELS[activeType].toLowerCase()} models`}
+              aria-label={`Search ${modelType === "embed" ? "embedding" : MODEL_TYPE_LABELS[modelType]} models`}
+              placeholder={`Search ${modelTypeSearchPhrase(modelType)} models`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoComplete="off"
@@ -476,7 +505,7 @@ export function ModelSelector({
                 <DropdownMenuSub key="__featured">
                   <DropdownMenuSubTrigger
                     className="gap-2 text-sm font-medium"
-                    title={`Curated ${MODEL_TYPE_LABELS[activeType].toLowerCase()} model picks`}
+                    title={`Curated ${modelTypeSearchPhrase(modelType)} model picks`}
                   >
                     <span className="truncate">Featured</span>
                   </DropdownMenuSubTrigger>
@@ -539,7 +568,7 @@ export function ModelSelector({
               <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
                 <CpuIcon className="size-6 text-muted-foreground/40" aria-hidden />
                 <p className="text-xs text-muted-foreground">
-                  No {MODEL_TYPE_LABELS[activeType].toLowerCase()} models available yet.
+                  No {modelTypeSearchPhrase(modelType)} models available yet.
                 </p>
               </div>
             )}

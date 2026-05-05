@@ -10,6 +10,11 @@
 
 import type { Node } from "@xyflow/react"
 import { generateText } from "ai"
+import {
+  buildRunnerGatewayProviderOptions,
+  gatewayUsageTagsForWorkflowRun,
+  readRunnerGatewayExecutionContextFromStepInput,
+} from "@/lib/ai-gateway/runner-gateway-tracking"
 import { readInputSchemaFromNodeData, type NodeInputField } from "@/lib/workflow/input-schema"
 import { DEFAULT_MODEL_ID, resolveWorkflowGatewayModelId } from "@/lib/ai-gateway/models"
 import { readGlobalsFromExecutionStepInput, type StepExecutorFn } from "@/lib/workflow/runner"
@@ -178,7 +183,10 @@ async function executeAiGenerateNode({
 }): Promise<Record<string, unknown>> {
   const data = node.data as Record<string, unknown> | undefined
   const label = typeof data?.label === "string" ? data.label : node.id
-  const rawModelId = typeof data?.model === "string" ? data.model : DEFAULT_MODEL_ID
+  const rawModelId =
+    typeof data?.model === "string" && data.model.trim() !== ""
+      ? data.model
+      : DEFAULT_MODEL_ID
   const gatewayModelId = resolveWorkflowGatewayModelId({ modelId: rawModelId })
   const promptTemplate = typeof data?.prompt === "string" ? data.prompt : ""
   const systemPromptTemplate =
@@ -193,10 +201,22 @@ async function executeAiGenerateNode({
     ? resolveTemplate(systemPromptTemplate, context)
     : undefined
 
+  const gatewayCtx = readRunnerGatewayExecutionContextFromStepInput({ stepInput })
+  const providerOptions =
+    gatewayCtx !== null
+      ? buildRunnerGatewayProviderOptions({
+          supabaseUserId: gatewayCtx.supabaseUserId,
+          tags: gatewayUsageTagsForWorkflowRun({
+            workflowRunId: gatewayCtx.workflowRunId,
+          }),
+        })
+      : undefined
+
   const result = await generateText({
     model: gatewayModelId,
     prompt: resolvedPrompt,
     ...(resolvedSystem ? { system: resolvedSystem } : {}),
+    ...(providerOptions ? { providerOptions } : {}),
   })
 
   // Evaluate inputSchema-declared keys using the resolved prompt as well

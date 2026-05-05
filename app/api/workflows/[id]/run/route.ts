@@ -110,6 +110,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           edges,
           inputs,
           executeStep,
+          gatewayExecutionContext: {
+            supabaseUserId: user.id,
+            workflowId,
+            workflowRunId: runRowId,
+          },
         })) {
           aggregate = mergeNodeResultsIntoList({ list: aggregate, next: result })
           push({

@@ -1,10 +1,27 @@
 import type { GatewayModel } from './types';
 
+/** Hard-coded fallback when neither the env nor persisted graph data supplies a model. */
+const FALLBACK_DEFAULT_MODEL_ID = 'openai/gpt-5.4-mini';
+
+/**
+ * Reads `NEXT_PUBLIC_DEFAULT_MODEL` (preferred), or `NEXT_PUBLIC_DEFULT_MODEL` (legacy typo support),
+ * and returns the first non-empty trimmed value, otherwise the codebase fallback slug.
+ */
+function readDefaultModelIdFromEnv(): string {
+  const explicit =
+    process.env.NEXT_PUBLIC_DEFAULT_MODEL?.trim() ||
+    process.env.NEXT_PUBLIC_DEFULT_MODEL?.trim() ||
+    '';
+  return explicit || FALLBACK_DEFAULT_MODEL_ID;
+}
+
 /**
  * Default model ID used when no selection exists or the saved ID is no longer in the catalogue.
- * Points to a well-rounded mid-tier model suitable for general-purpose text tasks.
+ *
+ * Set via `NEXT_PUBLIC_DEFAULT_MODEL` (or legacy `NEXT_PUBLIC_DEFULT_MODEL`); falls back to
+ * {@link FALLBACK_DEFAULT_MODEL_ID} when unset so workflow AI steps and the assistant share one default.
  */
-export const DEFAULT_MODEL_ID = 'openai/gpt-5.4-mini';
+export const DEFAULT_MODEL_ID = readDefaultModelIdFromEnv();
 
 /**
  * Static catalogue of Vercel AI Gateway models.
@@ -520,6 +537,55 @@ export const GATEWAY_MODELS: GatewayModel[] = [
     costDollarTier: 0,
   },
 ];
+
+/**
+ * Parses {@link process.env.FEATURED_GATEWAY_MODEL_IDS}: comma-separated `provider/model` slugs for the selector’s Featured list.
+ * Order is preserved; duplicates are dropped.
+ */
+function readFeaturedGatewayModelIdsFromEnv(): string[] {
+  const raw = process.env.FEATURED_GATEWAY_MODEL_IDS?.trim();
+  if (!raw) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(',')) {
+    const id = part.trim();
+    if (!id.includes('/') || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+/**
+ * Featured model IDs for the AI Gateway model selector.
+ * Set `FEATURED_GATEWAY_MODEL_IDS` (comma-separated) to override; otherwise uses models marked `featured: true` in {@link GATEWAY_MODELS}.
+ */
+export function getFeaturedGatewayModelIds(): readonly string[] {
+  const fromEnv = readFeaturedGatewayModelIdsFromEnv();
+  if (fromEnv.length > 0) {
+    return fromEnv;
+  }
+  return GATEWAY_MODELS.filter((m) => m.featured).map((m) => m.id);
+}
+
+/**
+ * Latency / throughput tiers from the static catalogue, keyed by model ID, for enriching live API models.
+ */
+export function getStaticGatewayModelSpeedTiersById(): Map<
+  string,
+  Pick<GatewayModel, 'latencyLevel' | 'throughputLevel'>
+> {
+  return new Map(
+    GATEWAY_MODELS.map((m) => [
+      m.id,
+      { latencyLevel: m.latencyLevel, throughputLevel: m.throughputLevel },
+    ]),
+  );
+}
 
 /**
  * Returns all models filtered by the given type.

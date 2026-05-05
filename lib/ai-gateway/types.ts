@@ -50,6 +50,11 @@ export interface GatewayModel {
 
   /** Whether this model appears in the curated "Featured" quick-pick list. */
   featured?: boolean;
+
+  /**
+   * Sort position in the Featured submenu (from env list order). Undefined uses a neutral default sort.
+   */
+  featuredOrder?: number;
 }
 
 /** Groups models by provider for the browse UI. */

@@ -105,7 +105,7 @@ export default function SignUpPage() {
     if (verifyErr) {
       setError(verifyErr.message)
     } else {
-      router.push("/workflows")
+      router.push("/app/workflows")
       router.refresh()
     }
     setVerifyLoading(false)

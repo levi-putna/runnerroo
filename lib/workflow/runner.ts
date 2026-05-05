@@ -1,5 +1,9 @@
 import type { Edge, Node } from "@xyflow/react"
+import type { RunnerGatewayExecutionContext } from "@/lib/ai-gateway/runner-gateway-tracking"
+import { RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY } from "@/lib/ai-gateway/runner-gateway-tracking"
 import type { NodeResult } from "@/lib/workflow/types"
+
+export type { RunnerGatewayExecutionContext }
 
 /**
  * Optional callback for real step execution.
@@ -24,6 +28,8 @@ export interface TraverseWorkflowGraphParams {
    * actual result returned by this function. The sleep delay is skipped when a real executor is used.
    */
   executeStep?: StepExecutorFn
+  /** When set, forwards Gateway attribution (`user` + `workflow_run` tags) on every downstream envelope. */
+  gatewayExecutionContext?: RunnerGatewayExecutionContext
 }
 
 /** Default simulated step delay (~300–800 ms). */
@@ -141,11 +147,20 @@ export function readGlobalsFromExecutionStepInput({ stepInput }: { stepInput: un
 /**
  * Wraps manual trigger REST payload so successors can distinguish trigger data from envelopes.
  */
-function wrapInitialManualTriggerPayload(inputs: Record<string, unknown>): Record<string, unknown> {
+function wrapInitialManualTriggerPayload({
+  inputs,
+  gatewayExecutionContext,
+}: {
+  inputs: Record<string, unknown>
+  gatewayExecutionContext?: RunnerGatewayExecutionContext
+}): Record<string, unknown> {
   return {
     [RUNNER_EXECUTION_MARKER]: true,
     trigger_inputs: cloneExecutionPayload(inputs),
     globals: {},
+    ...(gatewayExecutionContext
+      ? { [RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY]: gatewayExecutionContext }
+      : {}),
   }
 }
 
@@ -174,6 +189,13 @@ function mergeDownstreamSimulationPayload({
   const emittedGlobals = readGlobalsMapFromStepOutput({ stepOutput })
   const mergedGlobals = { ...priorGlobals, ...emittedGlobals }
 
+  const inheritedGateway =
+    typeof stepInput === "object" &&
+    stepInput !== null &&
+    RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY in stepInput
+      ? (stepInput as Record<string, unknown>)[RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY]
+      : undefined
+
   return {
     [RUNNER_EXECUTION_MARKER]: true,
     trigger_inputs: cloneExecutionPayload(triggerEnvelope),
@@ -184,6 +206,9 @@ function mergeDownstreamSimulationPayload({
       step_input_received: cloneExecutionPayload(stepInput),
       step_output_emitted: cloneExecutionPayload(stepOutput),
     },
+    ...(inheritedGateway !== undefined
+      ? { [RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY]: inheritedGateway }
+      : {}),
   }
 }
 
@@ -202,6 +227,7 @@ export async function* traverseWorkflowGraph({
   inputs,
   stepDelayMs = DEFAULT_STEP_DELAY_MS,
   executeStep,
+  gatewayExecutionContext,
 }: TraverseWorkflowGraphParams): AsyncGenerator<NodeResult> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const idx = buildOutboundIndex({ edges })
@@ -349,7 +375,10 @@ export async function* traverseWorkflowGraph({
   }
 
   try {
-    yield* runFrom(entryId, wrapInitialManualTriggerPayload(inputs))
+    yield* runFrom(
+      entryId,
+      wrapInitialManualTriggerPayload({ inputs, gatewayExecutionContext }),
+    )
   } catch {
     /** Failure already yielded from generator */
   }

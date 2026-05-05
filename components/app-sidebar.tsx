@@ -5,9 +5,9 @@ import { AnimatePresence, motion } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  Activity, ArrowLeft, ChevronRight, Clock, Command, GitBranch,
-  Search, Settings, Webhook, Workflow, Zap,
-  BarChart3, Book, HelpCircle, Plus
+  Activity, ArrowLeft, BrainIcon, ChevronRight, Clock, Command, GitBranch,
+  History, MessageSquareIcon, Search, Settings, Webhook, Workflow, Zap,
+  BarChart3, Book, HelpCircle
 } from "lucide-react"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
@@ -49,15 +49,28 @@ const transition = { type: "spring" as const, stiffness: 350, damping: 32 }
 
 const navItems: NavItem[] = [
   {
+    id: "assistant",
+    title: "Chat",
+    url: "/app/chat",
+    icon: <MessageSquareIcon className="size-4" />,
+  },
+  {
+    id: "history",
+    title: "History",
+    icon: <History className="size-4" />,
+    backLabel: "Navigation",
+    subItems: [],
+  },
+  {
     id: "workflows",
     title: "Workflows",
-    url: "/workflows",
+    url: "/app/workflows",
     icon: <Workflow className="size-4" />,
   },
   {
     id: "runs",
     title: "Runs",
-    url: "/run",
+    url: "/app/run",
     icon: <Activity className="size-4" />,
   },
   {
@@ -66,15 +79,15 @@ const navItems: NavItem[] = [
     icon: <Zap className="size-4" />,
     backLabel: "Navigation",
     subItems: [
-      { id: "manual", title: "Manual triggers", url: "/triggers/manual", icon: <Command className="size-4" /> },
-      { id: "webhooks", title: "Webhooks", url: "/triggers/webhooks", icon: <Webhook className="size-4" /> },
-      { id: "schedules", title: "Schedules", url: "/triggers/schedules", icon: <Clock className="size-4" /> },
+      { id: "manual", title: "Manual triggers", url: "/app/triggers/manual", icon: <Command className="size-4" /> },
+      { id: "webhooks", title: "Webhooks", url: "/app/triggers/webhooks", icon: <Webhook className="size-4" /> },
+      { id: "schedules", title: "Schedules", url: "/app/triggers/schedules", icon: <Clock className="size-4" /> },
     ],
   },
   {
     id: "analytics",
     title: "Analytics",
-    url: "/analytics",
+    url: "/app/analytics",
     icon: <BarChart3 className="size-4" />,
   },
   {
@@ -83,13 +96,27 @@ const navItems: NavItem[] = [
     icon: <Settings className="size-4" />,
     backLabel: "Navigation",
     subItems: [
-      { id: "profile", title: "Profile", url: "/settings/profile", icon: <Settings className="size-4" /> },
-      { id: "integrations", title: "Integrations", url: "/settings/integrations", icon: <GitBranch className="size-4" /> },
+      { id: "profile", title: "Profile", url: "/app/settings/profile", icon: <Settings className="size-4" /> },
+      { id: "integrations", title: "Integrations", url: "/app/settings/integrations", icon: <GitBranch className="size-4" /> },
+      { id: "usage", title: "Usage", url: "/app/settings/usage", icon: <BarChart3 className="size-4" /> },
+      { id: "memories", title: "Memories", url: "/app/settings/memories", icon: <BrainIcon className="size-4" /> },
       { id: "docs", title: "Documentation", url: "https://docs.runneroo.io", icon: <Book className="size-4" /> },
-      { id: "help", title: "Help & Support", url: "/help", icon: <HelpCircle className="size-4" /> },
+      { id: "help", title: "Help & Support", url: "/app/help", icon: <HelpCircle className="size-4" /> },
     ],
   },
 ]
+
+/** Nav item ids grouped under the Assistant heading. */
+const ASSISTANT_SECTION_NAV_IDS = new Set(["assistant", "history"])
+
+/** Nav item ids grouped under the Workflow heading. */
+const WORKFLOW_SECTION_NAV_IDS = new Set(["workflows", "runs"])
+
+/** All ids rendered in structured Assistant / Workflow blocks (excluded from core nav). */
+const SIDEBAR_STRUCTURED_NAV_IDS = new Set<string>([
+  ...ASSISTANT_SECTION_NAV_IDS,
+  ...WORKFLOW_SECTION_NAV_IDS,
+])
 
 /**
  * Primary app navigation with optional recent workflows under the composer entry point.
@@ -105,9 +132,23 @@ export function AppSidebar({
   const [direction, setDirection] = React.useState(1)
   const [isSearchOpen, setIsSearchOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
+  const [conversationHistory, setConversationHistory] = React.useState<
+    Array<{ id: string; title: string; updated_at: string }>
+  >([])
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const pathname = usePathname()
   const activePanel = panelStack[panelStack.length - 1]
+
+  // Load conversations when History panel is opened
+  React.useEffect(() => {
+    if (activePanel !== "history") return
+    void fetch("/api/conversations")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((rows) => {
+        if (Array.isArray(rows)) setConversationHistory(rows)
+      })
+      .catch(() => {})
+  }, [activePanel])
 
   function drillDown(itemId: string) {
     setDirection(1)
@@ -151,6 +192,48 @@ export function AppSidebar({
 
   const activeNavItem = navItems.find((i) => i.id === activePanel)
 
+  /**
+   * Sidebar row for root panel items — direct link or drill-down (e.g. History).
+   */
+  function renderRootNavLinkOrDrilldown(item: NavItem) {
+    const isActive = item.url
+      ? pathname === item.url || pathname.startsWith(item.url + "/")
+      : false
+    const hasDrilldown = !!item.subItems
+
+    if (hasDrilldown) {
+      return (
+        <button
+          type="button"
+          onClick={() => drillDown(item.id)}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          )}
+        >
+          {item.icon}
+          <span className="flex-1">{item.title}</span>
+          {item.badge && <Badge variant="secondary" className="text-xs">{item.badge}</Badge>}
+          <ChevronRight className="size-3 text-muted-foreground" />
+        </button>
+      )
+    }
+
+    return (
+      <Link
+        href={item.url!}
+        className={cn(
+          "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+        )}
+      >
+        {item.icon}
+        <span className="flex-1">{item.title}</span>
+        {item.badge && <Badge variant="secondary" className="text-xs">{item.badge}</Badge>}
+      </Link>
+    )
+  }
+
   function renderPanel(panelId: string) {
     if (panelId === "root") {
       return (
@@ -167,92 +250,118 @@ export function AppSidebar({
             </kbd>
           </button>
 
-          {/* New Workflow */}
-          <Link
-            href="/workflows/new"
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors mb-2"
-          >
-            <Plus className="size-3.5 shrink-0" />
-            New workflow
-          </Link>
+          {/* Assistant — composer and conversation history */}
+          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+            Assistant
+          </p>
+          <div className="mb-1 flex flex-col gap-0.5">
+            {navItems
+              .filter((i) => ASSISTANT_SECTION_NAV_IDS.has(i.id))
+              .map((item) => (
+                <div key={item.id}>{renderRootNavLinkOrDrilldown(item)}</div>
+              ))}
+          </div>
+
+          {/* Between Assistant block and Workflow block */}
+          <SidebarSeparator className="my-2 bg-sidebar-border/45" />
+
+          {/* Workflow — definitions and runs */}
+          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+            Workflow
+          </p>
+          <div className="mb-1 flex flex-col gap-0.5">
+            {navItems
+              .filter((i) => WORKFLOW_SECTION_NAV_IDS.has(i.id))
+              .map((item) => (
+                <div key={item.id}>{renderRootNavLinkOrDrilldown(item)}</div>
+              ))}
+          </div>
+
+          {/* Between Workflow block and triggers / analytics / settings */}
+          <SidebarSeparator className="my-2 bg-sidebar-border/45" />
+
+          {/* Core navigation */}
+          {navItems.filter((i) => !SIDEBAR_STRUCTURED_NAV_IDS.has(i.id)).map((item) => (
+            <div key={item.id}>{renderRootNavLinkOrDrilldown(item)}</div>
+          ))}
 
           {/* Recent workflows */}
           {recentWorkflows.length > 0 && (
-            <div className="mb-3 space-y-0.5">
-              <p className="text-[10px] font-semibold text-muted-foreground/70 px-2 py-1 uppercase tracking-widest">
+            <>
+              <SidebarSeparator className="my-2" />
+              <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
                 Recent
               </p>
-              <div className="max-h-48 overflow-y-auto space-y-0.5 pr-0.5">
-                {recentWorkflows.map((w) => (
-                  <Link
-                    key={w.id}
-                    href={`/workflows/${w.id}`}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors",
-                      pathname === `/workflows/${w.id}` &&
-                        "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    )}
-                  >
-                    <Workflow className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{w.name}</span>
-                  </Link>
-                ))}
+              <div className="flex flex-col gap-0.5">
+                {recentWorkflows.slice(0, 8).map((w) => {
+                  const href = `/app/workflows/${w.id}`
+                  const isActive = pathname === href || pathname.startsWith(`${href}/`)
+                  return (
+                    <Link
+                      key={w.id}
+                      href={href}
+                      className={cn(
+                        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                      )}
+                      title={w.name}
+                    >
+                      <Workflow className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                    </Link>
+                  )
+                })}
               </div>
-            </div>
+            </>
           )}
-
-          <p className="text-[10px] font-semibold text-muted-foreground/70 px-2 py-1 uppercase tracking-widest">Navigation</p>
-
-          {navItems.map((item) => {
-            const isActive = item.url ? pathname === item.url || pathname.startsWith(item.url + "/") : false
-            const hasDrilldown = !!item.subItems
-
-            return (
-              <div key={item.id}>
-                {hasDrilldown ? (
-                  <button
-                    onClick={() => drillDown(item.id)}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm w-full text-left hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors",
-                      isActive && "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    )}
-                  >
-                    {item.icon}
-                    <span className="flex-1">{item.title}</span>
-                    {item.badge && <Badge variant="secondary" className="text-xs">{item.badge}</Badge>}
-                    <ChevronRight className="size-3 text-muted-foreground" />
-                  </button>
-                ) : (
-                  <Link
-                    href={item.url!}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors",
-                      isActive && "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    )}
-                  >
-                    {item.icon}
-                    <span className="flex-1">{item.title}</span>
-                    {item.badge && <Badge variant="secondary" className="text-xs">{item.badge}</Badge>}
-                  </Link>
-                )}
-              </div>
-            )
-          })}
         </div>
       )
     }
 
-    if (activeNavItem?.subItems) {
+    if (panelId === "history") {
       return (
         <div className="flex flex-col gap-1 p-2">
           <button
+            type="button"
             onClick={goBack}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors mb-1"
+            className="mb-1 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <ArrowLeft className="size-4" />
+            <span>Navigation</span>
+          </button>
+
+          {conversationHistory.length === 0 ? (
+            <p className="px-2 py-4 text-xs text-muted-foreground text-center">No conversations yet</p>
+          ) : (
+            conversationHistory.map((convo) => (
+              <Link
+                key={convo.id}
+                href={`/app/chat/${convo.id}`}
+                className="flex flex-col gap-0.5 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+              >
+                <span className="truncate font-medium">{convo.title}</span>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(convo.updated_at).toLocaleDateString()}
+                </span>
+              </Link>
+            ))
+          )}
+        </div>
+      )
+    }
+
+    if (activeNavItem?.subItems && activeNavItem.subItems.length > 0) {
+      return (
+        <div className="flex flex-col gap-1 p-2">
+          <button
+            type="button"
+            onClick={goBack}
+            className="mb-1 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
             <ArrowLeft className="size-4" />
             <span>{activeNavItem.backLabel ?? "Back"}</span>
           </button>
-          <p className="text-[10px] font-semibold text-muted-foreground/70 px-2 py-1 uppercase tracking-widest">{activeNavItem.title}</p>
+
           {activeNavItem.subItems.map((item) => {
             const isActive = pathname === item.url || pathname.startsWith(item.url + "/")
             return (
@@ -281,11 +390,11 @@ export function AppSidebar({
   }
 
   return (
-    <Sidebar variant="inset" collapsible="icon">
+    <Sidebar variant="inset" collapsible="offcanvas">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/workflows" />}>
+            <SidebarMenuButton size="lg" render={<Link href="/app/workflows" />}>
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 <Zap className="size-4" />
               </div>

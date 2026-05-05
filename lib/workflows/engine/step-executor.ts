@@ -21,7 +21,7 @@ import { buildStubOkStepOutput } from "@/lib/workflows/engine/build-stub-step-ou
 import { executeDecisionStep } from "@/lib/workflows/steps/logic/decision/executor"
 import { executeSplitStep } from "@/lib/workflows/steps/logic/split/executor"
 import { executeSwitchStep } from "@/lib/workflows/steps/logic/switch/executor"
-import { executeEntryNode } from "@/lib/workflows/steps/triggers/manual/executor"
+import { executeEntryNode } from "@/lib/workflows/steps/triggers/invoke/executor"
 import { executeEndStep } from "@/lib/workflows/steps/termination/end/executor"
 
 /**

@@ -6,8 +6,11 @@ import { tavilyCrawl } from "@/ai/tools/utility/tavily-crawl";
 import { tavilyExtract } from "@/ai/tools/utility/tavily-extract";
 import { webSearch } from "@/ai/tools/utility/web-search";
 import { resolveIntegrationToolsForUser } from "@/ai/integrations/resolve-integration-tools";
+import { createWorkflowAssistantInvokeTools } from "@/ai/tools/workflows/create-workflow-invoke-tools";
 import type { Tool } from "ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+import type { WorkflowAssistantInvokeDescriptor } from "@/lib/workflows/assistant-workflow-invoke-support";
 
 /**
  * Builds the tool map passed to {@link import('ai').streamText} for the Runnerroo assistant.
@@ -20,12 +23,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export async function createAssistantTools({
   supabase,
   userId,
+  cachedInvokeDescriptors,
 }: {
   supabase: SupabaseClient;
   userId: string;
+  /** Optional listing reused after planning so invoke workflows are not queried twice in one turn. */
+  cachedInvokeDescriptors?: WorkflowAssistantInvokeDescriptor[];
 }) {
   const integrations = await resolveIntegrationToolsForUser({ supabase, userId });
   const integrationTools = integrations.tools as Record<string, Tool>;
+  const workflowInvoke = await createWorkflowAssistantInvokeTools({
+    supabase,
+    userId,
+    ...(cachedInvokeDescriptors !== undefined ? { descriptors: cachedInvokeDescriptors } : {}),
+  });
 
   return {
     tools: {
@@ -37,7 +48,9 @@ export async function createAssistantTools({
       showLocation,
       searchUserMemories: createSearchUserMemoriesTool({ supabase, userId }),
       ...integrationTools,
+      ...workflowInvoke.tools,
     },
     integrationsBrief: integrations.brief,
+    workflowsInvokeBrief: workflowInvoke.brief,
   };
 }

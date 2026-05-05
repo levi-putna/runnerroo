@@ -15,7 +15,7 @@ import { randomNumberDefinition } from "@/lib/workflows/steps/code/random/defini
 import { decisionDefinition } from "@/lib/workflows/steps/logic/decision/definition"
 import { splitDefinition } from "@/lib/workflows/steps/logic/split/definition"
 import { switchDefinition } from "@/lib/workflows/steps/logic/switch/definition"
-import { manualTriggerDefinition } from "@/lib/workflows/steps/triggers/manual/definition"
+import { invokeTriggerDefinition } from "@/lib/workflows/steps/triggers/invoke/definition"
 import { scheduleTriggerDefinition } from "@/lib/workflows/steps/triggers/schedule/definition"
 import { webhookTriggerDefinition } from "@/lib/workflows/steps/triggers/webhook/definition"
 import { endDefinition } from "@/lib/workflows/steps/termination/end/definition"
@@ -23,7 +23,7 @@ import type { StepDefinition } from "@/lib/workflows/engine/step-definition"
 
 /** Flat list — UI groups rows by `definition.group`. */
 export const STEP_CATALOGUE: StepDefinition[] = [
-  manualTriggerDefinition,
+  invokeTriggerDefinition,
   webhookTriggerDefinition,
   scheduleTriggerDefinition,
   decisionDefinition,

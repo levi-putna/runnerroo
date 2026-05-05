@@ -172,7 +172,7 @@ function getNodeSheetTabVisibility({
   // Step behaviour distinct from inbound payload shaping (instructions, runnable code, numeric increment, etc.).
   const showExecution = nodeType === "ai" || nodeType === "code" || nodeType === "iteration"
 
-  const manualEntryShowsOutput = nodeType === "entry" && entryKind === "manual"
+  const invokeEntryShowsOutput = nodeType === "entry" && entryKind === "invoke"
 
   const aiSubtypeNormalised = nodeType === "ai" ? normaliseAiSubtype({ value: aiSubtype }) : null
 
@@ -184,17 +184,20 @@ function getNodeSheetTabVisibility({
 
   const showNumericComputationOutput = nodeType === "random" || nodeType === "iteration"
 
+  const showEndOutput = nodeType === "end"
+
   const showOutput =
     nodeType === "decision" ||
     nodeType === "switch" ||
     nodeType === "split" ||
-    manualEntryShowsOutput ||
+    invokeEntryShowsOutput ||
     showAiGenerateOutput ||
     showAiTransformOutput ||
     showAiSummarizeOutput ||
     showAiClassifyOutput ||
     showAiExtractOutput ||
-    showNumericComputationOutput
+    showNumericComputationOutput ||
+    showEndOutput
 
   return { showInput, showExecution, showOutput }
 }
@@ -251,6 +254,24 @@ export function NodeSheet({
   const workflowGlobalPromptTags = React.useMemo(
     () => workflowGlobalsPromptTagsFromNodes({ nodes: graphNodes }),
     [graphNodes],
+  )
+
+  const entryNodeForTags = React.useMemo(
+    () => graphNodes.find((n) => n.type === "entry") ?? null,
+    [graphNodes],
+  )
+
+  const entryInvokeInputFieldTags = React.useMemo(
+    () =>
+      nodeInputFieldsToPromptTags({
+        fields: readInputSchemaFromNodeData({
+          value:
+            entryNodeForTags != null
+              ? (entryNodeForTags.data as Record<string, unknown> | undefined)?.inputSchema
+              : undefined,
+        }),
+      }),
+    [entryNodeForTags],
   )
 
   /** Fall back to General when this node no longer has run snapshots (e.g. run map cleared). */
@@ -459,7 +480,7 @@ export function NodeSheet({
                 {showOutput ? (
                   <TabsContent value="output" className="mt-4 space-y-4 outline-none">
                     {sheetNode.type === "entry" ? (
-                      <EntryManualOutputConfig
+                      <EntryInvokeOutputConfig
                         data={localData}
                         set={set}
                         workflowGlobalPromptTags={workflowGlobalPromptTags}
@@ -503,6 +524,16 @@ export function NodeSheet({
                         set={set}
                         upstreamPromptTags={upstreamPromptTags}
                         workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "end" ? (
+                      <EndOutputConfig
+                        data={localData}
+                        set={set}
+                        inboundPick={inboundPick}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                        entryInvokeInputFieldTags={entryInvokeInputFieldTags}
                       />
                     ) : null}
                   </TabsContent>
@@ -774,6 +805,115 @@ function AiExtractOutputConfig({
   )
 }
 
+/**
+ * End node: public workflow result for assistant invoke tools — map only the keys you want exposed;
+ * `success` is always added at runtime and must not be declared here.
+ */
+function EndOutputConfig({
+  data,
+  set,
+  inboundPick,
+  upstreamPromptTags,
+  workflowGlobalPromptTags,
+  entryInvokeInputFieldTags,
+}: {
+  data: Record<string, unknown>
+  set: (k: string, v: unknown) => void
+  inboundPick: ReturnType<typeof useInboundPredecessorSelection>
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
+  entryInvokeInputFieldTags: PromptTagDefinition[]
+}) {
+  const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
+
+  const contextualPromptTags = React.useMemo(
+    () => [...entryInvokeInputFieldTags, ...workflowGlobalPromptTags],
+    [entryInvokeInputFieldTags, workflowGlobalPromptTags],
+  )
+
+  const { predecessorNodes, setPickedSourceId, selectedPredecessor } = inboundPick
+
+  function applyPreviousOutputImport() {
+    if (!selectedPredecessor) return
+    const inferred = inferPreviousStepOutputFields({ previousNode: selectedPredecessor })
+    const existing = readInputSchemaFromNodeData({ value: data.outputSchema })
+    const next = mergeInputSchemaWithPreviousStepImport({ existingFields: existing, inferred })
+    set("outputSchema", next)
+  }
+
+  const canImport = predecessorNodes.length > 0 && selectedPredecessor != null
+
+  return (
+    <div className="space-y-4">
+      {/* How this node relates to assistant tools and filtered payloads */}
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Each row becomes a key on the published result object. Use{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{prev.*}}"}</code>,{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>, and{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{global.*}}"}</code>{" "}
+        references to include only the fields downstream callers should see. The{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">success</code> property is
+        always set when this End step runs — you do not need a row for it.
+      </p>
+
+      {/* Upstream shape → output rows with {{prev.*}} placeholders */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upstream mapping</p>
+
+        {predecessorNodes.length > 1 ? (
+          <div className="space-y-1.5">
+            <Label>Use output from</Label>
+            <Select value={inboundPick.resolvedSourceId ?? ""} onValueChange={(v) => setPickedSourceId(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select upstream step" />
+              </SelectTrigger>
+              <SelectContent>
+                {predecessorNodes.map((n) => {
+                  const label = String((n.data as Record<string, unknown>)?.label ?? n.id)
+                  return (
+                    <SelectItem key={n.id} value={n.id}>
+                      {label}
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
+        <WorkflowSchemaImportButtonWithDialog
+          disabled={!canImport}
+          triggerLabel="Import from previous output"
+          TriggerIcon={ArrowDownToLine}
+          alertTitle="Import output fields from the upstream step?"
+          alertDescription="New rows and matching keys get {{prev.*}} placeholders from the selected predecessor’s published output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first."
+          confirmLabel="Import fields"
+          onConfirm={() => applyPreviousOutputImport()}
+        />
+
+        {predecessorNodes.length === 0 ? (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Connect an upstream step to this End node to import field keys from its output.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Empty mapping cells ingest upstream references; populated cells remain unless you clear them first.
+          </p>
+        )}
+      </div>
+
+      {/* Declared keys → expression cells */}
+      <InputSchemaBuilder
+        fields={outputSchemaFields}
+        onChange={({ fields }) => set("outputSchema", fields)}
+        usageContext="output"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={contextualPromptTags}
+      />
+    </div>
+  )
+}
+
 /** Outbound mappings for Random number / Iteration steps — template cells resolve `{{exe.number}}`. */
 function NumericComputationOutputConfig({
   data,
@@ -880,9 +1020,9 @@ function IterationIncrementExecutionConfig({
 }
 
 /**
- * Manual entry only: declares what leaves the trigger so inbound form fields line up with downstream placeholders.
+ * Invoke entry only: declares what leaves the trigger so inbound form fields line up with downstream placeholders.
  */
-function EntryManualOutputConfig({
+function EntryInvokeOutputConfig({
   data,
   set,
   workflowGlobalPromptTags,
@@ -895,7 +1035,7 @@ function EntryManualOutputConfig({
   const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
   const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
 
-  /** Match the manual output row tag palette: Input tab, output keys, declared `global.*`, and `now.*` (via merge inside the editor). */
+  /** Match the invoke output row tag palette: Input tab, output keys, declared `global.*`, and `now.*` (via merge inside the editor). */
   const globalsContextualTags = React.useMemo(
     () => [
       ...workflowGlobalPromptTags,
@@ -1007,7 +1147,7 @@ function EntryInputConfig({ data, set }: { data: Record<string, unknown>; set: (
 
       {showRoutingFields ? <Separator /> : null}
 
-      {/* Payload schema — manual runs, webhooks, and schedules */}
+      {/* Payload schema — invoke runs, webhooks, and schedules */}
       <InputSchemaBuilder
         fields={inputSchemaFields}
         onChange={({ fields }) => set("inputSchema", fields)}

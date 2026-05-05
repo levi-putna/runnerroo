@@ -251,14 +251,14 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
     return readInputSchemaFromNodeData({ value: raw })
   }, [])
 
-  /** True when the visible entry node is configured for manual runs */
-  const isManualEntryGraph = React.useCallback(() => {
+  /** True when the visible entry node is configured for invoke (on-demand) runs */
+  const isInvokeEntryGraph = React.useCallback(() => {
     const graph = canvasRef.current?.getGraph()
     const entry = graph?.nodes.find((n) => n.type === "entry") ?? null
     if (!entry?.data || typeof entry.data !== "object") return false
     const et = (entry.data as Record<string, unknown>).entryType
     const entryType = typeof et === "string" ? et : undefined
-    return normaliseEntryKind({ value: entryType }) === "manual"
+    return normaliseEntryKind({ value: entryType }) === "invoke"
   }, [])
 
   /**
@@ -278,8 +278,8 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
       window.alert("Save the workflow before running it.")
       return
     }
-    if (!isManualEntryGraph()) {
-      window.alert("Manual runs are only available when the entry trigger is set to manual.")
+    if (!isInvokeEntryGraph()) {
+      window.alert("Runs from the toolbar are only available when the entry trigger is Invoke.")
       return
     }
     if (isDirty) {
@@ -287,7 +287,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
       return
     }
     openManualRunForm()
-  }, [isDirty, isManualEntryGraph, isNew, openManualRunForm])
+  }, [isDirty, isInvokeEntryGraph, isNew, openManualRunForm])
 
   /**
    * Streams a simulated execution from the server and mirrors node status on the canvas.

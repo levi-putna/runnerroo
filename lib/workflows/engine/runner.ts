@@ -19,7 +19,7 @@ export type StepExecutorFn = (params: {
 export interface TraverseWorkflowGraphParams {
   nodes: Node[]
   edges: Edge[]
-  /** Resolved manual trigger payload (matches entry `inputSchema` keys). */
+  /** Resolved invoke-trigger payload (matches entry `inputSchema` keys). */
   inputs: Record<string, unknown>
   /** Inclusive milliseconds range for simulated per-step latency. */
   stepDelayMs?: { min: number; max: number }
@@ -145,9 +145,9 @@ export function readGlobalsFromExecutionStepInput({ stepInput }: { stepInput: un
 }
 
 /**
- * Wraps manual trigger REST payload so successors can distinguish trigger data from envelopes.
+ * Wraps invoke-trigger REST payloads so successors can distinguish trigger data from envelopes.
  */
-function wrapInitialManualTriggerPayload({
+function wrapInitialInvokeTriggerPayload({
   inputs,
   gatewayExecutionContext,
 }: {
@@ -377,7 +377,7 @@ export async function* traverseWorkflowGraph({
   try {
     yield* runFrom(
       entryId,
-      wrapInitialManualTriggerPayload({ inputs, gatewayExecutionContext }),
+      wrapInitialInvokeTriggerPayload({ inputs, gatewayExecutionContext }),
     )
   } catch {
     /** Failure already yielded from generator */
@@ -392,6 +392,9 @@ function buildSimulatedStepOutput({ node }: { node: Node }): unknown {
   const label = typeof data?.label === "string" ? data.label : node.id
   if (node.type === "entry") {
     return { kind: "entry_output", label, ok: true }
+  }
+  if (node.type === "end") {
+    return { success: true }
   }
   return {
     kind: node.type ?? "step_output",

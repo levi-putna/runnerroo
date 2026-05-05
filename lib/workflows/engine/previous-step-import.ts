@@ -137,6 +137,25 @@ export function inferPreviousStepOutputFields({
     ]
   }
 
+  if (previousNode.type === "end") {
+    const data = previousNode.data as Record<string, unknown>
+    const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
+    const rows =
+      fromOutput.length > 0
+        ? fromOutput
+            .filter((f) => f.key !== "success")
+            .map((f) => ({
+              key: f.key,
+              label: f.label,
+              type: f.type,
+              suggestedValue: templatePrevPath({ path: f.key }),
+            }))
+        : []
+    if (rows.length > 0) {
+      return rows
+    }
+  }
+
   return [
     {
       key: "previous_output",

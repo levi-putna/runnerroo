@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react"
 
 /**
- * Default graph shown for a brand-new workflow (single manual entry node).
+ * Default graph shown for a brand-new workflow (single invoke entry node).
  */
 export function defaultWorkflowCanvasNodes(): Node[] {
   return [
@@ -9,7 +9,7 @@ export function defaultWorkflowCanvasNodes(): Node[] {
       id: "entry-1",
       type: "entry",
       position: { x: 300, y: 60 },
-      data: { label: "Manual run", entryType: "manual" },
+      data: { label: "Invoke workflow", entryType: "invoke" },
     },
   ]
 }

@@ -34,8 +34,8 @@ export type WorkflowRfNodeType =
   | "split"
   | "end"
 
-/** How an entry step is triggered (stored on `data.entryType`). */
-export type WorkflowEntryKind = "manual" | "webhook" | "schedule"
+/** How an entry step is triggered (stored on `data.entryType`). Legacy graphs may still use `manual`. */
+export type WorkflowEntryKind = "invoke" | "webhook" | "schedule"
 
 /** AI template discriminator (stored on `data.subtype`). */
 export type WorkflowAiSubtype =
@@ -96,12 +96,12 @@ export const WORKFLOW_ENTRY_KIND_META: Record<
     glyphClassName?: string
   }
 > = {
-  manual: {
+  invoke: {
     Icon: Play,
     accentBg: "bg-orange-500",
     accentHex: "#f97316",
-    canvasBadge: "Trigger",
-    defaultLabel: "Manual run",
+    canvasBadge: "Invoke",
+    defaultLabel: "Invoke workflow",
     glyphClassName: "fill-white",
   },
   webhook: {
@@ -292,12 +292,15 @@ export interface NormaliseEntryKindParams {
 }
 
 /**
- * Maps loose `data.entryType` values to a known entry kind (defaults to manual).
+ * Maps loose `data.entryType` values to a known entry kind (defaults to invoke).
+ * The persisted alias `manual` is treated as invoke so older workflows stay compatible.
  */
 export function normaliseEntryKind({ value }: NormaliseEntryKindParams): WorkflowEntryKind {
   if (value === "webhook") return "webhook"
   if (value === "schedule") return "schedule"
-  return "manual"
+  if (value === "manual") return "invoke"
+  if (value === "invoke") return "invoke"
+  return "invoke"
 }
 
 export interface NormaliseAiSubtypeParams {

@@ -1,15 +1,5 @@
-import {
-  mergeNodeResultsIntoList,
-  traverseWorkflowGraph,
-} from "@/lib/workflows/engine/runner"
-import {
-  parseWorkflowEdges,
-  parseWorkflowNodes,
-} from "@/lib/workflows/engine/persist"
 import { createClient } from "@/lib/supabase/server"
-import type { NodeResult } from "@/lib/workflows/engine/types"
-import type { Json } from "@/types/database"
-import { createWorkflowStepExecutor } from "@/lib/workflows/engine/step-executor"
+import { persistWorkflowGraphRun } from "@/lib/workflows/persist-workflow-graph-run"
 
 type RunPostBody = {
   inputs?: Record<string, unknown>
@@ -60,12 +50,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     })
   }
 
-  const nodes = parseWorkflowNodes(workflow.nodes as unknown)
-  const edges = parseWorkflowEdges(workflow.edges as unknown)
-
   const encoder = new TextEncoder()
-
-  let runRowId = ""
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -73,117 +58,36 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`))
       }
 
-      let aggregate: NodeResult[] = []
-      const startedWall = Date.now()
-      let finalStatus: "success" | "failed" = "success"
-      let finalError: string | null = null
-
       try {
-        const insertRes = await supabase
-          .from("workflow_runs")
-          .insert({
-            workflow_id: workflowId,
-            status: "running",
-            trigger_type: workflow.trigger_type,
-            trigger_inputs: inputs as unknown as Json,
-            node_results: [] as unknown as Json,
-          })
-          .select("id")
-          .single()
-
-        if (insertRes.error || !insertRes.data) {
-          push({
-            kind: "error",
-            message: insertRes.error?.message ?? "Could not create run record.",
-          })
-          controller.close()
-          return
-        }
-
-        runRowId = insertRes.data.id
-        push({ kind: "run", runId: runRowId })
-
-        const executeStep = createWorkflowStepExecutor()
-
-        for await (const result of traverseWorkflowGraph({
-          nodes,
-          edges,
+        const persisted = await persistWorkflowGraphRun({
+          supabase,
+          workflowId,
+          userId: user.id,
           inputs,
-          executeStep,
-          gatewayExecutionContext: {
+          workflow,
+          gatewayUserAndWorkflow: {
             supabaseUserId: user.id,
             workflowId,
-            workflowRunId: runRowId,
           },
-        })) {
-          aggregate = mergeNodeResultsIntoList({ list: aggregate, next: result })
-          push({
-            kind: "node_result",
-            result,
-          })
-
-          if (result.status === "failed") {
-            finalStatus = "failed"
-            finalError =
-              result.error ??
-              (result.node_id === "__workflow__"
-                ? "Workflow could not run."
-                : "Run failed.")
-          }
-        }
-
-        const duration_ms = Math.max(0, Date.now() - startedWall)
-        await supabase
-          .from("workflow_runs")
-          .update({
-            status: finalStatus,
-            completed_at: new Date().toISOString(),
-            duration_ms,
-            error: finalError,
-            node_results: aggregate as unknown as Json,
-          })
-          .eq("id", runRowId)
-
-        await supabase
-          .from("workflows")
-          .update({
-            last_run_at: new Date().toISOString(),
-            run_count: (workflow.run_count ?? 0) + 1,
-          })
-          .eq("id", workflowId)
-          .eq("user_id", user.id)
+          onRunCreated: ({ runId }) => {
+            push({ kind: "run", runId })
+          },
+          onNodeResult: ({ result }) => {
+            push({
+              kind: "node_result",
+              result,
+            })
+          },
+        })
 
         push({
           kind: "complete",
-          runId: runRowId,
-          status: finalStatus,
-          duration_ms,
+          runId: persisted.runId,
+          status: persisted.status,
+          duration_ms: persisted.duration_ms,
         })
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Unexpected run error"
-        finalStatus = "failed"
-        finalError = msg
-        if (runRowId) {
-          const duration_ms = Math.max(0, Date.now() - startedWall)
-          await supabase
-            .from("workflow_runs")
-            .update({
-              status: "failed",
-              completed_at: new Date().toISOString(),
-              duration_ms,
-              error: msg,
-              node_results: aggregate as unknown as Json,
-            })
-            .eq("id", runRowId)
-          await supabase
-            .from("workflows")
-            .update({
-              last_run_at: new Date().toISOString(),
-              run_count: (workflow.run_count ?? 0) + 1,
-            })
-            .eq("id", workflowId)
-            .eq("user_id", user.id)
-        }
         push({ kind: "error", message: msg })
       } finally {
         controller.close()

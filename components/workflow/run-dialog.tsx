@@ -46,7 +46,7 @@ export interface ManualWorkflowRunDialogProps {
 }
 
 /**
- * Modal form for editing manual trigger payloads before executing the simulated runner.
+ * Modal form for editing invoke-trigger payloads before executing the runner.
  */
 export function ManualWorkflowRunDialog({
   open,
@@ -86,12 +86,12 @@ export function ManualWorkflowRunDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Manual run */}
+      {/* Invoke run */}
       <DialogContent showCloseButton className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Run workflow manually</DialogTitle>
+          <DialogTitle>Run workflow</DialogTitle>
           <DialogDescription>
-            Adjust inputs for this execution. Trigger inputs are forwarded to the simulated runner.
+            Set inputs for this run. Values are passed through to the workflow runner as the invoke payload.
           </DialogDescription>
         </DialogHeader>
 

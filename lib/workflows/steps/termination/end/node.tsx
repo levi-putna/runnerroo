@@ -14,6 +14,7 @@ import { InputHandle } from "@/lib/workflows/steps/shared/handles"
 export interface EndNodeData {
   label: string
   description?: string
+  outputSchema?: unknown
   [key: string]: unknown
 }
 

@@ -102,7 +102,7 @@ interface NodeAddSheetProps {
  */
 function getPickerEntryType({ node }: { node: StepDefinition }): string | undefined {
   if (node.type !== "entry") return undefined
-  return (node.subtype ?? "manual") as string
+  return (node.subtype ?? "invoke") as string
 }
 
 /**

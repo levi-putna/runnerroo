@@ -5,16 +5,18 @@ import { toolBehaviourSkill } from "@/ai/skills/tool-behaviour";
 
 /**
  * Composes the final system prompt: domain baseline, tone, tool rules, optional planning
- * and memory sections, and an optional integrations appendix.
+ * and memory sections, optional integrations and invoke-workflow appendices.
  */
 export function buildRunnerAssistantInstructions({
   planning,
   memoryContext,
   integrationsContext,
+  workflowsInvokeContext,
 }: {
   planning?: PlanningResult;
   memoryContext?: string;
   integrationsContext?: string;
+  workflowsInvokeContext?: string;
 } = {}): string {
   let base = `${runnerooDomainSkill}
 
@@ -58,6 +60,16 @@ ${memoryContext}`;
 ## Connected integrations
 
 ${integrationsContext}`;
+  }
+
+  if (workflowsInvokeContext) {
+    base += `
+
+## Invoke workflows (assistant tools)
+
+The following tools run persisted workflows owned by this user. Use them only when the user clearly wants automation executed—not for hypothetical graphs.
+
+${workflowsInvokeContext}`;
   }
 
   return base;

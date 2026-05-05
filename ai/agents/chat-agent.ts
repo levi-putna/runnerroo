@@ -15,6 +15,10 @@ import { buildRunnerAssistantInstructions } from "@/ai/skills";
 import { createAssistantTools } from "@/ai/tools";
 import { buildRunnerAssistantUsageMetadata } from "@/lib/assistant/build-runner-assistant-usage-metadata";
 import type { AssistantMessageMetadata } from "@/lib/assistant/chat-usage-metadata";
+import {
+  formatInvokeWorkflowDescriptorsForPlanningPrompt,
+  listWorkflowAssistantInvokeDescriptors,
+} from "@/lib/workflows/assistant-workflow-invoke-support";
 import { getAiGatewayModelListCached } from "@/lib/ai-gateway/gateway-raw-models";
 import { searchMemory } from "@/lib/memories/memory-service";
 import type { MemoryHybridMatch } from "@/lib/memories/types";
@@ -91,13 +95,29 @@ export async function runAssistantChatTurn({
   }
 
   const planningEnabled = process.env[PLANNING_ENV] === "true";
-  const planning = planningEnabled
-    ? await runPlanningAgent(uiMessages, { providerOptions: gatewayProviderOptions })
+
+  const invokeDescriptorsForPlanningTurn = planningEnabled
+    ? await listWorkflowAssistantInvokeDescriptors({ supabase, userId })
     : undefined;
 
-  const { tools, integrationsBrief } = await createAssistantTools({
+  const planning = planningEnabled
+    ? await runPlanningAgent(uiMessages, {
+        providerOptions: gatewayProviderOptions,
+        invokeWorkflowsPlanningAppendix:
+          invokeDescriptorsForPlanningTurn && invokeDescriptorsForPlanningTurn.length > 0
+            ? formatInvokeWorkflowDescriptorsForPlanningPrompt({
+                descriptors: invokeDescriptorsForPlanningTurn,
+              })
+            : undefined,
+      })
+    : undefined;
+
+  const { tools, integrationsBrief, workflowsInvokeBrief } = await createAssistantTools({
     supabase,
     userId,
+    ...(invokeDescriptorsForPlanningTurn !== undefined
+      ? { cachedInvokeDescriptors: invokeDescriptorsForPlanningTurn }
+      : {}),
   });
 
   const system = buildRunnerAssistantInstructions({
@@ -106,6 +126,10 @@ export async function runAssistantChatTurn({
     integrationsContext:
       integrationsBrief.summaryLines.length > 0
         ? integrationsBrief.summaryLines.map((l) => `- ${l}`).join("\n")
+        : undefined,
+    workflowsInvokeContext:
+      workflowsInvokeBrief.summaryLines.length > 0
+        ? workflowsInvokeBrief.summaryLines.join("\n")
         : undefined,
   });
 

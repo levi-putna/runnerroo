@@ -35,7 +35,8 @@ export interface PlanningResult {
  *
  * 1. Reviews the recent conversation to understand the user's intent
  * 2. Assesses which skill (if any) is relevant
- * 3. Returns a thinking note and the selected skill content
+ * 3. When invoke workflows are supplied, weighs whether the user's enquiry fits an assistant workflow tool
+ * 4. Returns a thinking note and the selected skill content
  *
  * @param messages - The current conversation UIMessages
  * @param providerOptions - Optional Gateway-level metadata (user / conversation tags).
@@ -44,11 +45,35 @@ export async function runPlanningAgent(
   messages: UIMessage[],
   {
     providerOptions,
+    invokeWorkflowsPlanningAppendix,
   }: {
     providerOptions?: ProviderOptions;
+    /** Rendered catalogue of invoke-compatible workflows (assistant tools); omit when empty. */
+    invokeWorkflowsPlanningAppendix?: string;
   } = {},
 ): Promise<PlanningResult> {
   const skillSummary = buildSkillSummary();
+
+  const trimmedInvokeAppendix = invokeWorkflowsPlanningAppendix?.trim();
+  const invokeWorkflowSection =
+    trimmedInvokeAppendix && trimmedInvokeAppendix.length > 0
+      ? `
+
+## Invoke workflows this user can run via assistant tools
+
+Each row lists the assistant **tool name** (backticks), workflow metadata, and declared invoke inputs.
+
+${trimmedInvokeAppendix}
+
+### Invoke workflows and your thinking note
+
+- Compare the user's enquiry with each workflow's name, summary, and declared inputs.
+- When **one** workflow clearly fits what they want executed with structured inputs, add **one sentence** that explicitly recommends using that assistant tool, naming the exact tool key in backticks (for example: **Use assistant tool \`wf…\`** to run **…** because …).
+- When several could fit, briefly name the strongest candidate or flag ambiguity — avoid repeating the full catalogue.
+- When none fit, omit workflow tooling entirely — do not invent tool keys or workflows.
+
+`
+      : "";
 
   const systemPrompt = `You are a planning assistant for Runnerroo AI (workflow automation + in-app assistant).
 
@@ -57,12 +82,13 @@ Review the conversation below and produce:
 2. A concise thinking note (2–4 sentences) visible to the user that:
    - If a skill was selected: opens with "Using the **<skill-name>** skill — <one short sentence on why this skill was selected for this request>."
    - Then adds 1–3 sentences on: what the user is asking for, important technical context (nodes, errors, APIs mentioned), and any nuances worth addressing.
+   - If invoke workflows are listed above and one clearly applies to the enquiry, weave in the recommended assistant tool sentence there (still keep the overall note brief).
    - If no skill: just 2–3 sentences summarising what the user needs and any relevant context.
 
 ## Available skills
 
 ${skillSummary}
-
+${invokeWorkflowSection}
 ## Rules
 
 - Only select a skill if the user's request clearly matches its purpose and triggers.

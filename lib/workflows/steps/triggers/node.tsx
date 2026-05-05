@@ -17,7 +17,8 @@ import { Button } from "@/components/ui/button"
 
 export interface EntryNodeData {
   label?: string
-  entryType?: "manual" | "webhook" | "schedule"
+  /** Canonical `invoke`; legacy graphs may still persist `manual`. */
+  entryType?: "invoke" | "manual" | "webhook" | "schedule"
   [key: string]: unknown
 }
 
@@ -30,7 +31,7 @@ export function EntryNode({ id, data, selected }: NodeProps) {
   const kind = normaliseEntryKind({ value: nodeData.entryType })
   const cfg = WORKFLOW_ENTRY_KIND_META[kind]
   const title = (nodeData.label ?? cfg.defaultLabel).toUpperCase()
-  const manualTrigger = kind === "manual"
+  const invokeTrigger = kind === "invoke"
 
   /** Simulated-run halo synced with downstream steps */
   const runRing = useWorkflowNodeRunRingClassName(id)
@@ -62,7 +63,7 @@ export function EntryNode({ id, data, selected }: NodeProps) {
                 {title}
               </p>
               {/* Manual trigger — Play to launch run dialog; swaps to Stop while a run is in flight */}
-              {manualTrigger && editorActions ? (
+              {invokeTrigger && editorActions ? (
                 editorActions.isRunning ? (
                   <Button
                     type="button"
@@ -84,8 +85,8 @@ export function EntryNode({ id, data, selected }: NodeProps) {
                     variant="outline"
                     size="icon-sm"
                     className="shrink-0 rounded-none border-emerald-600/35 text-emerald-700 hover:bg-emerald-500/10"
-                    aria-label="Run workflow manually"
-                    title="Run workflow manually"
+                    aria-label="Run workflow"
+                    title="Run workflow"
                     onClick={(evt) => {
                       evt.stopPropagation()
                       editorActions.openManualRunDialog()

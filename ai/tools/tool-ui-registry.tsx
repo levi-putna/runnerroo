@@ -45,6 +45,8 @@ import { AskQuestionUI } from "@/ai/tools/utility/ask-question-ui";
 import { TavilyCrawlUI } from "@/ai/tools/utility/tavily-crawl-ui";
 import { TavilyExtractUI } from "@/ai/tools/utility/tavily-extract-ui";
 import { WebSearchUI } from "@/ai/tools/utility/web-search-ui";
+import { WorkflowInvokeToolUI } from "@/ai/tools/workflows/workflow-invoke-ui";
+import { isWorkflowAssistantToolName } from "@/lib/workflows/assistant-workflow-invoke-support";
 
 const toolUIRegistry: Record<string, ToolUIComponent> = {
   webSearch: WebSearchUI,
@@ -68,6 +70,17 @@ type ToolRendererProps = {
  */
 export function ToolRenderer({ part, addToolApprovalResponse, addToolOutput }: ToolRendererProps) {
   const toolName = getToolOrDynamicToolName(part);
+
+  if (isWorkflowAssistantToolName({ toolName })) {
+    return (
+      <WorkflowInvokeToolUI
+        part={part as DynamicToolUIPart}
+        addToolApprovalResponse={addToolApprovalResponse}
+        addToolOutput={addToolOutput}
+      />
+    );
+  }
+
   const Component = toolUIRegistry[toolName];
 
   if (!Component) return null;

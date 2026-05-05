@@ -11,7 +11,7 @@ export type NodeInputFieldType = "string" | "number" | "boolean" | "text"
 export interface NodeInputField {
   /** Stable id for list keys in the UI. */
   id: string
-  /** Programmatic key (e.g. `customer_name`); referenced as `{{input.customer_name}}`. */
+  /** Programmatic key (letters, digits, `-`, `_` only); referenced as `{{input.key}}`. */
   key: string
   /** Human-readable label in the editor. */
   label: string
@@ -59,12 +59,14 @@ function mergePersistedFieldValue({ raw }: { raw: Record<string, unknown> }): st
 
 /**
  * Coerces a single unknown record into `NodeInputField`, or returns null if invalid.
+ * Keys are normalised with {@link sanitiseInputFieldKey} so persisted graphs stay identifier-safe.
  */
 export function coerceNodeInputField({ raw }: CoerceNodeInputFieldParams): NodeInputField | null {
   if (!raw || typeof raw !== "object") return null
   const o = raw as Record<string, unknown>
   const id = typeof o.id === "string" && o.id.trim() ? o.id.trim() : ""
-  const key = typeof o.key === "string" ? o.key.trim() : ""
+  const keyRaw = typeof o.key === "string" ? o.key.trim() : ""
+  const key = keyRaw ? sanitiseInputFieldKey({ key: keyRaw }) : ""
   if (!id || !key) return null
   const label = typeof o.label === "string" ? o.label : key
   const typeRaw = o.type
@@ -98,13 +100,14 @@ export interface LabelToDefaultKeyParams {
 }
 
 /**
- * Derives a snake_case key from a human label (for auto-fill when the user has not locked the key).
+ * Derives a key from a human label (for auto-fill when the user has not locked the key).
+ * Only letters, digits, hyphens, and underscores are kept; other runs become a single underscore.
  */
 export function labelToDefaultKey({ label }: LabelToDefaultKeyParams): string {
   const trimmed = label.trim().toLowerCase()
   if (!trimmed) return ""
   return trimmed
-    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/[^a-z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .replace(/_+/g, "_")
 }
@@ -114,16 +117,32 @@ export interface SanitiseInputFieldKeyParams {
 }
 
 /**
- * Normalises a user-entered key to a safe programmatic identifier.
+ * Normalises a user-entered key: lowercase ASCII; whitespace becomes underscore; only letters, digits,
+ * hyphen, and underscore remain; leading and trailing separators are stripped.
  */
 export function sanitiseInputFieldKey({ key }: SanitiseInputFieldKeyParams): string {
   return key
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9_]/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .replace(/_+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_-]/g, "")
+    .replace(/^[-_]+|[-_]+$/g, "")
 }
+
+export interface ClipWorkflowFieldKeyInputParams {
+  value: string
+}
+
+/**
+ * Restricts in-progress key entry: lowercases, turns whitespace into underscores, then allows only
+ * letters, digits, hyphens, and underscores (end trimming is applied on save via {@link sanitiseInputFieldKey}).
+ */
+export function clipWorkflowFieldKeyInput({ value }: ClipWorkflowFieldKeyInputParams): string {
+  return value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_-]/g, "")
+}
+
+/** Allowed pattern for schema keys in raw JSON (before lowercasing). */
+const WORKFLOW_FIELD_KEY_JSON_PATTERN = /^[a-zA-Z0-9_-]+$/
 
 export interface CreateEmptyNodeInputFieldParams {
   /** Overrides for the new row. */
@@ -162,6 +181,64 @@ export function buildDefaultGenerateTextOutputSchemaFields(): NodeInputField[] {
         required: false,
         description: "Assistant text from this step’s AI execution.",
         value: "{{exe.text}}",
+      },
+    }),
+  ]
+}
+
+/**
+ * Default outbound mappings for **Classify** AI steps (`exe.classifier_*` structured output fields).
+ */
+export function buildDefaultClassifyOutputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "label",
+        label: "Label",
+        type: "string",
+        required: false,
+        description: "Chosen category label emitted by the classifier (matches one catalogue identifier exactly).",
+        value: "{{exe.classifier_label}}",
+      },
+    }),
+    createEmptyNodeInputField({
+      partial: {
+        key: "confidence",
+        label: "Confidence",
+        type: "number",
+        required: false,
+        description:
+          "Model-reported subjective certainty between 0 and 1 inclusive (interpret as a calibrated self-assessment, not a calibrated probability unless you validated it downstream).",
+        value: "{{exe.classifier_confidence}}",
+      },
+    }),
+    createEmptyNodeInputField({
+      partial: {
+        key: "reasoning",
+        label: "Reasoning",
+        type: "text",
+        required: false,
+        description: "Brief evidence-based justification referencing concrete phrases or fields from the input payload.",
+        value: "{{exe.classifier_reasoning}}",
+      },
+    }),
+  ]
+}
+
+/**
+ * Default declared inputs for **Classify** AI steps — map into `{{input.*}}` for the classifier payload.
+ */
+export function buildDefaultClassifyInputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "content",
+        label: "Content",
+        type: "text",
+        required: false,
+        description:
+          "Primary payload to classify. Map from literals, {{prev.*}} references, workflow {{global.*}} helpers, etc.",
+        value: "",
       },
     }),
   ]
@@ -342,6 +419,12 @@ export function parseInputSchemaJson({ text }: ParseInputSchemaJsonParams): Pars
     const keyRaw = typeof o.key === "string" ? o.key.trim() : ""
     if (!keyRaw) {
       return { ok: false, error: `Item ${i + 1} is missing a non-empty "key".` }
+    }
+    if (!WORKFLOW_FIELD_KEY_JSON_PATTERN.test(keyRaw)) {
+      return {
+        ok: false,
+        error: `Item ${i + 1}: keys may only contain letters, digits, hyphens (-), and underscores (_).`,
+      }
     }
     const normalisedKey = sanitiseInputFieldKey({ key: keyRaw })
     if (!normalisedKey) {

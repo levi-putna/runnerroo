@@ -4,59 +4,31 @@ import {
   convertToModelMessages,
   streamText,
   stepCountIs,
+  type TextStreamPart,
+  type ToolSet,
   type UIMessage,
 } from "ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { runPlanningAgent } from "@/ai/agents/planning-agent";
+import { runPlanningAgent, resolvePlanningModelId } from "@/ai/agents/planning-agent";
 import { buildRunnerAssistantInstructions } from "@/ai/skills";
 import { createAssistantTools } from "@/ai/tools";
+import { buildRunnerAssistantUsageMetadata } from "@/lib/assistant/build-runner-assistant-usage-metadata";
+import type { AssistantMessageMetadata } from "@/lib/assistant/chat-usage-metadata";
+import { getAiGatewayModelListCached } from "@/lib/ai-gateway/gateway-raw-models";
 import { searchMemory } from "@/lib/memories/memory-service";
+import type { MemoryHybridMatch } from "@/lib/memories/types";
 
 const PLANNING_ENV = "RUNNER_ASSISTANT_PLANNING";
 
 /**
- * Builds the optional memory appendix injected into the system prompt (semantic search over pgvector).
- *
- * @returns Markdown fragment or an empty string when nothing matched or on non-fatal errors.
+ * Formats retrieved memories for the system prompt appendix.
  */
-async function buildMemoryContextAppendix({
-  supabase,
-  userId,
-  uiMessages,
-  conversationId,
-}: {
-  supabase: SupabaseClient;
-  userId: string;
-  uiMessages: UIMessage[];
-  conversationId: string | null;
-}): Promise<string> {
-  try {
-    const lastUserMessage = [...uiMessages].reverse().find((m) => m.role === "user");
-    const queryText = lastUserMessage?.parts
-      ?.filter((p) => p.type === "text")
-      .map((p) => (p as { type: "text"; text: string }).text)
-      .join(" ")
-      .trim();
-
-    if (!queryText) return "";
-
-    const memories = await searchMemory({
-      supabase,
-      userId,
-      query: queryText,
-      conversationId,
-      limit: 8,
-    });
-
-    if (memories.length === 0) return "";
-
-    return `\n\n## Relevant memories about this user\n${memories
-      .map((m) => `- [${m.type}] ${m.key}: ${m.content}`)
-      .join("\n")}`;
-  } catch {
-    return "";
-  }
+function buildMemoryContextAppendixFromMatches(memories: MemoryHybridMatch[]): string {
+  if (memories.length === 0) return "";
+  return `\n\n## Relevant memories about this user\n${memories
+    .map((m) => `- [${m.type}] ${m.key}: ${m.content}`)
+    .join("\n")}`;
 }
 
 export type RunAssistantChatTurnParams = {
@@ -70,7 +42,7 @@ export type RunAssistantChatTurnParams = {
 
 /**
  * Single entry point for the HTTP chat route: memory retrieval, optional planning pass,
- * tool registry, and {@link streamText} with multi-step tool loops enabled.
+ * tool registry, and {@link streamText} with multi-step `stopWhen` plus UI message metadata for usage.
  */
 export async function runAssistantChatTurn({
   supabase,
@@ -80,12 +52,43 @@ export async function runAssistantChatTurn({
   conversationId,
   gatewayProviderOptions,
 }: RunAssistantChatTurnParams) {
-  const memoryContext = await buildMemoryContextAppendix({
-    supabase,
-    userId,
-    uiMessages,
-    conversationId,
-  });
+  const lastUserMessage = [...uiMessages].reverse().find((m) => m.role === "user");
+  const queryText =
+    lastUserMessage?.parts
+      ?.filter((p) => p.type === "text")
+      .map((p) => (p as { type: "text"; text: string }).text)
+      .join(" ")
+      .trim() ?? "";
+
+  let retrievedMemories: MemoryHybridMatch[] = [];
+  if (queryText.length > 0) {
+    try {
+      retrievedMemories = await searchMemory({
+        supabase,
+        userId,
+        query: queryText,
+        conversationId,
+        limit: 8,
+      });
+    } catch {
+      retrievedMemories = [];
+    }
+  }
+
+  const memoryContext = buildMemoryContextAppendixFromMatches(retrievedMemories);
+  const memoriesRetrieved = retrievedMemories.slice(0, 10).map((m) => ({
+    id: m.id,
+    type: m.type,
+    key: m.key,
+    preview: m.content,
+  }));
+
+  let catalogue: Awaited<ReturnType<typeof getAiGatewayModelListCached>> = [];
+  try {
+    catalogue = await getAiGatewayModelListCached();
+  } catch {
+    catalogue = [];
+  }
 
   const planningEnabled = process.env[PLANNING_ENV] === "true";
   const planning = planningEnabled
@@ -108,7 +111,7 @@ export async function runAssistantChatTurn({
 
   const modelMessages = await convertToModelMessages(uiMessages);
 
-  return streamText({
+  const streamResult = streamText({
     model: gateway.languageModel(modelId),
     system,
     messages: modelMessages,
@@ -116,4 +119,22 @@ export async function runAssistantChatTurn({
     providerOptions: gatewayProviderOptions,
     stopWhen: stepCountIs(15),
   });
+
+  const messageMetadata = ({
+    part,
+  }: {
+    part: TextStreamPart<ToolSet>;
+  }): AssistantMessageMetadata | undefined => {
+    if (part.type !== "finish") return undefined;
+    return buildRunnerAssistantUsageMetadata({
+      planningUsage: planning?.usage,
+      planningModelId: resolvePlanningModelId(),
+      assistantUsage: part.totalUsage,
+      assistantModelId: modelId,
+      catalogue,
+      memoriesRetrieved,
+    });
+  };
+
+  return { streamResult, messageMetadata };
 }

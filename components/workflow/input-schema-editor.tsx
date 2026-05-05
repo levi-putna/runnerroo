@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils"
 import type { NodeInputField, NodeInputFieldType } from "@/lib/workflows/engine/input-schema"
 import {
+  clipWorkflowFieldKeyInput,
   createEmptyNodeInputField,
   labelToDefaultKey,
   sanitiseInputFieldKey,
@@ -457,8 +458,18 @@ export function InputSchemaEditor({
                     <Input
                       id={`edit-key-${field.id}`}
                       value={editDraft.key}
-                      onChange={(e) => setEditDraft((d) => (d ? { ...d, key: e.target.value, keyTouched: true } : d))}
-                      placeholder="customer_name"
+                      onChange={(e) =>
+                        setEditDraft((d) =>
+                          d
+                            ? {
+                                ...d,
+                                key: clipWorkflowFieldKeyInput({ value: e.target.value }),
+                                keyTouched: true,
+                              }
+                            : d,
+                        )
+                      }
+                      placeholder="customer_name or api-key"
                       className="w-full min-w-0 font-mono text-sm"
                     />
                   </div>
@@ -668,8 +679,14 @@ export function InputSchemaEditor({
               <Input
                 id="add-schema-key"
                 value={addDraft.key}
-                onChange={(e) => setAddDraft((d) => ({ ...d, key: e.target.value, keyTouched: true }))}
-                placeholder="customer_name"
+                onChange={(e) =>
+                  setAddDraft((d) => ({
+                    ...d,
+                    key: clipWorkflowFieldKeyInput({ value: e.target.value }),
+                    keyTouched: true,
+                  }))
+                }
+                placeholder="customer_name or api-key"
                 className="w-full min-w-0 font-mono text-sm"
               />
             </div>

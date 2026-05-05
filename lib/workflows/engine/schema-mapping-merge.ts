@@ -1,5 +1,6 @@
 import type { NodeInputField } from "@/lib/workflows/engine/input-schema"
 import { createEmptyNodeInputField } from "@/lib/workflows/engine/input-schema"
+import type { ExtractFieldRow } from "@/lib/workflows/steps/ai/extract/defaults"
 
 export interface IsUnsetSchemaTextParams {
   value: string | undefined
@@ -71,5 +72,61 @@ export function mergeEntryOutputSchemaFromInputFields({
   })
 
   const tail = existingOutputFields.filter((field) => !consumedKeys.has(field.key))
+  return [...mergedLeading, ...tail]
+}
+
+export interface MergeExtractOutputFromFieldsParams {
+  existingOutputFields: NodeInputField[]
+  extractFields: ExtractFieldRow[]
+}
+
+/**
+ * Mirrors declared extraction fields into output rows: same key, label, type, required flag,
+ * and description, with `{{exe.<key>}}` as the default value where the output row had no value yet.
+ *
+ * Output-only keys (not present in extractFields) are appended unchanged at the end so any
+ * manually added rows (e.g. for telemetry like `{{exe.usage.totalTokens}}`) are preserved.
+ */
+export function mergeExtractOutputSchemaFromExtractFields({
+  existingOutputFields,
+  extractFields,
+}: MergeExtractOutputFromFieldsParams): NodeInputField[] {
+  const mappedValueForKey = ({ key }: { key: string }) => `{{exe.${key}}}`
+
+  const existingByKey = new Map(existingOutputFields.map((f) => [f.key, f]))
+  const consumedKeys = new Set<string>()
+
+  const mergedLeading: NodeInputField[] = extractFields.map((src) => {
+    consumedKeys.add(src.key)
+    const prev = existingByKey.get(src.key)
+
+    if (!prev) {
+      return createEmptyNodeInputField({
+        partial: {
+          key: src.key,
+          label: src.label || src.key,
+          type: src.type,
+          required: src.required,
+          description: src.description,
+          value: mappedValueForKey({ key: src.key }),
+        },
+      })
+    }
+
+    // Keep any existing mapping value; only insert placeholder when the cell is blank.
+    const nextValue =
+      !isUnsetSchemaText({ value: prev.value }) ? prev.value : mappedValueForKey({ key: src.key })
+
+    return {
+      ...prev,
+      label: src.label || src.key,
+      type: src.type,
+      required: src.required,
+      description: src.description,
+      value: nextValue,
+    }
+  })
+
+  const tail = existingOutputFields.filter((f) => !consumedKeys.has(f.key))
   return [...mergedLeading, ...tail]
 }

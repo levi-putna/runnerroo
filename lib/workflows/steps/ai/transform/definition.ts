@@ -13,7 +13,15 @@ export const aiTransformDefinition: StepDefinition = {
   group: "ai",
   label: "Transform",
   description: "Rewrite or restructure data with AI",
-  defaultData: { label: "Transform data", subtype: "transform", model: "claude-sonnet-4-6" },
+  defaultData: {
+    label: "Transform data",
+    subtype: "transform",
+    model: "claude-sonnet-4-6",
+    /** Transformation instructions — describes how the content should be rewritten or restructured. */
+    prompt: "",
+    /** When non-empty, resolved value is the source for transformation; blank uses Input tab JSON. */
+    transformContentExpression: "",
+  },
   Icon: row.Icon,
   accentBg: family.accentBg,
   accentHex: family.accentHex,

@@ -42,18 +42,28 @@ import { readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema
 import {
   mergePromptTagDefinitions,
   generateTextExecutionPromptTags,
+  classifyObjectExecutionPromptTags,
+  extractObjectExecutionPromptTags,
   numericExeNumberPromptTags,
   nodeInputFieldsToPromptTags,
   prevPromptTagsFromPredecessorNode,
   workflowGlobalsPromptTagsFromNodes,
   type PromptTagDefinition,
 } from "@/lib/workflows/engine/prompt-tags"
+import { ClassifyCatalogueEditor } from "@/components/workflow/classify-catalogue-editor"
+import { AI_CLASSIFY_OPTIONAL_GUIDANCE_PLACEHOLDER } from "@/lib/workflows/steps/ai/classify/defaults"
+import { ExtractFieldsEditor } from "@/components/workflow/extract-fields-editor"
+import { AI_EXTRACT_OPTIONAL_GUIDANCE_PLACEHOLDER } from "@/lib/workflows/steps/ai/extract/defaults"
+import { readExtractFieldRowsFromNodeData } from "@/lib/workflows/steps/ai/extract/defaults"
 import {
   inferPreviousStepOutputFields,
   listInboundSourcesForNode,
   mergeInputSchemaWithPreviousStepImport,
 } from "@/lib/workflows/engine/previous-step-import"
-import { mergeEntryOutputSchemaFromInputFields } from "@/lib/workflows/engine/schema-mapping-merge"
+import {
+  mergeEntryOutputSchemaFromInputFields,
+  mergeExtractOutputSchemaFromExtractFields,
+} from "@/lib/workflows/engine/schema-mapping-merge"
 import { WorkflowSchemaImportButtonWithDialog } from "@/components/workflow/workflow-schema-import-button-with-dialog"
 import { FunctionInput } from "@/components/workflow/function-input"
 import { WorkflowRunContext } from "@/lib/workflows/engine/run-context"
@@ -164,8 +174,13 @@ function getNodeSheetTabVisibility({
 
   const manualEntryShowsOutput = nodeType === "entry" && entryKind === "manual"
 
-  const showAiGenerateOutput =
-    nodeType === "ai" && normaliseAiSubtype({ value: aiSubtype }) === "generate"
+  const aiSubtypeNormalised = nodeType === "ai" ? normaliseAiSubtype({ value: aiSubtype }) : null
+
+  const showAiGenerateOutput = aiSubtypeNormalised === "generate"
+  const showAiTransformOutput = aiSubtypeNormalised === "transform"
+  const showAiSummarizeOutput = aiSubtypeNormalised === "summarize"
+  const showAiClassifyOutput = aiSubtypeNormalised === "classify"
+  const showAiExtractOutput = aiSubtypeNormalised === "extract"
 
   const showNumericComputationOutput = nodeType === "random" || nodeType === "iteration"
 
@@ -175,6 +190,10 @@ function getNodeSheetTabVisibility({
     nodeType === "split" ||
     manualEntryShowsOutput ||
     showAiGenerateOutput ||
+    showAiTransformOutput ||
+    showAiSummarizeOutput ||
+    showAiClassifyOutput ||
+    showAiExtractOutput ||
     showNumericComputationOutput
 
   return { showInput, showExecution, showOutput }
@@ -447,8 +466,28 @@ export function NodeSheet({
                       />
                     ) : null}
                     {sheetNode.type === "ai" &&
-                    normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "generate" ? (
+                    (normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "generate" ||
+                      normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "transform" ||
+                      normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "summarize") ? (
                       <AiGenerateOutputConfig
+                        data={localData}
+                        set={set}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "ai" &&
+                    normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "classify" ? (
+                      <AiClassifyOutputConfig
+                        data={localData}
+                        set={set}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "ai" &&
+                    normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "extract" ? (
+                      <AiExtractOutputConfig
                         data={localData}
                         set={set}
                         upstreamPromptTags={upstreamPromptTags}
@@ -566,6 +605,156 @@ function AiGenerateOutputConfig({
   return (
     <div className="space-y-6">
       {/* Maps declared outbound keys to expressions — defaults reference AI SDK execution fields */}
+      <InputSchemaBuilder
+        fields={outputSchemaFields}
+        onChange={({ fields }) => set("outputSchema", fields)}
+        usageContext="output"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={contextualPromptTags}
+      />
+      {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
+      <InputSchemaBuilder
+        fields={globalsSchemaFields}
+        onChange={({ fields }) => set("globalsSchema", fields)}
+        usageContext="globals"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={globalsContextualTags}
+      />
+    </div>
+  )
+}
+
+/** Declared outbound fields for Classify AI steps; mapping cells resolve against classifier `{{exe.classifier_*}}` fields. */
+function AiClassifyOutputConfig({
+  data,
+  set,
+  upstreamPromptTags,
+  workflowGlobalPromptTags,
+}: {
+  data: Record<string, unknown>
+  set: (k: string, v: unknown) => void
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
+}) {
+  const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
+  const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
+
+  const contextualPromptTags = React.useMemo(() => {
+    const inputFieldsForTags = readInputSchemaFromNodeData({ value: data.inputSchema })
+    return [...classifyObjectExecutionPromptTags(), ...nodeInputFieldsToPromptTags({ fields: inputFieldsForTags })]
+  }, [data.inputSchema])
+
+  const globalsContextualTags = React.useMemo(
+    () => [
+      ...workflowGlobalPromptTags,
+      ...nodeInputFieldsToPromptTags({ fields: outputSchemaFields }),
+      ...contextualPromptTags,
+    ],
+    [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Maps declared outbound keys to expressions — defaults reference structured classifier execution fields */}
+      <InputSchemaBuilder
+        fields={outputSchemaFields}
+        onChange={({ fields }) => set("outputSchema", fields)}
+        usageContext="output"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={contextualPromptTags}
+      />
+      {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
+      <InputSchemaBuilder
+        fields={globalsSchemaFields}
+        onChange={({ fields }) => set("globalsSchema", fields)}
+        usageContext="globals"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={globalsContextualTags}
+      />
+    </div>
+  )
+}
+
+/**
+ * Outbound mappings for Extract steps — one `{{exe.<key>}}` tag is available per declared extraction field.
+ * Includes a "Sync from extraction fields" button that mirrors the Execution-tab field list into output rows.
+ */
+function AiExtractOutputConfig({
+  data,
+  set,
+  upstreamPromptTags,
+  workflowGlobalPromptTags,
+}: {
+  data: Record<string, unknown>
+  set: (k: string, v: unknown) => void
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
+}) {
+  const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
+  const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
+  const extractFields = readExtractFieldRowsFromNodeData({ value: data.extractFields })
+
+  const contextualPromptTags = React.useMemo(() => {
+    const inputFieldsForTags = readInputSchemaFromNodeData({ value: data.inputSchema })
+    return [
+      ...extractObjectExecutionPromptTags({ fields: extractFields }),
+      ...nodeInputFieldsToPromptTags({ fields: inputFieldsForTags }),
+    ]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.inputSchema, data.extractFields])
+
+  const globalsContextualTags = React.useMemo(
+    () => [
+      ...workflowGlobalPromptTags,
+      ...nodeInputFieldsToPromptTags({ fields: outputSchemaFields }),
+      ...contextualPromptTags,
+    ],
+    [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  const canSyncFromFields = extractFields.length > 0
+
+  return (
+    <div className="space-y-6">
+      {/* Sync CTA — mirrors extraction field rows into the output schema */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Field parity</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Sync your extraction fields into the output schema so downstream steps can reference each extracted value by
+          name. Blank mapping cells become{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{exe.<key>}}"}</code> placeholders;
+          cells that already have a value are left unchanged.
+        </p>
+        <WorkflowSchemaImportButtonWithDialog
+          disabled={!canSyncFromFields}
+          triggerLabel="Sync from extraction fields"
+          TriggerIcon={ArrowDownFromLine}
+          alertTitle="Sync output from extraction fields?"
+          alertDescription={
+            <span className="text-pretty leading-relaxed">
+              This merges your Execution-tab extraction fields into the output schema. Each field gets a{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{exe.<key>}}"}</code> mapping
+              by default. Rows that already have a mapping value keep their contents; any extra output-only rows you
+              added manually stay at the end.
+            </span>
+          }
+          confirmLabel="Sync now"
+          onConfirm={() => {
+            const next = mergeExtractOutputSchemaFromExtractFields({
+              existingOutputFields: outputSchemaFields,
+              extractFields,
+            })
+            set("outputSchema", next)
+          }}
+        />
+        {!canSyncFromFields ? (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Add at least one field on the Execution tab before syncing.
+          </p>
+        ) : null}
+      </div>
+
+      {/* Maps declared outbound keys to expressions — defaults reference structured extract execution fields */}
       <InputSchemaBuilder
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}
@@ -844,7 +1033,7 @@ function AiInputConfig({
 }) {
   const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
   const subtype = normaliseAiSubtype({ value: data.subtype as string | undefined })
-  const isGenerateText = subtype === "generate"
+  const showsAiInboundImportWizard = subtype === "generate" || subtype === "classify" || subtype === "extract"
 
   const { predecessorNodes, setPickedSourceId, selectedPredecessor } = inboundPick
 
@@ -861,7 +1050,7 @@ function AiInputConfig({
 
   return (
     <div className="space-y-6">
-      {isGenerateText ? (
+      {showsAiInboundImportWizard ? (
         <div className="space-y-3">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upstream mapping</p>
 
@@ -949,6 +1138,8 @@ function AiExecutionConfig({
     })
   }, [data.inputSchema, upstreamPromptTags, workflowGlobalPromptTags])
 
+  const subtype = normaliseAiSubtype({ value: data.subtype as string | undefined })
+
   return (
     <div className="w-full space-y-6">
       {/* Model row — full width */}
@@ -962,24 +1153,177 @@ function AiExecutionConfig({
         />
       </div>
 
-      {/* Instruction body */}
+      {/* Instruction body — classify / extract / summarize: optional guidance; transform / generate / other: primary instructions */}
       <div className="w-full space-y-3">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Instructions</p>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {subtype === "classify" || subtype === "extract" || subtype === "summarize"
+            ? "Optional guidance"
+            : "Instructions"}
+        </p>
+        {subtype === "classify" ? (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            How to categorise is enforced by this step (exactly one catalogue label, verbatim match, reasoning, and
+            confidence). Use this field only for extra domain context; it is sent as supplementary notes and cannot
+            override those rules.
+          </p>
+        ) : null}
+        {subtype === "extract" ? (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            How to extract is enforced by this step (the field list, types, required/optional rules, and output
+            discipline). Use this field only for extra domain context or formatting hints; it is sent as supplementary
+            notes and cannot override those rules.
+          </p>
+        ) : null}
+        {subtype === "summarize" ? (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Core summarisation behaviour is enforced by this step. Use this field to add format, length, or focus
+            hints (e.g. &quot;Bullet points, max 5 items&quot;); these notes are appended as supplementary guidance
+            and cannot override the primary task.
+          </p>
+        ) : null}
+        {subtype === "transform" ? (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Describe how the source content should be rewritten or restructured. Be specific about the desired output
+            format, tone, and any rules to apply — this is the primary instruction the model follows.
+          </p>
+        ) : null}
         <SystemPromptField
           tags={promptTags}
           value={String(data.prompt ?? "")}
           onChange={({ value }) => set("prompt", value)}
           fieldInstanceId={nodeId}
-          rows={14}
-          helperText={
-            "Type {{ to pick inbound {{prev.*}} from the wired predecessor, {{input.*}} from the Input tab, workflow {{global.*}} keys declared on any step, and {{now.*}}."
+          rows={subtype === "classify" || subtype === "extract" || subtype === "summarize" ? 6 : 14}
+          placeholder={
+            subtype === "classify"
+              ? AI_CLASSIFY_OPTIONAL_GUIDANCE_PLACEHOLDER
+              : subtype === "extract"
+                ? AI_EXTRACT_OPTIONAL_GUIDANCE_PLACEHOLDER
+                : subtype === "summarize"
+                  ? "Optional: specify format, length, or focus — e.g. 'Bullet points, no more than 5 items, formal tone.'"
+                  : subtype === "transform"
+                    ? "Describe the transformation — e.g. 'Rewrite as a formal email' or 'Convert the JSON fields to snake_case keys.'"
+                    : undefined
           }
-          expressionDialogTitle="Instructions"
+          helperText={
+            subtype === "classify" || subtype === "extract" || subtype === "summarize"
+              ? "Optional. Type {{ to insert {{prev.*}} , {{input.*}} , {{global.*}} , and {{now.*}} ."
+              : "Type {{ to pick inbound {{prev.*}} from the wired predecessor, {{input.*}} from the Input tab, workflow {{global.*}} keys declared on any step, and {{now.*}}."
+          }
+          expressionDialogTitle={
+            subtype === "classify" || subtype === "extract" || subtype === "summarize"
+              ? "Optional guidance"
+              : "Instructions"
+          }
           expressionDialogDescription={
-            "Insert {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} from Workflow globals on any step, and built-in {{now.*}} timestamps."
+            subtype === "classify"
+              ? "Supplementary notes for the classifier. The runner supplies the main categorisation task and catalogue rules in the system prompt."
+              : subtype === "extract"
+                ? "Supplementary notes for the extractor. The runner supplies the primary task, field list, and output discipline in the system prompt."
+                : subtype === "summarize"
+                  ? "Optional format, length, or focus hints. The runner supplies the primary summarisation task and output discipline in the system prompt."
+                  : "Insert {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} from Workflow globals on any step, and built-in {{now.*}} timestamps."
           }
         />
       </div>
+
+      {subtype === "classify" ? (
+        <>
+          {/* Primary payload: optional expression overrides Input-tab JSON for what gets classified */}
+          <div className="w-full space-y-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content to classify</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              When this field is non-empty, the resolved value is what the model categorises (valid JSON is
+              pretty-printed; otherwise it is sent as plain text). Leave blank to use the mapped object from the Input
+              tab as JSON.
+            </p>
+            <FunctionInput
+              tags={promptTags}
+              value={String(data.classifyContentExpression ?? "")}
+              onChange={({ value }) => set("classifyContentExpression", value)}
+              fieldInstanceId={`${nodeId}-classify-content`}
+              rows={6}
+              placeholder="{{prev.text}} or literals — combine with {{input.*}} as needed"
+              expressionDialogTitle="Content to classify"
+              expressionDialogDescription={
+                "Becomes the classifier user payload when the template is non-empty after tag resolution. Use {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} , and {{now.*}} . Leave blank to use the Input tab JSON object only."
+              }
+            />
+          </div>
+
+          <ClassifyCatalogueEditor data={data} set={set} nodeId={nodeId} promptTags={promptTags} />
+        </>
+      ) : null}
+
+      {subtype === "extract" ? (
+        <>
+          {/* Content source: optional expression overrides Input-tab JSON for what gets extracted */}
+          <div className="w-full space-y-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content to extract from</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              When this field is non-empty, the resolved value is the text the model extracts from (valid JSON is
+              pretty-printed; otherwise it is sent as plain text). Leave blank to use the mapped object from the Input
+              tab as JSON.
+            </p>
+            <FunctionInput
+              tags={promptTags}
+              value={String(data.extractContentExpression ?? "")}
+              onChange={({ value }) => set("extractContentExpression", value)}
+              fieldInstanceId={`${nodeId}-extract-content`}
+              rows={6}
+              placeholder="{{prev.text}} or literals — combine with {{input.*}} as needed"
+              expressionDialogTitle="Content to extract from"
+              expressionDialogDescription={
+                "Becomes the extractor user payload when the template is non-empty after tag resolution. Use {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} , and {{now.*}} . Leave blank to use the Input tab JSON object only."
+              }
+            />
+          </div>
+
+          {/* Field list editor — each row compiles to a Zod property in the dynamic schema */}
+          <ExtractFieldsEditor data={data} set={set} nodeId={nodeId} />
+        </>
+      ) : null}
+
+      {subtype === "transform" ? (
+        <div className="w-full space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content to transform</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            When this field is non-empty, the resolved value is what the model transforms (valid JSON is
+            pretty-printed; otherwise it is sent as plain text). Leave blank to use the mapped object from the Input
+            tab as JSON.
+          </p>
+          <FunctionInput
+            tags={promptTags}
+            value={String(data.transformContentExpression ?? "")}
+            onChange={({ value }) => set("transformContentExpression", value)}
+            fieldInstanceId={`${nodeId}-transform-content`}
+            rows={6}
+            placeholder="{{prev.text}} or literals — combine with {{input.*}} as needed"
+            expressionDialogTitle="Content to transform"
+            expressionDialogDescription="Becomes the transformation source payload when the template is non-empty after tag resolution. Use {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} , and {{now.*}} . Leave blank to use the Input tab JSON object only."
+          />
+        </div>
+      ) : null}
+
+      {subtype === "summarize" ? (
+        <div className="w-full space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content to summarise</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            When this field is non-empty, the resolved value is what the model summarises (valid JSON is
+            pretty-printed; otherwise it is sent as plain text). Leave blank to use the mapped object from the Input
+            tab as JSON.
+          </p>
+          <FunctionInput
+            tags={promptTags}
+            value={String(data.summarizeContentExpression ?? "")}
+            onChange={({ value }) => set("summarizeContentExpression", value)}
+            fieldInstanceId={`${nodeId}-summarize-content`}
+            rows={6}
+            placeholder="{{prev.text}} or literals — combine with {{input.*}} as needed"
+            expressionDialogTitle="Content to summarise"
+            expressionDialogDescription="Becomes the summarisation source payload when the template is non-empty after tag resolution. Use {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} , and {{now.*}} . Leave blank to use the Input tab JSON object only."
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

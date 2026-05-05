@@ -1,9 +1,8 @@
 "use client"
 
 import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Monitor, Moon, Sparkles, Sun } from "lucide-react"
-import { useTheme } from "next-themes"
+import { useTheme } from "@teispace/next-themes"
 import { useEffect, useState } from "react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,9 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
+import { UserAvatar } from "@/components/user-avatar"
 import { cn } from "@/lib/utils"
 import { getResolvedAvatarUrlForAuthUser } from "@/lib/avatar/dicebear"
-import { userAvatarInnerClassName, userAvatarRootClass } from "@/lib/avatar/user-avatar-styles"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
@@ -88,24 +87,20 @@ export function NavUser({ user: initialUser }: NavUserProps) {
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
-          {/* Trigger button showing avatar + name */}
-          <DropdownMenuTrigger
-            render={
-              <SidebarMenuButton
-                size="lg"
-                className="data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground"
-              />
-            }
-          >
-            <Avatar className={userAvatarRootClass({ className: "h-8 w-8" })}>
-              <AvatarImage src={user.avatar} alt={user.name} className={userAvatarInnerClassName} />
-              <AvatarFallback className={userAvatarInnerClassName}>{initials}</AvatarFallback>
-            </Avatar>
-            <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-semibold">{user.name}</span>
-              <span className="truncate text-xs">{user.email}</span>
-            </div>
-            <ChevronsUpDown className="ml-auto size-4" />
+          {/* Trigger: Radix uses asChild — SidebarMenuButton is the actual control (no invalid `render` on Trigger). */}
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <UserAvatar src={user.avatar} alt={user.name} fallback={initials} className="h-8 w-8" />
+              {/* Text stack — min-w-0 so truncation works inside the flex row */}
+              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">{user.name}</span>
+                <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+              </div>
+              <ChevronsUpDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
+            </SidebarMenuButton>
           </DropdownMenuTrigger>
 
           <DropdownMenuContent
@@ -116,13 +111,10 @@ export function NavUser({ user: initialUser }: NavUserProps) {
           >
             {/* User identity header */}
             <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-              <Avatar className={userAvatarRootClass({ className: "h-8 w-8" })}>
-                <AvatarImage src={user.avatar} alt={user.name} className={userAvatarInnerClassName} />
-                <AvatarFallback className={userAvatarInnerClassName}>{initials}</AvatarFallback>
-              </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <UserAvatar src={user.avatar} alt={user.name} fallback={initials} className="h-8 w-8" />
+              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{user.name}</span>
-                <span className="truncate text-xs">{user.email}</span>
+                <span className="truncate text-xs text-muted-foreground">{user.email}</span>
               </div>
             </div>
 

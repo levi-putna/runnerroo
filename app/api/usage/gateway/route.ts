@@ -46,6 +46,7 @@ function tagMatchesUsageCategory({
  * - **startDate**, **endDate** — required `YYYY-MM-DD` (inclusive).
  * - **page** — optional one-based page index (default `1`).
  * - **category** — optional `all` | `assistant` | `workflow` | `other`.
+ * - **provider** — optional exact provider id; omit or empty string for all providers in range.
  */
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -71,6 +72,7 @@ export async function GET(request: Request) {
   const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1;
 
   const category = normaliseCategory(searchParams.get("category"));
+  const providerFilter = (searchParams.get("provider") ?? "").trim();
 
   const report = await gateway.getSpendReport({
     startDate,
@@ -83,11 +85,27 @@ export async function GET(request: Request) {
     tagMatchesUsageCategory({ tag: row.tag, category }),
   );
 
+  const providerOptions = [...new Set(
+    filteredRows
+      .map((row) => row.provider)
+      .filter((p): p is string => typeof p === "string" && p.length > 0),
+  )].sort((a, b) => a.localeCompare(b, "en-AU", { sensitivity: "base" }));
+
+  const providerFiltered =
+    providerFilter.length === 0
+      ? filteredRows
+      : filteredRows.filter((row) => (row.provider ?? "") === providerFilter);
+
   const paged = applyAiGatewayCostsQuery({
-    rows: filteredRows,
+    rows: providerFiltered,
     page,
     pageSize: COSTS_PAGE_SIZE,
   });
 
-  return NextResponse.json({ ...paged, category });
+  return NextResponse.json({
+    ...paged,
+    category,
+    providerOptions,
+    activeProviderFilter: providerFilter.length > 0 ? providerFilter : null,
+  });
 }

@@ -93,7 +93,7 @@ export function inferPreviousStepOutputFields({
         key: f.key,
         label: f.label,
         type: f.type,
-        suggestedValue: templatePrevPath({ path: f.key }),
+        suggestedValue: templatePrevPath({ path: `outputs.${f.key}` }),
       }))
     }
     return [

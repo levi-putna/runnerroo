@@ -2,6 +2,7 @@ import { GatewayUsagePanel } from "@/components/settings/gateway-usage-panel";
 
 /**
  * AI Gateway usage for the signed-in user (assistant conversations, workflow runs, memory embeddings).
+ * Filters and the usage table are implemented in {@link GatewayUsagePanel}, which also renders the page header so layout matches other settings screens.
  */
 export default function SettingsUsagePage() {
   return (

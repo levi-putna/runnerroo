@@ -130,7 +130,7 @@ export async function POST(req: Request) {
   const isFirstTurn = userMessages.length === 1;
 
   // Run title generation and the main chat turn concurrently to minimise TTFB.
-  const [generatedTitle, result] = await Promise.all([
+  const [generatedTitle, chatTurn] = await Promise.all([
     isFirstTurn
       ? generateConversationTitle({
           firstUserMessage: userMessages[0],
@@ -147,6 +147,8 @@ export async function POST(req: Request) {
     }),
   ]);
 
+  const { streamResult, messageMetadata } = chatTurn;
+
   // If a title was generated, prepend it as a data chunk before the main message stream
   // so the client can update the header immediately without waiting for the full response.
   if (generatedTitle) {
@@ -156,11 +158,17 @@ export async function POST(req: Request) {
           type: "data-conversation-title",
           data: { title: generatedTitle },
         });
-        writer.merge(result.toUIMessageStream());
+        writer.merge(
+          streamResult.toUIMessageStream({
+            messageMetadata,
+          })
+        );
       },
     });
     return createUIMessageStreamResponse({ stream });
   }
 
-  return result.toUIMessageStreamResponse();
+  return streamResult.toUIMessageStreamResponse({
+    messageMetadata,
+  });
 }

@@ -176,6 +176,8 @@ type BuildDicebearUrlParams = {
 
 /**
  * Builds a DiceBear HTTP API SVG URL from explicit options.
+ *
+ * We do not set the HTTP `radius` query parameter so the asset stays a square viewport; rounding is applied in CSS on the `<img>`.
  */
 export function buildDicebearAvatarUrl({
   style,

@@ -31,8 +31,26 @@ import {
 } from "@/components/ai-elements/reasoning";
 import { InputGroup, InputGroupAddon, InputGroupButton } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
-import { BotIcon, CornerDownLeftIcon, CopyIcon, SparklesIcon, SquareIcon } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
+import {
+  BotIcon,
+  CornerDownLeftIcon,
+  CopyIcon,
+  PencilIcon,
+  SparklesIcon,
+  SquareIcon,
+} from "lucide-react";
+import { flushSync } from "react-dom";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import type { ChatAddToolApproveResponseFunction, ChatAddToolOutputFunction, ChatStatus } from "ai";
 
 import { isToolOrDynamicToolUIPart, ToolRenderer } from "@/ai/tools/tool-ui-registry";
@@ -69,18 +87,32 @@ function MessageList({
   status,
   addToolApprovalResponse,
   addToolOutput,
+  canEditOrCopy,
+  onBeginEditUserMessage,
 }: {
   messages: UIMessage[];
   status: ChatStatus;
   addToolApprovalResponse: ChatAddToolApproveResponseFunction;
   addToolOutput: ChatAddToolOutputFunction<UIMessage>;
+  canEditOrCopy: boolean;
+  onBeginEditUserMessage: ({
+    messageIndex,
+    message,
+  }: {
+    messageIndex: number;
+    message: UIMessage;
+  }) => void;
 }) {
   return (
     <>
       {messages.map((message, messageIndex) => {
         if (message.role === "user") {
+          const userText = getTextFromMessage(message);
+          const showEdit = canEditOrCopy && userText.trim().length > 0;
+
           return (
             <Message key={message.id} from="user">
+              {/* User bubble + metadata */}
               <MessageContent>
                 {message.parts.map((part, i) => {
                   if (part.type === "text") {
@@ -104,6 +136,27 @@ function MessageList({
                   return null;
                 })}
               </MessageContent>
+              {showEdit ? (
+                <MessageActions
+                  className={cn(
+                    "self-end",
+                    "transition-opacity",
+                    "pointer-events-none opacity-0",
+                    "group-hover:pointer-events-auto group-hover:opacity-100",
+                    "group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                  )}
+                >
+                  <MessageAction
+                    tooltip="Edit"
+                    label="Edit message"
+                    onClick={() => {
+                      onBeginEditUserMessage({ messageIndex, message });
+                    }}
+                  >
+                    <PencilIcon className="size-3.5" />
+                  </MessageAction>
+                </MessageActions>
+              ) : null}
             </Message>
           );
         }
@@ -158,8 +211,16 @@ function MessageList({
                   return null;
                 })}
               </MessageContent>
-              {!isStreaming && (
-                <MessageActions>
+              {!isStreaming && canEditOrCopy && (
+                <MessageActions
+                  className={cn(
+                    // Copy control only on hover/focus so rows are not cluttered.
+                    "transition-opacity",
+                    "pointer-events-none opacity-0",
+                    "group-hover:pointer-events-auto group-hover:opacity-100",
+                    "group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                  )}
+                >
                   <MessageAction
                     tooltip="Copy"
                     label="Copy message"
@@ -206,22 +267,32 @@ function Composer({
   onSend,
   modelId,
   onModelChange,
+  prompt,
+  onPromptChange,
+  pendingEditResend,
+  onCancelPendingEditResend,
+  textareaRef: textareaRefProp,
 }: {
   status: ChatStatus;
   onStop: () => void;
-  onSend: (text: string) => void;
+  onSend: ({ text }: { text: string }) => void;
   modelId: string;
   onModelChange: ({ modelId }: { modelId: string }) => void;
+  prompt: string;
+  onPromptChange: ({ value }: { value: string }) => void;
+  pendingEditResend: boolean;
+  onCancelPendingEditResend: () => void;
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
-  const [localInput, setLocalInput] = useState("");
   const isActive = status === "streaming" || status === "submitted";
   const promptInputId = useId();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fallbackTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = textareaRefProp ?? fallbackTextareaRef;
 
   const focusPrompt = useCallback(() => {
     if (isActive) return;
     textareaRef.current?.focus();
-  }, [isActive]);
+  }, [isActive, textareaRef]);
 
   const handleInputGroupSurfaceClick = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
@@ -238,20 +309,23 @@ function Composer({
   );
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Escape" && pendingEditResend) {
+      e.preventDefault();
+      onCancelPendingEditResend();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isActive && localInput.trim()) {
-        onSend(localInput.trim());
-        setLocalInput("");
+      if (!isActive && prompt.trim()) {
+        onSend({ text: prompt.trim() });
       }
     }
   };
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!isActive && localInput.trim()) {
-      onSend(localInput.trim());
-      setLocalInput("");
+    if (!isActive && prompt.trim()) {
+      onSend({ text: prompt.trim() });
     }
   };
 
@@ -268,8 +342,8 @@ function Composer({
         <textarea
           ref={textareaRef}
           id={promptInputId}
-          value={localInput}
-          onChange={(e) => setLocalInput(e.target.value)}
+          value={prompt}
+          onChange={(e) => onPromptChange({ value: e.target.value })}
           onKeyDown={handleKeyDown}
           placeholder="Message Runneroo…"
           disabled={isActive}
@@ -290,7 +364,7 @@ function Composer({
               <SquareIcon className="size-3.5 fill-current" />
             </InputGroupButton>
           ) : (
-            <InputGroupButton type="submit" disabled={!localInput.trim()} size="xs">
+            <InputGroupButton type="submit" disabled={!prompt.trim()} size="xs">
               <CornerDownLeftIcon className="size-3.5" />
             </InputGroupButton>
           )}
@@ -306,6 +380,11 @@ export type RunnerChatProps = {
   conversationId: string;
 };
 
+/**
+ * Assistant chat surface: message list, composer, and persistence hooks.
+ * User messages can be edited from the thread; resending truncates history from that
+ * message onward and continues with the new prompt text.
+ */
 export function RunnerChat({ conversationId }: RunnerChatProps) {
   const {
     activeConversationMessages,
@@ -320,6 +399,10 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
   } = useAssistantContext();
 
   const { modelId, setModelId } = useSelectedChatModel();
+
+  const [promptInput, setPromptInput] = useState("");
+  const [editTruncateFromIndex, setEditTruncateFromIndex] = useState<number | null>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
     messages,
@@ -399,14 +482,47 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
     void sendMessage({ text: payload.text });
   }, [takePendingForkSend, sendMessage]);
 
-  const handleSend = useCallback(
-    (text: string) => {
-      void sendMessage({ text });
+  const handlePromptChange = useCallback(({ value }: { value: string }) => {
+    setPromptInput(value);
+    setEditTruncateFromIndex((idx) => (idx !== null && value === "" ? null : idx));
+  }, []);
+
+  const beginEditUserMessage = useCallback(
+    ({
+      messageIndex,
+      message,
+    }: {
+      messageIndex: number;
+      message: UIMessage;
+    }) => {
+      setEditTruncateFromIndex(messageIndex);
+      setPromptInput(getTextFromMessage(message));
+      requestAnimationFrame(() => promptTextareaRef.current?.focus());
     },
-    [sendMessage]
+    []
   );
 
-  /** ~210mm (A4 width); header stays full width in AssistantShell. */
+  const cancelPendingEditResend = useCallback(() => {
+    setEditTruncateFromIndex(null);
+    setPromptInput("");
+  }, []);
+
+  const handleSend = useCallback(
+    ({ text }: { text: string }) => {
+      const truncateBeforeIndex = editTruncateFromIndex;
+      setEditTruncateFromIndex(null);
+      setPromptInput("");
+      if (truncateBeforeIndex !== null) {
+        flushSync(() => {
+          setMessages((prev) => prev.slice(0, truncateBeforeIndex));
+        });
+      }
+      void sendMessage({ text });
+    },
+    [editTruncateFromIndex, sendMessage, setMessages]
+  );
+
+  const canEditOrCopy = status === "ready";
   const readingMaxClass = "mx-auto w-full max-w-[210mm]";
 
   return (
@@ -423,6 +539,8 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
                 status={status}
                 addToolApprovalResponse={addToolApprovalResponse}
                 addToolOutput={addToolOutput}
+                canEditOrCopy={canEditOrCopy}
+                onBeginEditUserMessage={beginEditUserMessage}
               />
             )}
           </ConversationContent>
@@ -439,6 +557,11 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
             onSend={handleSend}
             modelId={modelId}
             onModelChange={setModelId}
+            prompt={promptInput}
+            onPromptChange={handlePromptChange}
+            pendingEditResend={editTruncateFromIndex !== null}
+            onCancelPendingEditResend={cancelPendingEditResend}
+            textareaRef={promptTextareaRef}
           />
         </div>
       </div>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useAssistantContext } from "@/components/assistant/assistant-context";
-import { GATEWAY_MODELS } from "@/lib/ai-gateway/models";
+import type { GatewayModel } from "@/lib/ai-gateway/types";
 import type { ConversationUsageAggregate } from "@/lib/assistant/aggregate-conversation-usage";
 import type { LanguageModelUsage } from "ai";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 
 const compactFormatter = new Intl.NumberFormat(undefined, {
@@ -19,17 +19,32 @@ const currencyFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 4,
 });
 
+/**
+ * Formats a token count using compact notation (matches streamed totals).
+ */
 function formatTokens(value: number | undefined): string {
-  if (value === undefined || Number.isNaN(value) || value <= 0) return "0";
+  if (value === undefined || Number.isNaN(value) || value <= 0) {
+    return "0";
+  }
   return compactFormatter.format(value);
 }
 
+/**
+ * Formats an approximate USD amount when catalogue pricing was available server-side.
+ */
 function formatUsd(value: number | null): string {
-  if (value === null) return "—";
-  if (value > 0 && value < 0.0001) return `<${currencyFormatter.format(0.0001)}`;
+  if (value === null) {
+    return "—";
+  }
+  if (value > 0 && value < 0.000_1) {
+    return `<${currencyFormatter.format(0.000_1)}`;
+  }
   return currencyFormatter.format(value);
 }
 
+/**
+ * Reads display columns from {@link LanguageModelUsage} exactly as returned by the AI SDK.
+ */
 function sdkUsageColumns(usage: LanguageModelUsage): {
   input: number;
   output: number;
@@ -43,9 +58,11 @@ function sdkUsageColumns(usage: LanguageModelUsage): {
     typeof usage.totalTokens === "number" && !Number.isNaN(usage.totalTokens)
       ? usage.totalTokens
       : input + output;
+
   return { input, output, reasoning, total };
 }
 
+/** Matches the section heading used in {@link ContextSidebar}. */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
@@ -54,6 +71,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Header for collapsing/expanding the session usage section.
+ */
 function UsageSectionHeader({
   open,
   controlsId,
@@ -82,159 +102,219 @@ function UsageSectionHeader({
   );
 }
 
+/**
+ * Narrows aggregate after we know the session has streamed usage metadata.
+ */
 function isRecordedUsage(
   aggregate: ConversationUsageAggregate | null
 ): aggregate is ConversationUsageAggregate {
-  return aggregate != null && aggregate.totalTokens > 0 && aggregate.byModel.length > 0;
+  return (
+    aggregate != null &&
+    aggregate.totalTokens > 0 &&
+    aggregate.byModel.length > 0
+  );
 }
 
-function modelDisplayName({ modelId }: { modelId: string }): string {
-  const meta = GATEWAY_MODELS.find((m) => m.id === modelId);
-  if (meta?.shortName?.trim()) return meta.shortName;
+/**
+ * Resolves a catalogue display title for a Gateway model id.
+ */
+function modelDisplayName({
+  modelId,
+  catalogueModels,
+}: {
+  modelId: string;
+  catalogueModels: GatewayModel[] | null | undefined;
+}): string {
+  const meta = catalogueModels?.find((m) => m.id === modelId);
+  if (meta?.shortName?.trim()) {
+    return meta.shortName;
+  }
   const tail = modelId.split("/").filter(Boolean).pop();
   return tail ?? modelId;
 }
 
+/**
+ * Compact per-model usage table: SDK input / output / reasoning / total plus footer totals.
+ */
 function UsageByModelTable({
   rows,
+  catalogueModels,
 }: {
   rows: ConversationUsageAggregate["byModel"];
+  catalogueModels: GatewayModel[] | null;
 }) {
   const totals = useMemo(() => {
     let input = 0;
     let output = 0;
     let reasoning = 0;
     let sumTotal = 0;
-
     for (const row of rows) {
-      const cols = sdkUsageColumns(row.usage);
-      input += cols.input;
-      output += cols.output;
-      reasoning += cols.reasoning;
-      sumTotal += cols.total;
+      const c = sdkUsageColumns(row.usage);
+      input += c.input;
+      output += c.output;
+      reasoning += c.reasoning;
+      sumTotal += c.total;
     }
-    return { input, output, reasoning, total: sumTotal };
+    return { input, output, reasoning, sumTotal };
   }, [rows]);
 
-  const hasReasoning = rows.some(
-    (r) => (r.usage.outputTokenDetails?.reasoningTokens ?? 0) > 0
-  );
-  const hasMultipleRows = rows.length > 1;
-
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[11px] tabular-nums">
+    <div className="mt-2 overflow-x-auto rounded border border-border/50 bg-muted/15">
+      <table className="w-full border-collapse text-[10px] tabular-nums">
+        <caption className="sr-only">
+          Token usage by model from the assistant session metadata
+        </caption>
         <thead>
-          <tr className="border-b border-border/40">
-            <th className="pb-1 pr-2 text-left font-medium text-muted-foreground/60">
+          <tr className="border-b border-border/50 bg-muted/25 text-muted-foreground">
+            <th scope="col" className="max-w-[7rem] truncate py-1 pl-2 pr-1 text-left font-medium">
               Model
             </th>
-            <th className="pb-1 pr-2 text-right font-medium text-muted-foreground/60">
+            <th scope="col" className="px-1 py-1 text-right font-medium">
               In
             </th>
-            <th className="pb-1 pr-2 text-right font-medium text-muted-foreground/60">
+            <th scope="col" className="px-1 py-1 text-right font-medium">
               Out
             </th>
-            {hasReasoning && (
-              <th className="pb-1 pr-2 text-right font-medium text-muted-foreground/60">
-                Reason
-              </th>
-            )}
-            <th className="pb-1 pr-2 text-right font-medium text-muted-foreground/60">
-              Total
+            <th scope="col" className="whitespace-nowrap px-1 py-1 text-right font-medium">
+              Reasoning
             </th>
-            <th className="pb-1 text-right font-medium text-muted-foreground/60">
-              Cost
+            <th scope="col" className="py-1 pl-1 pr-2 text-right font-medium">
+              Total
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="text-foreground">
           {rows.map((row) => {
-            const cols = sdkUsageColumns(row.usage);
+            const c = sdkUsageColumns(row.usage);
+            const name = modelDisplayName({
+              modelId: row.modelId,
+              catalogueModels,
+            });
+
             return (
-              <tr key={row.modelId} className="border-b border-border/20">
-                <td className="py-1 pr-2 text-left text-muted-foreground truncate max-w-[80px]">
-                  {modelDisplayName({ modelId: row.modelId })}
+              <tr
+                key={row.modelId}
+                className="border-b border-border/40 last:border-b-0 hover:bg-muted/20"
+              >
+                <td className="max-w-[7rem] truncate py-1 pl-2 pr-1 text-left font-medium leading-tight">
+                  {name}
                 </td>
-                <td className="py-1 pr-2 text-right text-muted-foreground">
-                  {formatTokens(cols.input)}
-                </td>
-                <td className="py-1 pr-2 text-right text-muted-foreground">
-                  {formatTokens(cols.output)}
-                </td>
-                {hasReasoning && (
-                  <td className="py-1 pr-2 text-right text-muted-foreground">
-                    {formatTokens(cols.reasoning)}
-                  </td>
-                )}
-                <td className="py-1 pr-2 text-right font-medium text-foreground">
-                  {formatTokens(cols.total)}
-                </td>
-                <td className="py-1 text-right text-muted-foreground">
-                  {formatUsd(row.estimatedUsd)}
-                </td>
+                <td className="px-1 py-1 text-right">{formatTokens(c.input)}</td>
+                <td className="px-1 py-1 text-right">{formatTokens(c.output)}</td>
+                <td className="px-1 py-1 text-right">{formatTokens(c.reasoning)}</td>
+                <td className="py-1 pl-1 pr-2 text-right">{formatTokens(c.total)}</td>
               </tr>
             );
           })}
         </tbody>
-        {hasMultipleRows && (
-          <tfoot>
-            <tr>
-              <td className="pt-1 pr-2 text-left font-medium text-muted-foreground">
-                Total
-              </td>
-              <td className="pt-1 pr-2 text-right font-medium">
-                {formatTokens(totals.input)}
-              </td>
-              <td className="pt-1 pr-2 text-right font-medium">
-                {formatTokens(totals.output)}
-              </td>
-              {hasReasoning && (
-                <td className="pt-1 pr-2 text-right font-medium">
-                  {formatTokens(totals.reasoning)}
-                </td>
-              )}
-              <td className="pt-1 pr-2 text-right font-semibold text-foreground">
-                {formatTokens(totals.total)}
-              </td>
-              <td className="pt-1 text-right font-medium text-foreground">—</td>
-            </tr>
-          </tfoot>
-        )}
+        <tfoot>
+          <tr className="border-t border-border/60 bg-muted/20 font-medium text-foreground">
+            <td className="py-1 pl-2 pr-1 text-left">Total</td>
+            <td className="px-1 py-1 text-right">{formatTokens(totals.input)}</td>
+            <td className="px-1 py-1 text-right">{formatTokens(totals.output)}</td>
+            <td className="px-1 py-1 text-right">{formatTokens(totals.reasoning)}</td>
+            <td className="py-1 pl-1 pr-2 text-right">{formatTokens(totals.sumTotal)}</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
 }
 
-type ContextUsageSectionProps = {
-  open: boolean;
-  onOpenChange: (nextOpen: boolean) => void;
-};
-
-export function ContextUsageSection({ open, onOpenChange }: ContextUsageSectionProps) {
+/**
+ * Session token usage for the Context sidebar: conversation token total plus SDK-backed table by model.
+ */
+export function ContextUsageSection({
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  open?: boolean;
+  onOpenChange?: (nextOpen: boolean) => void;
+} = {}) {
   const { conversationUsageAggregate } = useAssistantContext();
-  const controlsId = "context-usage-section-body";
-  const hasUsage = isRecordedUsage(conversationUsageAggregate);
+  const [catalogueModels, setCatalogueModels] = useState<GatewayModel[] | null>(null);
+  const [internalOpen, setInternalOpen] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch("/api/ai-gateway/models");
+        const json = (await response.json()) as {
+          models?: GatewayModel[];
+        };
+        if (!cancelled && Array.isArray(json.models)) {
+          setCatalogueModels(json.models);
+        }
+      } catch {
+        if (!cancelled) {
+          setCatalogueModels([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const aggregate = conversationUsageAggregate;
+  const isRecorded = isRecordedUsage(aggregate);
+  const usageContentId = "context-sidebar-section-usage";
+
+  const open = controlledOpen ?? internalOpen;
+
+  /**
+   * Handles controlled/uncontrolled open state for the section.
+   */
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (controlledOpen === undefined) {
+      setInternalOpen(nextOpen);
+    }
+    onOpenChange?.(nextOpen);
+  };
 
   return (
-    <section aria-label="Usage" className="flex flex-col">
+    <section aria-label="Session usage">
       <UsageSectionHeader
         open={open}
-        controlsId={controlsId}
-        onOpenChange={onOpenChange}
+        controlsId={usageContentId}
+        onOpenChange={handleOpenChange}
       />
 
-      {open && (
-        <div id={controlsId} className="flex flex-col gap-2">
-          {hasUsage ? (
-            <UsageByModelTable rows={conversationUsageAggregate.byModel} />
-          ) : (
-            <p className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground/50">
-              No usage recorded yet
+      <div id={usageContentId} role="region" hidden={!open}>
+        {isRecorded ? (
+          <div className="rounded-md border border-border/60 bg-background px-3 py-2.5">
+            {/* This conversation — cumulative tokens across all models/phases in this chat */}
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              <span className="font-medium text-foreground">This conversation:</span>{" "}
+              <span className="tabular-nums text-foreground">{formatTokens(aggregate.totalTokens)}</span>{" "}
+              tokens
             </p>
-          )}
-        </div>
-      )}
+
+            {/* Session cost — separate from SDK token columns */}
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Session estimate{" "}
+              {aggregate.totalEstimatedUsd != null ? (
+                <span className="font-medium text-foreground tabular-nums">
+                  {formatUsd(aggregate.totalEstimatedUsd)}
+                </span>
+              ) : (
+                <span className="text-muted-foreground/80">not available</span>
+              )}
+              <span className="block text-[10px] font-normal text-muted-foreground/70">
+                Costs use Gateway catalogue pricing. Tokens below are from streamed AI SDK usage.
+              </span>
+            </p>
+
+            {/* Per-request models merged by id — columns match LanguageModelUsage */}
+            <UsageByModelTable rows={aggregate.byModel} catalogueModels={catalogueModels} />
+          </div>
+        ) : (
+          <p className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground/50">
+            No usage data yet.
+          </p>
+        )}
+      </div>
     </section>
   );
 }

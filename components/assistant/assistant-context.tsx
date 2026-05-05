@@ -1,6 +1,7 @@
 "use client";
 
 import type { ConversationUsageAggregate } from "@/lib/assistant/aggregate-conversation-usage";
+import type { ActivePlan } from "@/components/tool-ui/progress-tracker";
 import {
   deriveSidebarMemoryPreviewFromMessages,
   hydrateSidebarPreviewWithRemoteMerge,
@@ -24,6 +25,12 @@ import type { MutableRefObject } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** Minimal inbox payload when an entity row should open a fullscreen reader. */
+export type ContextInboxEntity = {
+  id: string;
+  title: string;
+};
+
 export type ContextArtefact = {
   id: string;
   title: string;
@@ -31,6 +38,8 @@ export type ContextArtefact = {
   description?: string;
   file?: File;
   previewUrl?: string;
+  /** When set, this row may open a fullscreen reader from Entities (if {@link AssistantContextValue.openInboxMessageViewer} is configured). */
+  inboxEntity?: ContextInboxEntity;
 };
 
 export type AssistantArtifactWordDocument = {
@@ -42,7 +51,7 @@ export type AssistantArtifactWordDocument = {
 export type AssistantArtifact = {
   id: string;
   title: string;
-  type: "document" | "email" | "code" | "summary" | "other";
+  type: "document" | "email" | "code" | "summary" | "skill" | "other";
   content: string;
   createdAt: string;
   wordDocument?: AssistantArtifactWordDocument;
@@ -138,9 +147,9 @@ type AssistantContextValue = {
   /** The conversation ID to reflect in the URL — null means a brand-new unsaved conversation. */
   activeConversationId: string | null;
   /**
-   * The title for the currently active conversation. Set immediately when the
-   * AI-generated title arrives via the stream, or when loading an existing conversation.
-   * null means no title yet (new unsaved conversation).
+   * The title for the currently active conversation. New threads use "New conversation"
+   * until an AI-generated title arrives or a persisted title is loaded.
+   * null only briefly while loading a deep-linked conversation by ID.
    */
   activeConversationTitle: string | null;
   /** Updates the title for a conversation — called when the title arrives from the chat stream. */
@@ -163,6 +172,11 @@ type AssistantContextValue = {
   artifactFullscreen: AssistantArtifact | null;
   openArtifactFullscreen: ({ artifact }: { artifact: AssistantArtifact }) => void;
   closeArtifactFullscreen: () => void;
+  /** Optional plan surfaced in the Context sidebar (e.g. multi-step agent work). */
+  plan: ActivePlan | null;
+  setPlan: ({ plan }: { plan: ActivePlan | null }) => void;
+  /** Optional handler when an entity row represents an inbox message. */
+  openInboxMessageViewer?: ({ item }: { item: ContextInboxEntity }) => void;
   conversationUsageAggregate: ConversationUsageAggregate | null;
   setConversationUsageAggregate: ({
     aggregate,
@@ -260,6 +274,12 @@ export function AssistantContextProvider({
   }, []);
   const closeArtifactFullscreen = useCallback(() => setArtifactFullscreen(null), []);
 
+  // ── Agent plan (Context sidebar) ───────────────────────────────────────────
+  const [plan, setPlanState] = useState<ActivePlan | null>(null);
+  const setPlan = useCallback(({ plan: nextPlan }: { plan: ActivePlan | null }) => {
+    setPlanState(nextPlan);
+  }, []);
+
   // ── Usage aggregate ────────────────────────────────────────────────────────
   const [conversationUsageAggregate, setConversationUsageAggregateState] =
     useState<ConversationUsageAggregate | null>(null);
@@ -288,8 +308,10 @@ export function AssistantContextProvider({
   );
 
   // The AI-generated (or server-persisted) title for the active conversation.
-  // null = no title yet (new unsaved conversation).
-  const [activeConversationTitle, setActiveConversationTitle] = useState<string | null>(null);
+  // Brand-new chat (no URL id) shows "New conversation"; null only while a deep-linked id loads.
+  const [activeConversationTitle, setActiveConversationTitle] = useState<string | null>(() =>
+    initialConversationId ? null : "New conversation"
+  );
 
   // Tracks AI-generated titles keyed by conversation ID so they can be included
   // in subsequent PUT saves without an additional fetch.
@@ -329,9 +351,7 @@ export function AssistantContextProvider({
         // Flip conversationKey to trigger RunnerChat remount with loaded messages
         setConversationKey(initialConversationId);
         // Surface the persisted title in the header immediately
-        if (row.title && row.title !== "New conversation") {
-          setActiveConversationTitle(row.title);
-        }
+        setActiveConversationTitle(row.title?.trim() || "New conversation");
         setConversationHistory((prev) => {
           const exists = prev.some((r) => r.id === row.id);
           if (exists) return prev;
@@ -491,12 +511,8 @@ export function AssistantContextProvider({
             };
 
             // Sync active conversation title to the header if this is the current thread.
-            if (
-              activeConversationIdRef.current === conversationId &&
-              resolvedTitle &&
-              resolvedTitle !== "New conversation"
-            ) {
-              setActiveConversationTitle(resolvedTitle);
+            if (activeConversationIdRef.current === conversationId) {
+              setActiveConversationTitle(resolvedTitle?.trim() || "New conversation");
             }
 
             if (existing) {
@@ -514,10 +530,11 @@ export function AssistantContextProvider({
 
   const startNewConversation = useCallback(() => {
     setActiveConversationId(null);
-    setActiveConversationTitle(null);
+    setActiveConversationTitle("New conversation");
     setActiveConversationMessages(null);
     setArtefacts([]);
     setArtifacts([]);
+    setPlanState(null);
     setConversationUsageAggregateState(null);
     setConversationKey(nanoid());
   }, []);
@@ -531,12 +548,11 @@ export function AssistantContextProvider({
         setConversationKey(id);
         setArtefacts([]);
         setArtifacts([]);
+        setPlanState(null);
         setConversationUsageAggregateState(null);
         // Set title from the history record so the header updates immediately.
         const recordTitle = conversationTitleMapRef.current[id] || record.title;
-        setActiveConversationTitle(
-          recordTitle && recordTitle !== "New conversation" ? recordTitle : null
-        );
+        setActiveConversationTitle(recordTitle?.trim() || "New conversation");
         return;
       }
 
@@ -548,11 +564,10 @@ export function AssistantContextProvider({
           setConversationKey(id);
           setArtefacts([]);
           setArtifacts([]);
+          setPlanState(null);
           setConversationUsageAggregateState(null);
           const rowTitle = conversationTitleMapRef.current[id] || row.title;
-          setActiveConversationTitle(
-            rowTitle && rowTitle !== "New conversation" ? rowTitle : null
-          );
+          setActiveConversationTitle(rowTitle?.trim() || "New conversation");
         })
         .catch(() => {});
     },
@@ -616,6 +631,9 @@ export function AssistantContextProvider({
       artifactFullscreen,
       openArtifactFullscreen,
       closeArtifactFullscreen,
+      plan,
+      setPlan,
+      openInboxMessageViewer: undefined,
       conversationUsageAggregate,
       setConversationUsageAggregate,
       stripTargetMemoryIdRef,
@@ -647,6 +665,8 @@ export function AssistantContextProvider({
       artifactFullscreen,
       openArtifactFullscreen,
       closeArtifactFullscreen,
+      plan,
+      setPlan,
       conversationUsageAggregate,
       setConversationUsageAggregate,
       chatMemoryStripNonce,

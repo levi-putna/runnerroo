@@ -13,7 +13,15 @@ export const aiSummarizeDefinition: StepDefinition = {
   group: "ai",
   label: "Summarise",
   description: "Condense text into a summary",
-  defaultData: { label: "Summarise content", subtype: "summarize", model: "claude-sonnet-4-6" },
+  defaultData: {
+    label: "Summarise content",
+    subtype: "summarize",
+    model: "claude-sonnet-4-6",
+    /** Optional format, length, or focus hints — the primary summarisation task is hard-coded in the runner. */
+    prompt: "",
+    /** When non-empty, resolved value is the source to summarise; blank uses Input tab JSON. */
+    summarizeContentExpression: "",
+  },
   Icon: row.Icon,
   accentBg: family.accentBg,
   accentHex: family.accentHex,

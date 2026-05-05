@@ -379,25 +379,24 @@ export function ModelSelector({
   return (
     <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
       {/* Trigger button — styled as a compact outline button */}
-      <DropdownMenuTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled}
-            className={cn(
-              "justify-between gap-2 font-normal",
-              triggerClassName ?? "max-w-[min(100vw,18rem)]"
-            )}
-          />
-        }
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <CpuIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <span className="truncate">{triggerLabel}</span>
-        </span>
-        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          className={cn(
+            "min-w-0 shrink flex-nowrap items-center justify-between gap-2 font-normal",
+            triggerClassName ?? "max-w-[min(100vw,18rem)]"
+          )}
+        >
+          {/* Label segment — truncates inside the trigger row so the chevron stays inline. */}
+          <span className="flex min-h-0 min-w-0 flex-1 items-center gap-2 overflow-hidden">
+            <CpuIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="truncate">{triggerLabel}</span>
+          </span>
+          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent

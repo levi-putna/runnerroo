@@ -6,7 +6,6 @@ import { WorkflowCanvas, type WorkflowCanvasHandle } from "@/components/workflow
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { ThemeToggle } from "@/components/theme-toggle"
 import {
   Dialog,
   DialogContent,
@@ -25,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Play, Save, History, Square } from "lucide-react"
+import { ArrowLeft, Play, Plus, Save, History, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   defaultWorkflowCanvasNodes,
@@ -548,6 +547,19 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
 
         <div className="flex-1" />
 
+        {/* New workflow — primary icon; hidden on /workflows/new */}
+        {!isNew && (
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 w-7 shrink-0 p-0"
+            aria-label="New workflow"
+            onClick={() => requestLeave("/app/workflows/new")}
+          >
+            <Plus className="size-3.5" />
+          </Button>
+        )}
+
         <Button
           type="button"
           variant="ghost"
@@ -597,9 +609,6 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
             Run
           </Button>
         )}
-
-        <Separator orientation="vertical" className="h-4" />
-        <ThemeToggle />
       </div>
 
       {/* React Flow canvas — remount when switching between new and persisted id */}

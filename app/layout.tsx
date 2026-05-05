@@ -1,7 +1,9 @@
 import type { Metadata } from "next"
+import type { ReactNode } from "react"
 import { Geist, Geist_Mono } from "next/font/google"
+import { ThemeProvider } from "@teispace/next-themes"
+import { getTheme } from "@teispace/next-themes/server"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 const geistSans = Geist({
@@ -19,11 +21,16 @@ export const metadata: Metadata = {
   description: "Visual workflow automation built on Vercel",
 }
 
-export default function RootLayout({
+/**
+ * Root HTML shell: fonts, theme (React 19–safe injection via @teispace/next-themes), and global UI providers.
+ */
+export default async function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: ReactNode
 }) {
+  const initialTheme = await getTheme()
+
   return (
     <html
       lang="en"
@@ -36,6 +43,7 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
+          initialTheme={initialTheme ?? undefined}
         >
           <TooltipProvider delay={400} closeDelay={0}>
             {children}

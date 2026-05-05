@@ -135,12 +135,11 @@ export function WorkflowsIndex({ workflows }: WorkflowsIndexProps) {
     <div className="flex flex-col">
       {/* Page header */}
       <PageHeader title="Workflows" description="Build and automate your processes">
-        <Link href="/app/workflows/new">
-          <Button size="sm" className="gap-1.5">
+        <Button asChild size="sm" className="h-7 w-7 shrink-0 p-0" aria-label="New workflow">
+          <Link href="/app/workflows/new">
             <Plus className="size-3.5" />
-            New workflow
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </PageHeader>
 
       <div className="p-6 max-w-4xl mx-auto w-full space-y-6">
@@ -253,12 +252,11 @@ export function WorkflowsIndex({ workflows }: WorkflowsIndexProps) {
           </div>
           <h3 className="font-medium">No workflows yet</h3>
           <p className="text-sm text-muted-foreground mt-1">Create your first workflow to get started</p>
-          <Link href="/app/workflows/new" className="mt-4">
-            <Button size="sm">
-              <Plus className="size-3.5 mr-1.5" />
-              New workflow
-            </Button>
-          </Link>
+          <Button asChild size="sm" className="mt-4 h-7 w-7 shrink-0 p-0" aria-label="New workflow">
+            <Link href="/app/workflows/new">
+              <Plus className="size-3.5" />
+            </Link>
+          </Button>
         </div>
       )}
       </div>

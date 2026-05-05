@@ -2,7 +2,6 @@
 
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useAssistantContext } from "@/components/assistant/assistant-context";
 import {
   CONTEXT_PANEL_DEFAULT_WIDTH_PX,
@@ -30,6 +29,9 @@ function getIsDesktop(): boolean {
   return typeof window !== "undefined" && window.innerWidth >= LG_BREAKPOINT_PX;
 }
 
+/**
+ * Full-width assistant UI: chat column, optional context sidebar, URL sync for the active thread.
+ */
 export function AssistantShell() {
   const {
     conversationKey,
@@ -113,16 +115,18 @@ export function AssistantShell() {
               <PanelRightOpenIcon />
             </Button>
           )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={startNewConversation}
-            aria-label="New conversation"
-          >
-            <PlusIcon />
-          </Button>
-          <ThemeToggle />
+          {/* New conversation — only after a thread is persisted (not already on a blank new chat) */}
+          {activeConversationId !== null && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 w-7 shrink-0 p-0"
+              onClick={startNewConversation}
+              aria-label="New conversation"
+            >
+              <PlusIcon className="size-3.5" />
+            </Button>
+          )}
         </header>
 
         {/* Chat body */}

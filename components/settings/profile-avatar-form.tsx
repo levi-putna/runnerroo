@@ -16,13 +16,12 @@ import {
   type DicebearAvatarStored,
   type DicebearStyle,
 } from "@/lib/avatar/dicebear"
-import { userAvatarInnerClassName, userAvatarRootClass } from "@/lib/avatar/user-avatar-styles"
 import { createClient } from "@/lib/supabase/client"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { UserAvatar } from "@/components/user-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
+import { ColorPicker } from "@/components/ui/color-picker"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -33,9 +32,23 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Loader2 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 const AUTO_VALUE = "__auto__"
+
+/**
+ * Normalises a hex string for the shadcn colour picker (expects `#` plus six hex digits).
+ */
+function toHexForPicker({
+  hex,
+  fallback,
+}: {
+  hex: string
+  fallback: `#${string}`
+}): `#${string}` {
+  const n = hex.replace(/^#/, "").toLowerCase()
+  if (/^[a-f0-9]{6}$/.test(n)) return `#${n}` as `#${string}`
+  return fallback
+}
 
 type ProfileAvatarFormProps = {
   email: string
@@ -272,10 +285,13 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
       <CardContent className="space-y-6">
         {/* Avatar preview and customise switch only */}
         <div className="flex w-full flex-wrap items-center justify-between gap-4">
-          <Avatar className={userAvatarRootClass({ className: "h-24 w-24 shrink-0" })}>
-            <AvatarImage src={displayAvatarUrl} alt="Avatar preview" className={userAvatarInnerClassName} />
-            <AvatarFallback className={cn(userAvatarInnerClassName, "text-lg")}>{initials}</AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            src={displayAvatarUrl}
+            alt="Avatar preview"
+            fallback={initials}
+            className="h-24 w-24"
+            fallbackClassName="text-lg"
+          />
           <div className="flex shrink-0 items-center gap-3">
             <Label htmlFor="avatar-customise" className="font-normal whitespace-nowrap">
               Customise avatar
@@ -378,22 +394,27 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
 
             {showInitialsTextColour ? (
               <div className="space-y-1.5">
-                <Label htmlFor="avatar-text-colour">Letter colour</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="avatar-text-colour"
-                    type="color"
-                    className="h-8 w-14 cursor-pointer px-1 py-1"
-                    value={textColor}
-                    onChange={(e) => setTextColor(e.target.value)}
-                  />
-                  <Input
-                    className="font-mono text-xs"
-                    value={textColor}
-                    onChange={(e) => setTextColor(e.target.value)}
-                    aria-label="Letter colour hex"
-                  />
-                </div>
+                <Label htmlFor="avatar-text-colour-trigger">Letter colour</Label>
+                <ColorPicker
+                  value={toHexForPicker({ hex: textColor, fallback: "#ffffff" })}
+                  onValueChange={({ hex }) => setTextColor(hex.toLowerCase())}
+                  hideContrastRatio
+                >
+                  <Button
+                    type="button"
+                    id="avatar-text-colour-trigger"
+                    variant="outline"
+                    className="h-9 w-full max-w-xs justify-start gap-2 font-mono text-xs sm:w-auto"
+                  >
+                    {/* Swatch */}
+                    <span
+                      className="size-4 shrink-0 rounded border border-border"
+                      style={{ backgroundColor: textColor }}
+                      aria-hidden
+                    />
+                    {textColor}
+                  </Button>
+                </ColorPicker>
                 <p className="text-xs text-muted-foreground">
                   Colour for the initials. See the{" "}
                   <a
@@ -427,22 +448,27 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="avatar-colour">Background colour</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="avatar-colour"
-                    type="color"
-                    className="h-8 w-14 cursor-pointer px-1 py-1"
-                    value={backgroundColor}
-                    onChange={(e) => setBackgroundColor(e.target.value)}
-                  />
-                  <Input
-                    className="font-mono text-xs"
-                    value={backgroundColor}
-                    onChange={(e) => setBackgroundColor(e.target.value)}
-                    aria-label="Background colour hex"
-                  />
-                </div>
+                <Label htmlFor="avatar-bg-colour-trigger">Background colour</Label>
+                <ColorPicker
+                  value={toHexForPicker({ hex: backgroundColor, fallback: "#b6e3f4" })}
+                  onValueChange={({ hex }) => setBackgroundColor(hex.toLowerCase())}
+                  hideContrastRatio
+                >
+                  <Button
+                    type="button"
+                    id="avatar-bg-colour-trigger"
+                    variant="outline"
+                    className="h-9 w-full min-w-0 justify-start gap-2 font-mono text-xs"
+                  >
+                    {/* Swatch */}
+                    <span
+                      className="size-4 shrink-0 rounded border border-border"
+                      style={{ backgroundColor: backgroundColor }}
+                      aria-hidden
+                    />
+                    {backgroundColor}
+                  </Button>
+                </ColorPicker>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="avatar-rotate">Rotation</Label>

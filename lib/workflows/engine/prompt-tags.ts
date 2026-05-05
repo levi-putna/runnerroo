@@ -241,3 +241,94 @@ export function generateTextExecutionPromptTags(): PromptTagDefinition[] {
     },
   ]
 }
+
+export interface ExtractObjectExecutionPromptTagsParams {
+  /** Author-declared extraction fields — one `exe.<key>` tag is generated per row. */
+  fields: Array<{ key: string; label: string; description: string }>
+}
+
+/**
+ * Generates dynamic `{{exe.<key>}}` prompt tags for Extract steps.
+ * One tag per declared field, plus shared telemetry tags.
+ */
+export function extractObjectExecutionPromptTags({
+  fields,
+}: ExtractObjectExecutionPromptTagsParams): PromptTagDefinition[] {
+  const fieldTags: PromptTagDefinition[] = fields.map((f) => ({
+    id: `exe.${f.key}`,
+    label: `Extraction · ${f.label || f.key}`,
+    description:
+      f.description.trim() ||
+      `Extracted value for "${f.label || f.key}" from the model output. Map to an outbound field via the Output schema.`,
+  }))
+
+  return [
+    ...fieldTags,
+    {
+      id: "exe.finishReason",
+      label: "Execution · finish reason",
+      description: "Structured generation finish reason (`GenerateObjectResult.finishReason`) when emitted by the provider.",
+    },
+    {
+      id: "exe.usage.inputTokens",
+      label: "Execution · prompt tokens",
+      description: "Input tokens billed for this structured extraction call.",
+    },
+    {
+      id: "exe.usage.outputTokens",
+      label: "Execution · completion tokens",
+      description: "Output tokens billed for this structured extraction call.",
+    },
+    {
+      id: "exe.usage.totalTokens",
+      label: "Execution · total tokens",
+      description: "Total tokens for this extraction call.",
+    },
+  ]
+}
+
+/**
+ * Prompt tags for Classify workflow steps backed by structured `generateObject` output (`exe.classifier_*`).
+ */
+export function classifyObjectExecutionPromptTags(): PromptTagDefinition[] {
+  return [
+    {
+      id: "exe.classifier_label",
+      label: "Execution · classifier label",
+      description:
+        "Exact category identifier chosen by the classifier — must equal one catalogue `label` value from this step.",
+    },
+    {
+      id: "exe.classifier_confidence",
+      label: "Execution · classifier confidence",
+      description:
+        "Self-reported subjective certainty between 0 and 1 inclusive from the structured classifier output.",
+    },
+    {
+      id: "exe.classifier_reasoning",
+      label: "Execution · classifier reasoning",
+      description:
+        "Short rationale from the classifier; authors should map outbound fields from this execution property.",
+    },
+    {
+      id: "exe.finishReason",
+      label: "Execution · finish reason",
+      description: "Structured generation finish reason (`GenerateObjectResult.finishReason`) when emitted by the provider.",
+    },
+    {
+      id: "exe.usage.inputTokens",
+      label: "Execution · prompt tokens",
+      description: "Input tokens billed for this structured generation call.",
+    },
+    {
+      id: "exe.usage.outputTokens",
+      label: "Execution · completion tokens",
+      description: "Output tokens billed for this structured generation call.",
+    },
+    {
+      id: "exe.usage.totalTokens",
+      label: "Execution · total tokens",
+      description: "Total tokens for this classifier call.",
+    },
+  ]
+}

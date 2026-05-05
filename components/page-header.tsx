@@ -2,7 +2,6 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
-import { ThemeToggle } from "@/components/theme-toggle"
 
 interface PageHeaderProps {
   /** The primary page title. */
@@ -16,7 +15,7 @@ interface PageHeaderProps {
 
 /**
  * Reusable page-level header with sidebar trigger, title/description on the left,
- * and an optional actions slot + theme toggle on the right.
+ * and an optional actions slot on the right.
  *
  * Usage:
  *   <PageHeader title="Workflows" description="Build and automate your processes">
@@ -47,9 +46,6 @@ export function PageHeader({ title, description, children, className }: PageHead
       {children && (
         <div className="flex shrink-0 items-center gap-2">{children}</div>
       )}
-
-      {/* Theme toggle */}
-      <ThemeToggle />
     </div>
   )
 }

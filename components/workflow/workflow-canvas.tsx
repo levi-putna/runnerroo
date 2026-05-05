@@ -26,11 +26,14 @@ import { NodeAddSheet, type NodeDefinition } from "./node-add-sheet"
 import { Button } from "@/components/ui/button"
 import {
   buildDefaultGenerateTextOutputSchemaFields,
+  buildDefaultClassifyInputSchemaFields,
+  buildDefaultClassifyOutputSchemaFields,
   buildDefaultRandomNumberInputSchemaFields,
   buildDefaultRandomNumberOutputSchemaFields,
   buildDefaultIterationInputSchemaFields,
   buildDefaultIterationOutputSchemaFields,
 } from "@/lib/workflows/engine/input-schema"
+import { buildDefaultExtractFieldRows } from "@/lib/workflows/steps/ai/extract/defaults"
 import { Plus } from "lucide-react"
 import { getWorkflowMinimapNodeColour } from "@/lib/workflows/engine/node-type-registry"
 import { defaultWorkflowCanvasNodes, workflowGraphBaseline } from "@/lib/workflows/engine/persist"
@@ -179,10 +182,28 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
     }
 
     let nodeData: Record<string, unknown> = { ...def.defaultData }
-    if (def.type === "ai" && def.subtype === "generate") {
+    if (
+      def.type === "ai" &&
+      (def.subtype === "generate" || def.subtype === "transform" || def.subtype === "summarize")
+    ) {
       nodeData = {
         ...nodeData,
         outputSchema: buildDefaultGenerateTextOutputSchemaFields(),
+      }
+    }
+
+    if (def.type === "ai" && def.subtype === "classify") {
+      nodeData = {
+        ...nodeData,
+        inputSchema: buildDefaultClassifyInputSchemaFields(),
+        outputSchema: buildDefaultClassifyOutputSchemaFields(),
+      }
+    }
+
+    if (def.type === "ai" && def.subtype === "extract") {
+      nodeData = {
+        ...nodeData,
+        extractFields: buildDefaultExtractFieldRows(),
       }
     }
 

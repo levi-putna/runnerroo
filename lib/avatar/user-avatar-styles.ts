@@ -1,17 +1,17 @@
 import { cn } from "@/lib/utils"
 
 /**
- * Tailwind classes for the user profile `Avatar` root: 10px corner radius and matching focus ring clip.
+ * Class for the user profile `Avatar` root: overflow clip + `app/globals.css` radii on image/fallback.
  */
-export const userAvatarRootClassName = "rounded-[10px] after:rounded-[10px]"
+export const userAvatarRootClassName = "user-avatar-root"
 
 /**
- * Tailwind classes for `AvatarImage` / `AvatarFallback` so they match the root radius.
+ * Extra classes on `AvatarImage` / `AvatarFallback`; corner radius comes from CSS (`--radius-sm` on those slots).
  */
-export const userAvatarInnerClassName = "rounded-[10px]"
+export const userAvatarInnerClassName = "object-cover"
 
 /**
- * Combines optional size/layout classes with the standard user avatar root radius.
+ * Combines optional size/layout classes with the standard user avatar root styling.
  */
 export function userAvatarRootClass({ className }: { className?: string }) {
   return cn(userAvatarRootClassName, className)

@@ -14,6 +14,7 @@ import { endOfMonth, format, startOfMonth } from "date-fns";
 import { CalendarDaysIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PageHeader } from "@/components/page-header";
 
 type SpendReportRow = {
   user?: string;
@@ -201,15 +202,14 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
   const filteredTotalRequests = data?.filteredTotalRequests ?? 0;
 
   return (
-    <div className={cn("flex min-h-0 flex-col gap-6", className)}>
+    <div className={cn("flex min-h-0 flex-col", className)}>
       {/* ── Intro ── */}
-      <div>
-        <h1 className="text-lg font-semibold">Usage</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          AI Gateway spend attributed to your account. Assistant chats are tagged by conversation;
-          workflow AI steps are tagged by workflow run. Memory search and writes appear under Other.
-        </p>
-      </div>
+      <PageHeader
+        title="Usage"
+        description="AI Gateway spend attributed to your account. Assistant chats are tagged by conversation; workflow AI steps are tagged by workflow run. Memory search and writes appear under Other."
+      />
+
+      <div className="flex flex-col gap-6 p-6">
 
       {/* ── Source scope tabs ── */}
       <Tabs
@@ -449,6 +449,7 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
           </div>
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }

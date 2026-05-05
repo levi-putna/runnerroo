@@ -30,15 +30,15 @@ import {
   normaliseAiSubtype,
   normaliseEntryKind,
   type WorkflowEntryKind,
-} from "@/lib/workflow/node-type-registry"
+} from "@/lib/workflows/engine/node-type-registry"
 import { WorkflowNodeIconTile } from "@/components/workflow/node-type-presentation"
-import type { SwitchBranch } from "./node-types/switch-node"
-import type { SplitPath } from "./node-types/split-node"
+import type { SwitchBranch } from "@/lib/workflows/steps/logic/switch/node"
+import type { SplitPath } from "@/lib/workflows/steps/logic/split/node"
 import { ModelSelector } from "@/components/model-selector"
 import { DEFAULT_MODEL_ID } from "@/lib/ai-gateway/models"
 import { InputSchemaBuilder } from "@/components/workflow/input-schema-builder"
 import { SystemPromptField } from "@/components/workflow/system-prompt-field"
-import { readInputSchemaFromNodeData } from "@/lib/workflow/input-schema"
+import { readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema"
 import {
   mergePromptTagDefinitions,
   generateTextExecutionPromptTags,
@@ -47,18 +47,18 @@ import {
   prevPromptTagsFromPredecessorNode,
   workflowGlobalsPromptTagsFromNodes,
   type PromptTagDefinition,
-} from "@/lib/workflow/prompt-tags"
+} from "@/lib/workflows/engine/prompt-tags"
 import {
   inferPreviousStepOutputFields,
   listInboundSourcesForNode,
   mergeInputSchemaWithPreviousStepImport,
-} from "@/lib/workflow/previous-step-import"
-import { mergeEntryOutputSchemaFromInputFields } from "@/lib/workflow/schema-mapping-merge"
+} from "@/lib/workflows/engine/previous-step-import"
+import { mergeEntryOutputSchemaFromInputFields } from "@/lib/workflows/engine/schema-mapping-merge"
 import { WorkflowSchemaImportButtonWithDialog } from "@/components/workflow/workflow-schema-import-button-with-dialog"
 import { FunctionInput } from "@/components/workflow/function-input"
-import { WorkflowRunContext } from "@/lib/workflow/run-context"
+import { WorkflowRunContext } from "@/lib/workflows/engine/run-context"
 import { RunStepDetailSheetBody } from "@/components/workflow/run-step-detail-sheet-body"
-import { resolveRunStepTimelineLabel } from "@/lib/workflow/run-timeline"
+import { resolveRunStepTimelineLabel } from "@/lib/workflows/engine/run-timeline"
 
 interface NodeSheetProps {
   node: Node | null

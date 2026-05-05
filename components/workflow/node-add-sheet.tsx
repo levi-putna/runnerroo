@@ -16,7 +16,9 @@ import { cn } from "@/lib/utils"
 import {
   WORKFLOW_STEP_GROUP_META,
   type WorkflowStepGroupId,
-} from "@/lib/workflow/node-type-registry"
+} from "@/lib/workflows/engine/node-type-registry"
+import type { StepDefinition } from "@/lib/workflows/engine/step-definition"
+import { STEP_CATALOGUE } from "@/lib/workflows/steps"
 import { WorkflowNodeIconTile } from "@/components/workflow/node-type-presentation"
 import {
   Tooltip,
@@ -24,19 +26,40 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-export interface NodeDefinition {
-  type: string
-  subtype?: string
-  label: string
-  description: string
-  defaultData: Record<string, unknown>
-  group: WorkflowStepGroupId
-}
+/** @deprecated Use {@link StepDefinition} from `@/lib/workflows/engine/step-definition`. */
+export type NodeDefinition = StepDefinition
 
 interface NodeGroupDefinition {
   group: WorkflowStepGroupId
-  nodes: NodeDefinition[]
+  nodes: StepDefinition[]
 }
+
+const STEP_GROUP_ORDER: WorkflowStepGroupId[] = [
+  "triggers",
+  "logic",
+  "ai",
+  "code",
+  "actions",
+  "termination",
+]
+
+/**
+ * Groups flat catalogue rows for the add-step sheet (stable category order).
+ */
+function buildNodeGroupsFromCatalogue(): NodeGroupDefinition[] {
+  const byGroup = new Map<WorkflowStepGroupId, StepDefinition[]>()
+  for (const def of STEP_CATALOGUE) {
+    const list = byGroup.get(def.group) ?? []
+    list.push(def)
+    byGroup.set(def.group, list)
+  }
+  return STEP_GROUP_ORDER.map((group) => ({
+    group,
+    nodes: byGroup.get(group) ?? [],
+  })).filter((g) => g.nodes.length > 0)
+}
+
+const nodeGroups: NodeGroupDefinition[] = buildNodeGroupsFromCatalogue()
 
 /**
  * Renders the step picker section label (Lucide icon + title + count).
@@ -68,196 +91,6 @@ function NodeGroupHeading({
   )
 }
 
-const nodeGroups: NodeGroupDefinition[] = [
-  {
-    group: "triggers",
-    nodes: [
-      {
-        type: "entry",
-        label: "Manual run",
-        description: "Trigger the workflow manually",
-        group: "triggers",
-        defaultData: { label: "Manual run", entryType: "manual" },
-      },
-      {
-        type: "entry",
-        subtype: "webhook",
-        label: "Webhook",
-        description: "Trigger via HTTP request",
-        group: "triggers",
-        defaultData: { label: "Webhook", entryType: "webhook" },
-      },
-      {
-        type: "entry",
-        subtype: "schedule",
-        label: "Schedule",
-        description: "Trigger on a cron schedule",
-        group: "triggers",
-        defaultData: { label: "Schedule", entryType: "schedule" },
-      },
-    ],
-  },
-  {
-    group: "logic",
-    nodes: [
-      {
-        type: "decision",
-        label: "Decision",
-        description: "Branch based on a condition",
-        group: "logic",
-        defaultData: { label: "Decision", description: "Check a condition and branch" },
-      },
-      {
-        type: "switch",
-        label: "Switch",
-        description: "Route to multiple paths with ordered conditions and an else branch",
-        group: "logic",
-        defaultData: {
-          label: "Switch",
-          description: "Evaluate cases in order; use Else when none match",
-          defaultBranchLabel: "Else",
-          branches: [
-            { id: "sw-a", label: "Case A", condition: "" },
-            { id: "sw-b", label: "Case B", condition: "" },
-          ],
-        },
-      },
-      {
-        type: "split",
-        label: "Split",
-        description: "Send the same inbound payload to every connected outbound path in parallel",
-        group: "logic",
-        defaultData: {
-          label: "Split",
-          description: "Each path receives an identical copy of the upstream payload",
-          paths: [
-            { id: "sp-a", label: "Path A" },
-            { id: "sp-b", label: "Path B" },
-          ],
-        },
-      },
-    ],
-  },
-  {
-    group: "ai",
-    nodes: [
-      {
-        type: "ai",
-        subtype: "generate",
-        label: "Generate text",
-        description: "Generate content using an AI model",
-        group: "ai",
-        defaultData: { label: "Generate text", subtype: "generate", model: "claude-sonnet-4-6" },
-      },
-      {
-        type: "ai",
-        subtype: "summarize",
-        label: "Summarise",
-        description: "Condense text into a summary",
-        group: "ai",
-        defaultData: { label: "Summarise content", subtype: "summarize", model: "claude-sonnet-4-6" },
-      },
-      {
-        type: "ai",
-        subtype: "classify",
-        label: "Classify",
-        description: "Categorise or label input data",
-        group: "ai",
-        defaultData: { label: "Classify input", subtype: "classify", model: "claude-sonnet-4-6" },
-      },
-      {
-        type: "ai",
-        subtype: "extract",
-        label: "Extract data",
-        description: "Pull structured data from text",
-        group: "ai",
-        defaultData: { label: "Extract data", subtype: "extract", model: "claude-sonnet-4-6" },
-      },
-      {
-        type: "ai",
-        subtype: "chat",
-        label: "Chat",
-        description: "Multi-turn chat completion",
-        group: "ai",
-        defaultData: { label: "Chat completion", subtype: "chat", model: "claude-sonnet-4-6" },
-      },
-      {
-        type: "ai",
-        subtype: "transform",
-        label: "Transform",
-        description: "Rewrite or restructure data with AI",
-        group: "ai",
-        defaultData: { label: "Transform data", subtype: "transform", model: "claude-sonnet-4-6" },
-      },
-    ],
-  },
-  {
-    group: "code",
-    nodes: [
-      {
-        type: "code",
-        label: "Run code",
-        description: "Execute TypeScript in a Vercel Sandbox",
-        group: "code",
-        defaultData: {
-          label: "Run code",
-          language: "typescript",
-          description: "Execute custom code",
-          code: "export default async function run(input: unknown) {\n  return input\n}",
-        },
-      },
-      {
-        type: "random",
-        label: "Random number",
-        description: "Draw a uniform value between configurable min and max bounds",
-        group: "code",
-        defaultData: {
-          label: "Random number",
-          description: "Generate a random number from resolved lower and upper bounds",
-        },
-      },
-      {
-        type: "iteration",
-        label: "Iteration",
-        description: "Add an increment (default 1) to a starting number from the inputs",
-        group: "code",
-        defaultData: {
-          label: "Iteration",
-          description: "Advance a numeric counter by an expression-backed increment",
-          iterationIncrement: "1",
-        },
-      },
-    ],
-  },
-  {
-    group: "actions",
-    nodes: [
-      {
-        type: "action",
-        label: "Action",
-        description: "A generic workflow action step",
-        group: "actions",
-        defaultData: { label: "New action", description: "Perform an action" },
-      },
-    ],
-  },
-  {
-    group: "termination",
-    nodes: [
-      {
-        type: "end",
-        label: "End",
-        description: "Stop the workflow — accepts connections in, none out",
-        group: "termination",
-        defaultData: {
-          label: "End",
-          description: "Execution stops here when this branch is reached.",
-        },
-      },
-    ],
-  },
-]
-
 interface NodeAddSheetProps {
   open: boolean
   onClose: () => void
@@ -267,7 +100,7 @@ interface NodeAddSheetProps {
 /**
  * Resolves `entryType` / `aiSubtype` hints for the shared tile renderer from catalogue rows.
  */
-function getPickerEntryType({ node }: { node: NodeDefinition }): string | undefined {
+function getPickerEntryType({ node }: { node: StepDefinition }): string | undefined {
   if (node.type !== "entry") return undefined
   return (node.subtype ?? "manual") as string
 }
@@ -275,7 +108,7 @@ function getPickerEntryType({ node }: { node: NodeDefinition }): string | undefi
 /**
  * Resolves AI subtype for picker tiles (undefined falls back to generate in the registry).
  */
-function getPickerAiSubtype({ node }: { node: NodeDefinition }): string | undefined {
+function getPickerAiSubtype({ node }: { node: StepDefinition }): string | undefined {
   if (node.type !== "ai") return undefined
   return node.subtype
 }
@@ -330,7 +163,7 @@ export function NodeAddSheet({ open, onClose, onAdd }: NodeAddSheetProps) {
       .filter((g) => g.nodes.length > 0)
   }, [query])
 
-  function handleAdd(def: NodeDefinition) {
+  function handleAdd(def: StepDefinition) {
     onAdd(def)
     onClose()
     setQuery("")

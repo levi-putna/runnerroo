@@ -16,6 +16,7 @@ import {
   Play,
   Zap,
 } from "lucide-react"
+import { PageHeader } from "@/components/page-header"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import type { WorkflowListRow } from "@/lib/workflows/queries"
+import type { WorkflowListRow } from "@/lib/workflows/queries/queries"
 
 const triggerMeta = {
   cron: { icon: Clock, label: "Schedule" },
@@ -131,20 +132,18 @@ export function WorkflowsIndex({ workflows }: WorkflowsIndexProps) {
   ]
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="flex flex-col">
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Workflows</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Build and automate your processes</p>
-        </div>
+      <PageHeader title="Workflows" description="Build and automate your processes">
         <Link href="/app/workflows/new">
           <Button size="sm" className="gap-1.5">
             <Plus className="size-3.5" />
             New workflow
           </Button>
         </Link>
-      </div>
+      </PageHeader>
+
+      <div className="p-6 max-w-4xl mx-auto w-full space-y-6">
 
       {/* Stats row */}
       <div className="grid grid-cols-4 gap-3">
@@ -262,6 +261,7 @@ export function WorkflowsIndex({ workflows }: WorkflowsIndexProps) {
           </Link>
         </div>
       )}
+      </div>
     </div>
   )
 }

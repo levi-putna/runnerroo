@@ -137,6 +137,14 @@ type AssistantContextValue = {
   conversationKey: string;
   /** The conversation ID to reflect in the URL — null means a brand-new unsaved conversation. */
   activeConversationId: string | null;
+  /**
+   * The title for the currently active conversation. Set immediately when the
+   * AI-generated title arrives via the stream, or when loading an existing conversation.
+   * null means no title yet (new unsaved conversation).
+   */
+  activeConversationTitle: string | null;
+  /** Updates the title for a conversation — called when the title arrives from the chat stream. */
+  setConversationTitle: ({ id, title }: { id: string; title: string }) => void;
   startNewConversation: () => void;
   activeConversationMessages: UIMessage[] | null;
   conversationHistory: ConversationRecord[];
@@ -279,6 +287,14 @@ export function AssistantContextProvider({
     initialConversationId ?? null
   );
 
+  // The AI-generated (or server-persisted) title for the active conversation.
+  // null = no title yet (new unsaved conversation).
+  const [activeConversationTitle, setActiveConversationTitle] = useState<string | null>(null);
+
+  // Tracks AI-generated titles keyed by conversation ID so they can be included
+  // in subsequent PUT saves without an additional fetch.
+  const conversationTitleMapRef = useRef<Record<string, string>>({});
+
   const [activeConversationMessages, setActiveConversationMessages] =
     useState<UIMessage[] | null>(null);
 
@@ -312,6 +328,10 @@ export function AssistantContextProvider({
         setActiveConversationMessages(messages);
         // Flip conversationKey to trigger RunnerChat remount with loaded messages
         setConversationKey(initialConversationId);
+        // Surface the persisted title in the header immediately
+        if (row.title && row.title !== "New conversation") {
+          setActiveConversationTitle(row.title);
+        }
         setConversationHistory((prev) => {
           const exists = prev.some((r) => r.id === row.id);
           if (exists) return prev;
@@ -344,10 +364,12 @@ export function AssistantContextProvider({
     if (!pending || pending.id !== id) return;
     pendingSaveRef.current = null;
 
+    // Include any AI-generated title so it overrides the server's first-message fallback.
+    const title = conversationTitleMapRef.current[id];
     void fetch(`/api/conversations/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: pending.messages }),
+      body: JSON.stringify({ messages: pending.messages, ...(title ? { title } : {}) }),
     }).catch(() => {});
   }, []);
 
@@ -360,10 +382,11 @@ export function AssistantContextProvider({
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       pendingSaveRef.current = { id, messages };
 
-      // Optimistically update local history chip
+      // Optimistically update local history chip, preserving any AI-generated title.
       setConversationHistory((prev) => {
         const existing = prev.find((r) => r.id === id);
         const derived = deriveSidebarMemoryPreviewFromMessages(messages);
+        const knownTitle = conversationTitleMapRef.current[id];
         if (existing) {
           return sortConversationHistoryByUpdatedAt(
             prev.map((r) =>
@@ -371,6 +394,8 @@ export function AssistantContextProvider({
                 ? {
                     ...r,
                     updatedAt: new Date().toISOString(),
+                    // Apply the AI title if it arrived before this save tick.
+                    ...(knownTitle ? { title: knownTitle } : {}),
                     memoriesPreview: mergeSidebarMemoryPreviewRows(r.memoriesPreview, derived),
                     messages: areUIMessageArraysEqual(r.messages, messages) ? r.messages : messages,
                   }
@@ -381,7 +406,7 @@ export function AssistantContextProvider({
         return sortConversationHistoryByUpdatedAt([
           {
             id,
-            title: "New conversation",
+            title: knownTitle ?? "New conversation",
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             memoriesPreview: derived,
@@ -397,15 +422,42 @@ export function AssistantContextProvider({
         if (!payload || payload.id !== id) return;
         pendingSaveRef.current = null;
 
+        const title = conversationTitleMapRef.current[id];
         void fetch(`/api/conversations/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: payload.messages }),
+          body: JSON.stringify({ messages: payload.messages, ...(title ? { title } : {}) }),
         }).catch(() => {});
       }, SAVE_DEBOUNCE_MS);
     },
     []
   );
+
+  /**
+   * Stores a generated title for the given conversation and updates local state immediately
+   * so the header reflects it before the next server sync.
+   */
+  const setConversationTitle = useCallback(({ id, title }: { id: string; title: string }) => {
+    conversationTitleMapRef.current[id] = title;
+    setActiveConversationTitle(title);
+    setConversationHistory((prev) => {
+      const exists = prev.some((r) => r.id === id);
+      if (exists) {
+        return sortConversationHistoryByUpdatedAt(
+          prev.map((r) => (r.id === id ? { ...r, title } : r))
+        );
+      }
+      // Entry not yet in history — it will be added on the next saveConversation tick.
+      return prev;
+    });
+  }, []);
+
+  // Ref that always holds the latest activeConversationId value, used inside
+  // syncConversationFromRemoteDetail to avoid stale closures.
+  const activeConversationIdRef = useRef(activeConversationId);
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   const syncConversationFromRemoteDetail = useCallback(
     ({ conversationId }: { conversationId: string }) => {
@@ -424,14 +476,28 @@ export function AssistantContextProvider({
               fromDb,
             });
 
+            // Prefer AI-generated title stored locally over what the server returns
+            // (the server may not have persisted it yet on a first-turn sync).
+            const resolvedTitle =
+              conversationTitleMapRef.current[conversationId] || row.title;
+
             const updated: ConversationRecord = {
               id: row.id,
-              title: row.title,
+              title: resolvedTitle,
               createdAt: row.created_at,
               updatedAt: row.updated_at,
               memoriesPreview: merged,
               messages: existing?.messages ?? row.messages ?? [],
             };
+
+            // Sync active conversation title to the header if this is the current thread.
+            if (
+              activeConversationIdRef.current === conversationId &&
+              resolvedTitle &&
+              resolvedTitle !== "New conversation"
+            ) {
+              setActiveConversationTitle(resolvedTitle);
+            }
 
             if (existing) {
               return sortConversationHistoryByUpdatedAt(
@@ -448,6 +514,7 @@ export function AssistantContextProvider({
 
   const startNewConversation = useCallback(() => {
     setActiveConversationId(null);
+    setActiveConversationTitle(null);
     setActiveConversationMessages(null);
     setArtefacts([]);
     setArtifacts([]);
@@ -465,6 +532,11 @@ export function AssistantContextProvider({
         setArtefacts([]);
         setArtifacts([]);
         setConversationUsageAggregateState(null);
+        // Set title from the history record so the header updates immediately.
+        const recordTitle = conversationTitleMapRef.current[id] || record.title;
+        setActiveConversationTitle(
+          recordTitle && recordTitle !== "New conversation" ? recordTitle : null
+        );
         return;
       }
 
@@ -477,6 +549,10 @@ export function AssistantContextProvider({
           setArtefacts([]);
           setArtifacts([]);
           setConversationUsageAggregateState(null);
+          const rowTitle = conversationTitleMapRef.current[id] || row.title;
+          setActiveConversationTitle(
+            rowTitle && rowTitle !== "New conversation" ? rowTitle : null
+          );
         })
         .catch(() => {});
     },
@@ -526,6 +602,8 @@ export function AssistantContextProvider({
       clearFileArtefacts,
       conversationKey,
       activeConversationId,
+      activeConversationTitle,
+      setConversationTitle,
       startNewConversation,
       activeConversationMessages,
       conversationHistory,
@@ -555,6 +633,8 @@ export function AssistantContextProvider({
       clearFileArtefacts,
       conversationKey,
       activeConversationId,
+      activeConversationTitle,
+      setConversationTitle,
       startNewConversation,
       activeConversationMessages,
       conversationHistory,

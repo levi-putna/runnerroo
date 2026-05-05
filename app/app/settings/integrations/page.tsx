@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { GitBranch, Webhook } from "lucide-react"
+import { PageHeader } from "@/components/page-header"
 
 const integrations = [
   {
@@ -22,11 +23,10 @@ const integrations = [
 
 export default function IntegrationsPage() {
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Integrations</h1>
-        <p className="text-muted-foreground mt-1">Connect external services to your workflows</p>
-      </div>
+    <div className="flex flex-col">
+      <PageHeader title="Integrations" description="Connect external services to your workflows" />
+
+      <div className="p-6 max-w-2xl mx-auto w-full space-y-6">
       <div className="space-y-3">
         {integrations.map((integration) => (
           <Card key={integration.id}>
@@ -49,6 +49,7 @@ export default function IntegrationsPage() {
             </CardContent>
           </Card>
         ))}
+      </div>
       </div>
     </div>
   )

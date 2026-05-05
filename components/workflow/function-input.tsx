@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { PromptTagDefinition } from "@/lib/workflow/prompt-tags"
+import type { PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 
 const PROMPT_TAG_DRAG_MIME = "application/x-runnerroo-prompt-tag"
 

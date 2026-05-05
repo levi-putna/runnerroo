@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
+import { getResolvedAvatarUrlForAuthUser } from "@/lib/avatar/dicebear"
 import { createClient } from "@/lib/supabase/server"
-import { fetchWorkflowsForUser } from "@/lib/workflows/queries"
+import { fetchWorkflowsForUser } from "@/lib/workflows/queries/queries"
 import { AppLayoutClient } from "./layout-client"
 
 export default async function AppLayout({
@@ -16,7 +17,7 @@ export default async function AppLayout({
   const userData = {
     name: user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "User",
     email: user.email ?? "",
-    avatar: user.user_metadata?.avatar_url,
+    avatar: getResolvedAvatarUrlForAuthUser({ user }),
   }
 
   const recentWorkflows = await fetchWorkflowsForUser({ limit: 12 })

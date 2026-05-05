@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useAssistantContext } from "@/components/assistant/assistant-context";
 import {
   CONTEXT_PANEL_DEFAULT_WIDTH_PX,
@@ -30,7 +31,12 @@ function getIsDesktop(): boolean {
 }
 
 export function AssistantShell() {
-  const { conversationKey, startNewConversation, activeConversationId } = useAssistantContext();
+  const {
+    conversationKey,
+    startNewConversation,
+    activeConversationId,
+    activeConversationTitle,
+  } = useAssistantContext();
 
   // Keep the browser URL in sync with the active conversation without triggering a page reload
   useConversationUrlSync({ activeConversationId });
@@ -86,7 +92,16 @@ export function AssistantShell() {
         {/* Header */}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
-          <div className="flex min-w-0 flex-1 items-center" />
+
+          {/* Conversation title — centred and truncated */}
+          <div className="flex min-w-0 flex-1 items-center justify-center">
+            {activeConversationTitle && (
+              <span className="truncate text-sm font-medium" title={activeConversationTitle}>
+                {activeConversationTitle}
+              </span>
+            )}
+          </div>
+
           {!contextPanelOpen && (
             <Button
               type="button"
@@ -107,6 +122,7 @@ export function AssistantShell() {
           >
             <PlusIcon />
           </Button>
+          <ThemeToggle />
         </header>
 
         {/* Chat body */}

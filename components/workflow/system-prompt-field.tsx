@@ -4,7 +4,7 @@ import * as React from "react"
 
 import { Label } from "@/components/ui/label"
 import { FunctionInput } from "@/components/workflow/function-input"
-import type { PromptTagDefinition } from "@/lib/workflow/prompt-tags"
+import type { PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 import { cn } from "@/lib/utils"
 
 export type SystemPromptFieldProps = {

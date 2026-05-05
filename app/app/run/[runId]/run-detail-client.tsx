@@ -7,17 +7,17 @@ import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
-import type { WorkflowRunDetail } from "@/lib/workflows/run-queries"
+import type { WorkflowRunDetail } from "@/lib/workflows/queries/run-queries"
 import { RunStatusGlyph } from "@/components/workflow/run-status-glyph"
 import { RunStepDetailSheetBody } from "@/components/workflow/run-step-detail-sheet-body"
 import { RunExecutionOverview } from "@/components/workflow/run-execution-overview"
-import { normaliseWorkflowRunNodeResults, stringifyRunJsonPayload } from "@/lib/workflow/run-results"
+import { normaliseWorkflowRunNodeResults, stringifyRunJsonPayload } from "@/lib/workflows/engine/run-results"
 import {
   displayRunDuration,
   formatRunLocalDate,
   runPersistedLifecycleLabel,
-} from "@/lib/workflow/run-formatting"
-import { buildRunTimelineSteps, resolveRunStepTimelineLabel, shortRunIdForDisplay } from "@/lib/workflow/run-timeline"
+} from "@/lib/workflows/engine/run-formatting"
+import { buildRunTimelineSteps, resolveRunStepTimelineLabel, shortRunIdForDisplay } from "@/lib/workflows/engine/run-timeline"
 import type { Json } from "@/types/database"
 
 export interface WorkflowRunDetailClientProps {

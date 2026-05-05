@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
-import { fetchWorkflowRunByIdForUser } from "@/lib/workflows/run-queries"
+import { fetchWorkflowRunByIdForUser } from "@/lib/workflows/queries/run-queries"
 import { WorkflowRunDetailClient } from "./run-detail-client"
 
 /**

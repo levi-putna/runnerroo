@@ -20,16 +20,6 @@ import {
   ConnectionMode,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { EntryNode } from "./node-types/entry-node"
-import { ActionNode } from "./node-types/action-node"
-import { CodeNode } from "./node-types/code-node"
-import { AiNode } from "./node-types/ai-node"
-import { DecisionNode } from "./node-types/decision-node"
-import { SwitchNode, type SwitchBranch } from "./node-types/switch-node"
-import { SplitNode, type SplitPath } from "./node-types/split-node"
-import { EndNode } from "./node-types/end-node"
-import { RandomNumberNode } from "./node-types/random-node"
-import { IterationNode } from "./node-types/iteration-node"
 import { WorkflowSmoothEdge } from "./workflow-edge"
 import { NodeSheet } from "./node-sheet"
 import { NodeAddSheet, type NodeDefinition } from "./node-add-sheet"
@@ -40,28 +30,18 @@ import {
   buildDefaultRandomNumberOutputSchemaFields,
   buildDefaultIterationInputSchemaFields,
   buildDefaultIterationOutputSchemaFields,
-} from "@/lib/workflow/input-schema"
+} from "@/lib/workflows/engine/input-schema"
 import { Plus } from "lucide-react"
-import { getWorkflowMinimapNodeColour } from "@/lib/workflow/node-type-registry"
-import { defaultWorkflowCanvasNodes, workflowGraphBaseline } from "@/lib/workflow/persist"
-import type { NodeResult } from "@/lib/workflow/types"
-import { WorkflowRunContext } from "@/lib/workflow/run-context"
+import { getWorkflowMinimapNodeColour } from "@/lib/workflows/engine/node-type-registry"
+import { defaultWorkflowCanvasNodes, workflowGraphBaseline } from "@/lib/workflows/engine/persist"
+import type { NodeResult } from "@/lib/workflows/engine/types"
+import { WorkflowRunContext } from "@/lib/workflows/engine/run-context"
+import { workflowNodeTypes } from "@/lib/workflows/workflow-node-types"
+import { type SwitchBranch } from "@/lib/workflows/steps/logic/switch/node"
+import { type SplitPath } from "@/lib/workflows/steps/logic/split/node"
 
 /** Stable empty map for providers when no run overlay is active. */
 const EMPTY_RUN_MAP = new Map<string, NodeResult>()
-
-const nodeTypes = {
-  entry: EntryNode,
-  action: ActionNode,
-  code: CodeNode,
-  random: RandomNumberNode,
-  iteration: IterationNode,
-  ai: AiNode,
-  decision: DecisionNode,
-  switch: SwitchNode,
-  split: SplitNode,
-  end: EndNode,
-}
 
 const edgeTypes = {
   workflow: WorkflowSmoothEdge,
@@ -305,7 +285,7 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
         onInit={(instance) => {
           rfInstance.current = instance
         }}
-        nodeTypes={nodeTypes}
+        nodeTypes={workflowNodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
         connectionLineType={ConnectionLineType.SmoothStep}

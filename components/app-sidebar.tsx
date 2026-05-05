@@ -13,12 +13,12 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, Sid
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { NavUser } from "@/components/nav-user"
-import type { WorkflowListRow } from "@/lib/workflows/queries"
+import type { WorkflowListRow } from "@/lib/workflows/queries/queries"
 
 interface User {
   name: string
   email: string
-  avatar?: string
+  avatar: string
 }
 
 interface SubNavItem {

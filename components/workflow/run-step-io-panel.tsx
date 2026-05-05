@@ -1,7 +1,7 @@
 "use client"
 
-import type { NodeResult } from "@/lib/workflow/types"
-import { stringifyRunJsonPayload } from "@/lib/workflow/run-results"
+import type { NodeResult } from "@/lib/workflows/engine/types"
+import { stringifyRunJsonPayload } from "@/lib/workflows/engine/run-results"
 import { cn } from "@/lib/utils"
 
 export interface RunStepIoPanelProps {

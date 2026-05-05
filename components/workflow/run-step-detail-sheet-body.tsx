@@ -8,9 +8,9 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
-import type { NodeResult } from "@/lib/workflow/types"
-import { stringifyRunJsonPayload } from "@/lib/workflow/run-results"
-import { displayRunDuration, formatRunLocalDate } from "@/lib/workflow/run-formatting"
+import type { NodeResult } from "@/lib/workflows/engine/types"
+import { stringifyRunJsonPayload } from "@/lib/workflows/engine/run-results"
+import { displayRunDuration, formatRunLocalDate } from "@/lib/workflows/engine/run-formatting"
 
 export interface RunStepDetailSheetBodyProps {
   /** Short display name shown in header and metadata. */

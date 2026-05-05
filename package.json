@@ -15,7 +15,7 @@
     "sb:restart": "supabase stop && supabase start",
     "sb:reset": "supabase db reset",
     "sb:migration": "supabase migration new",
-    "sb:uyp": "supabase db push --local --include-all",
+    "sb:up": "supabase db push --local --include-all",
     "sb:push": "supabase db push",
     "sb:pull": "supabase db pull",
     "sb:diff": "supabase db diff"

@@ -7,12 +7,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import type { NodeInputField } from "@/lib/workflow/input-schema"
-import type { PromptTagDefinition } from "@/lib/workflow/prompt-tags"
+import type { NodeInputField } from "@/lib/workflows/engine/input-schema"
+import type { PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 import {
   parseInputSchemaJson,
   serialiseInputSchemaJson,
-} from "@/lib/workflow/input-schema"
+} from "@/lib/workflows/engine/input-schema"
 import { InputSchemaEditor } from "@/components/workflow/input-schema-editor"
 
 export interface InputSchemaBuilderProps {

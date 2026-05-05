@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrainIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/page-header";
 
 type MemoryRow = {
   id: string;
@@ -71,13 +72,13 @@ export default function MemoriesSettingsPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="max-w-3xl">
-        <h1 className="text-lg font-semibold">Memories</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Review and manage long-term assistant memories. Sorted by most recently updated.
-        </p>
-      </div>
+    <div className="flex flex-col">
+      <PageHeader
+        title="Memories"
+        description="Review and manage long-term assistant memories. Sorted by most recently updated."
+      />
+
+      <div className="flex flex-col gap-6 p-6">
 
       <div className="flex flex-col gap-3 rounded-lg border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-md">
@@ -149,6 +150,7 @@ export default function MemoriesSettingsPage() {
             </div>
           ))
         )}
+      </div>
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import {
   parseWorkflowNodes,
   toPersistableEdges,
   toPersistableNodes,
-} from "@/lib/workflow/persist"
+} from "@/lib/workflows/engine/persist"
 import type { Json } from "@/types/database"
 
 type PatchBody = {

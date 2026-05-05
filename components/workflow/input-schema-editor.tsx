@@ -16,13 +16,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import type { NodeInputField, NodeInputFieldType } from "@/lib/workflow/input-schema"
+import type { NodeInputField, NodeInputFieldType } from "@/lib/workflows/engine/input-schema"
 import {
   createEmptyNodeInputField,
   labelToDefaultKey,
   sanitiseInputFieldKey,
-} from "@/lib/workflow/input-schema"
-import { mergePromptTagDefinitions, type PromptTagDefinition } from "@/lib/workflow/prompt-tags"
+} from "@/lib/workflows/engine/input-schema"
+import { mergePromptTagDefinitions, type PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 import { FunctionInput } from "@/components/workflow/function-input"
 
 const TYPE_META: Record<

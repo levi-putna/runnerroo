@@ -88,10 +88,11 @@ export const MessageAction = ({
   label,
   variant = "ghost",
   size = "icon-sm",
+  className,
   ...props
 }: MessageActionProps) => {
   const button = (
-    <Button size={size} type="button" variant={variant} {...props}>
+    <Button className={className} size={size} type="button" variant={variant} {...props}>
       {children}
       <span className="sr-only">{label || tooltip}</span>
     </Button>
@@ -101,7 +102,25 @@ export const MessageAction = ({
     return (
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <TooltipTrigger
+            delay={0}
+            render={(triggerProps) => {
+              const { className: triggerClassName, ...triggerRest } = triggerProps;
+              return (
+                <Button
+                  className={cn(className, triggerClassName)}
+                  size={size}
+                  type="button"
+                  variant={variant}
+                  {...props}
+                  {...triggerRest}
+                >
+                  {children}
+                  <span className="sr-only">{label || tooltip}</span>
+                </Button>
+              );
+            }}
+          />
           <TooltipContent>
             <p>{tooltip}</p>
           </TooltipContent>

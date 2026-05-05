@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { WorkflowCanvas, type WorkflowCanvasHandle } from "@/components/workflow/workflow-canvas"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
   Dialog,
   DialogContent,
@@ -30,16 +32,16 @@ import {
   parseWorkflowEdges,
   parseWorkflowNodes,
   workflowGraphBaseline,
-} from "@/lib/workflow/persist"
+} from "@/lib/workflows/engine/persist"
 import type { Database } from "@/types/database"
 import { ManualWorkflowRunDialog } from "@/components/workflow/run-dialog"
-import { readInputSchemaFromNodeData, type NodeInputField } from "@/lib/workflow/input-schema"
-import { normaliseEntryKind } from "@/lib/workflow/node-type-registry"
-import { mergeNodeResult } from "@/lib/workflow/runner"
-import type { NodeResult } from "@/lib/workflow/types"
+import { readInputSchemaFromNodeData, type NodeInputField } from "@/lib/workflows/engine/input-schema"
+import { normaliseEntryKind } from "@/lib/workflows/engine/node-type-registry"
+import { mergeNodeResult } from "@/lib/workflows/engine/runner"
+import type { NodeResult } from "@/lib/workflows/engine/types"
 import {
   WorkflowEditorActionsContext,
-} from "@/lib/workflow/run-context"
+} from "@/lib/workflows/engine/run-context"
 
 type WorkflowRow = Database["public"]["Tables"]["workflows"]["Row"]
 
@@ -495,6 +497,10 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
 
       {/* Editor toolbar */}
       <div className="flex items-center gap-2 border-b px-3 h-11 shrink-0">
+        <SidebarTrigger className="size-7 text-muted-foreground hover:text-foreground" />
+
+        <Separator orientation="vertical" className="h-4" />
+
         <Button
           type="button"
           variant="ghost"
@@ -591,6 +597,9 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
             Run
           </Button>
         )}
+
+        <Separator orientation="vertical" className="h-4" />
+        <ThemeToggle />
       </div>
 
       {/* React Flow canvas — remount when switching between new and persisted id */}

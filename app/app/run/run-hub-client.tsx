@@ -15,54 +15,33 @@ import {
 } from "@/components/ui/table"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import type { WorkflowRunListItem } from "@/lib/workflows/run-queries"
+import type { WorkflowRunListItem } from "@/lib/workflows/queries/run-queries"
 import { RunStatusGlyph } from "@/components/workflow/run-status-glyph"
 import {
   displayRunDuration,
   formatRunLocalDate,
   runPersistedLifecycleLabel,
-} from "@/lib/workflow/run-formatting"
-import { shortRunIdForDisplay } from "@/lib/workflow/run-timeline"
+} from "@/lib/workflows/engine/run-formatting"
+import { shortRunIdForDisplay } from "@/lib/workflows/engine/run-timeline"
+import { PageHeader } from "@/components/page-header"
 
 export interface WorkflowRunHubClientProps {
   runs: WorkflowRunListItem[]
 }
 
 /**
- * Dashboard-style hub: breadcrumbs, dense bordered table with row navigation into run detail.
+ * Dashboard-style hub: dense bordered table with row navigation into run detail.
  */
 export function WorkflowRunHubClient({ runs }: WorkflowRunHubClientProps) {
   const router = useRouter()
 
   return (
-    <div className="flex min-h-[calc(100vh-112px)] flex-col bg-background">
-      {/* Top chrome — breadcrumbs + title */}
-      <div className="shrink-0 border-b border-border/80 bg-muted/15 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <nav
-            aria-label="Breadcrumb"
-            className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground"
-          >
-            <Link
-              href="/app/workflows"
-              className="font-medium underline-offset-4 hover:text-foreground hover:underline"
-            >
-              Workflows
-            </Link>
-            {/* Trail */}
-            <ChevronRight aria-hidden className="size-3 shrink-0 opacity-50" />
-            <span className="font-medium text-foreground">Runs</span>
-          </nav>
-
-          <div className="mt-5 space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Runs</h1>
-            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              Recent executions stored for your workflows. Choose a row to open the waterfall, trigger
-              payload, and per-step payloads.
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="flex flex-col bg-background">
+      {/* Page header */}
+      <PageHeader
+        title="Runs"
+        description="Recent executions stored for your workflows. Choose a row to open the waterfall, trigger payload, and per-step payloads."
+      />
 
       <div className="flex-1 px-4 pb-16 pt-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl">

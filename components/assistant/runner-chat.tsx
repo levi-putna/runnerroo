@@ -314,6 +314,7 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
     syncConversationFromRemoteDetail,
     takePendingForkSend,
     setConversationUsageAggregate,
+    setConversationTitle,
     stripTargetMemoryIdRef,
     chatMemoryStripNonce,
   } = useAssistantContext();
@@ -337,6 +338,15 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
     messages: activeConversationMessages ?? undefined,
     // After client-completed tools (e.g. askQuestion) call addToolOutput, continue the model turn automatically.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    // Receive the AI-generated conversation title streamed before the main response.
+    onData: (part) => {
+      if (part.type === "data-conversation-title") {
+        const data = part.data as { title?: string };
+        if (typeof data?.title === "string" && data.title.trim()) {
+          setConversationTitle({ id: conversationId, title: data.title.trim() });
+        }
+      }
+    },
   });
 
   // ── Memory strip on nonce change ──────────────────────────────────────────

@@ -7,7 +7,7 @@ import {
   resolveWorkflowNodeTilePresentation,
   type WorkflowGlyphSize,
   type WorkflowGlyphStroke,
-} from "@/lib/workflow/node-type-registry"
+} from "@/lib/workflows/engine/node-type-registry"
 
 export interface WorkflowNodeGlyphProps {
   type: string

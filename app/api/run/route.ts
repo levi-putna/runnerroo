@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { fetchRecentWorkflowRunsForUser } from "@/lib/workflows/run-queries"
+import { fetchRecentWorkflowRunsForUser } from "@/lib/workflows/queries/run-queries"
 
 /**
  * Lists recent workflow runs for the signed-in user (newest first).

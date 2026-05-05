@@ -11,8 +11,9 @@ import { cn } from "@/lib/utils"
 import type { Database } from "@/types/database"
 import { RunStatusGlyph } from "@/components/workflow/run-status-glyph"
 import { RunStepIoPanel } from "@/components/workflow/run-step-io-panel"
-import { normaliseWorkflowRunNodeResults } from "@/lib/workflow/run-results"
-import { displayRunDuration, formatRunLocalDate } from "@/lib/workflow/run-formatting"
+import { normaliseWorkflowRunNodeResults } from "@/lib/workflows/engine/run-results"
+import { displayRunDuration, formatRunLocalDate } from "@/lib/workflows/engine/run-formatting"
+import { PageHeader } from "@/components/page-header"
 
 type WorkflowRunRow = Database["public"]["Tables"]["workflow_runs"]["Row"]
 
@@ -31,25 +32,18 @@ export function WorkflowRunHistoryClient({
   runs,
 }: WorkflowRunHistoryClientProps) {
   return (
-    <div className="flex flex-col min-h-[calc(100vh-112px)] bg-background">
+    <div className="flex flex-col bg-background">
       {/* Heading / back */}
-      <div className="border-b shrink-0 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          <Link
-            href={`/app/workflows/${workflowId}`}
-            className={cn(
-              buttonVariants({ variant: "ghost", size: "sm" }),
-              "-ml-2 h-8 w-fit justify-start text-muted-foreground"
-            )}
-          >
-            Back to editor
-          </Link>
-          <h1 className="text-lg font-semibold tracking-tight truncate">Run history</h1>
-          <p className="text-xs text-muted-foreground truncate">{workflowName}</p>
-        </div>
-      </div>
-
-      <Separator />
+      <PageHeader title="Run history" description={workflowName}>
+        <Link
+          href={`/app/workflows/${workflowId}`}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+          )}
+        >
+          Back to editor
+        </Link>
+      </PageHeader>
 
       {/* Run list */}
       <div className="p-4 pb-12 space-y-2 max-w-3xl mx-auto w-full flex-1">

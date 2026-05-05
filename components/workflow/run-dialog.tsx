@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import type { NodeInputField } from "@/lib/workflow/input-schema"
+import type { NodeInputField } from "@/lib/workflows/engine/input-schema"
 import {
   Dialog,
   DialogContent,

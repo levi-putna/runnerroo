@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { fetchWorkflowRunByIdForUser } from "@/lib/workflows/run-queries"
+import { fetchWorkflowRunByIdForUser } from "@/lib/workflows/queries/run-queries"
 
 /**
  * Returns a single persisted workflow run visible to the signed-in user.

@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
-import { fetchRecentWorkflowRunsForUser } from "@/lib/workflows/run-queries"
+import { fetchRecentWorkflowRunsForUser } from "@/lib/workflows/queries/run-queries"
 import { WorkflowRunHubClient } from "./run-hub-client"
 
 /**

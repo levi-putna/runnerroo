@@ -65,7 +65,8 @@ export async function PUT(
 
   const messages = body.messages ?? [];
 
-  // Derive a title from the first user message if not provided
+  // Use the explicitly provided title (AI-generated) or fall back to truncating the
+  // first user message. 60 characters matches the client-side AI title limit.
   const title =
     body.title?.trim() ||
     (() => {
@@ -74,7 +75,7 @@ export async function PUT(
         ?.filter((p) => p.type === "text")
         .map((p) => (p as { type: "text"; text: string }).text)
         .join(" ")
-        .slice(0, 120);
+        .slice(0, 60);
       return text || "New conversation";
     })();
 

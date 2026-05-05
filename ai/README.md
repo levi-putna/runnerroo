@@ -11,4 +11,4 @@ This directory holds **server-side orchestration** (agents), **static skills** (
 | `tools/` | Tool definitions (`tool()`), factories, and matching `*-ui.tsx` components. |
 | `integrations/` | Placeholder merge point for OAuth/MCP tools when you add them. |
 
-Workflow graph execution under `lib/workflow/` is intentionally separate from this assistant stack.
+Workflow graph execution under `lib/workflows/` is intentionally separate from this assistant stack.

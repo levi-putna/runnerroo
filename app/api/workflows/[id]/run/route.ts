@@ -1,15 +1,15 @@
 import {
   mergeNodeResultsIntoList,
   traverseWorkflowGraph,
-} from "@/lib/workflow/runner"
+} from "@/lib/workflows/engine/runner"
 import {
   parseWorkflowEdges,
   parseWorkflowNodes,
-} from "@/lib/workflow/persist"
+} from "@/lib/workflows/engine/persist"
 import { createClient } from "@/lib/supabase/server"
-import type { NodeResult } from "@/lib/workflow/types"
+import type { NodeResult } from "@/lib/workflows/engine/types"
 import type { Json } from "@/types/database"
-import { createWorkflowStepExecutor } from "@/lib/workflow/step-executor"
+import { createWorkflowStepExecutor } from "@/lib/workflows/engine/step-executor"
 
 type RunPostBody = {
   inputs?: Record<string, unknown>

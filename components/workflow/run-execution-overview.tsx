@@ -1,9 +1,9 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { displayRunDuration } from "@/lib/workflow/run-formatting"
-import type { ParsedRunTimelineStep } from "@/lib/workflow/run-timeline"
-import { shortRunIdForDisplay } from "@/lib/workflow/run-timeline"
+import { displayRunDuration } from "@/lib/workflows/engine/run-formatting"
+import type { ParsedRunTimelineStep } from "@/lib/workflows/engine/run-timeline"
+import { shortRunIdForDisplay } from "@/lib/workflows/engine/run-timeline"
 import { RunStatusGlyph } from "@/components/workflow/run-status-glyph"
 import type { Database } from "@/types/database"
 

@@ -1,4 +1,4 @@
-import { fetchWorkflowsForUser } from "@/lib/workflows/queries"
+import { fetchWorkflowsForUser } from "@/lib/workflows/queries/queries"
 import { WorkflowsIndex } from "./workflows-index"
 
 export default async function WorkflowsPage() {

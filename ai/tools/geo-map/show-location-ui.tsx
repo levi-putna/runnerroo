@@ -22,7 +22,7 @@ type Props = {
  */
 function MapSkeleton() {
   return (
-    <div className="w-full min-w-80 rounded-lg border bg-muted/20 overflow-hidden relative" style={{ height: 320 }}>
+    <div className="w-full min-w-0 rounded-lg border bg-muted/20 overflow-hidden relative" style={{ height: 320 }}>
       {/* Faint grid lines mimicking map tiles */}
       <div className="absolute inset-0 grid grid-cols-4 grid-rows-3">
         {Array.from({ length: 12 }).map((_, i) => (
@@ -66,7 +66,7 @@ export function ShowLocationUI({ part }: Props) {
 
     if (!parsed) {
       return (
-        <div className="w-full min-w-80 rounded-lg border border-destructive/20 bg-destructive/5 flex flex-col items-center justify-center gap-3 text-destructive" style={{ height: 320 }}>
+        <div className="w-full min-w-0 rounded-lg border border-destructive/20 bg-destructive/5 flex flex-col items-center justify-center gap-3 text-destructive" style={{ height: 320 }}>
           <AlertTriangle size={24} className="opacity-70" />
           <p className="text-sm font-medium">Map data could not be parsed.</p>
         </div>
@@ -80,7 +80,7 @@ export function ShowLocationUI({ part }: Props) {
 
   if (part.state === "output-error") {
     return (
-      <div className="w-full min-w-80 rounded-lg border border-destructive/20 bg-destructive/5 flex flex-col items-center justify-center gap-3 text-destructive" style={{ height: 320 }}>
+      <div className="w-full min-w-0 rounded-lg border border-destructive/20 bg-destructive/5 flex flex-col items-center justify-center gap-3 text-destructive" style={{ height: 320 }}>
         <AlertTriangle size={24} className="opacity-70" />
         <p className="text-sm font-medium">{part.errorText ?? "Could not load the map."}</p>
       </div>

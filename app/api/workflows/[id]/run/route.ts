@@ -32,7 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: workflow, error: wfErr } = await supabase
     .from("workflows")
-    .select("id, nodes, edges, trigger_type, run_count, user_id")
+    .select("id, name, nodes, edges, trigger_type, run_count, user_id")
     .eq("id", workflowId)
     .eq("user_id", user.id)
     .maybeSingle()
@@ -68,6 +68,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           gatewayUserAndWorkflow: {
             supabaseUserId: user.id,
             workflowId,
+          },
+          runnerIdentity: {
+            displayName:
+              typeof user.user_metadata?.full_name === "string" &&
+              user.user_metadata.full_name.trim() !== ""
+                ? user.user_metadata.full_name.trim()
+                : user.email?.split("@")[0] ?? "",
+            email: user.email ?? null,
           },
           onRunCreated: ({ runId }) => {
             push({ kind: "run", runId })

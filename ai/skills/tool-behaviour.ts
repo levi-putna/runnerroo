@@ -14,6 +14,10 @@ export const toolBehaviourSkill = `
 - Use **tavilyExtract** when the user supplies specific URLs and needs clean article or page text.
 - Use **tavilyCrawl** when the user needs breadth across a single site (discovery plus excerpts), not a one-shot query.
 
+## Documents and downloads
+
+- Use **showDocumentDownload** whenever you share a file or document the user can download or open. Prefer this tool over pasting a bare URL so they see filename, type, optional size, and a Download action. Include **fileName** and **sizeDisplay** when you know them.
+
 ## Maps and memories
 
 - Use **showLocation** when the user wants addresses or places shown on a map.

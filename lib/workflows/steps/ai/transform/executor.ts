@@ -106,7 +106,7 @@ export async function executeAiTransformStep({
   const contentExpressionTemplate =
     typeof data?.transformContentExpression === "string" ? data.transformContentExpression : ""
 
-  const context = buildResolutionContext(stepInput)
+  const context = buildResolutionContext({ stepInput, stepId: node.id })
   const resolvedInstructions = resolveTemplate(instructionsTemplate, context)
 
   const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })

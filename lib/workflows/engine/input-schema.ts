@@ -334,6 +334,35 @@ export function buildDefaultIterationOutputSchemaFields(): NodeInputField[] {
   ]
 }
 
+/**
+ * Default outbound mapping for **Generate document** steps: filename and downloadable URL from execution.
+ */
+export function buildDefaultGenerateDocumentOutputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "file_name",
+        label: "File name",
+        type: "string",
+        required: false,
+        description:
+          "Filename of the generated .docx after resolving the execution file name (literal or tags such as `{{prev.*}}`, `{{input.*}}`, `{{global.*}}`).",
+        value: "{{exe.outputFileName}}",
+      },
+    }),
+    createEmptyNodeInputField({
+      partial: {
+        key: "document_url",
+        label: "Document URL",
+        type: "string",
+        required: false,
+        description: "Fully qualified signed URL to download the generated document.",
+        value: "{{exe.documentUrl}}",
+      },
+    }),
+  ]
+}
+
 /** Inline JSON payloads allowed when editing schema arrays/objects in JSON mode. */
 export type InputSchemaJsonInlineValue =
   | string

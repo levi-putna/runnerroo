@@ -184,7 +184,7 @@ export async function executeAiExtractStep({
   const contentExpressionTemplate =
     typeof data?.extractContentExpression === "string" ? data.extractContentExpression : ""
 
-  const context = buildResolutionContext(stepInput)
+  const context = buildResolutionContext({ stepInput, stepId: node.id })
   const resolvedInstructions = resolveTemplate(instructionsTemplate, context)
 
   const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })

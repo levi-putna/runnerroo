@@ -110,7 +110,7 @@ export async function executeGenerateDocumentStep({
     throw new Error('Generate document step requires "templateFileId".')
   }
 
-  const context = buildResolutionContext(stepInput)
+  const context = buildResolutionContext({ stepInput, stepId: node.id })
   const gatewayContext = readRunnerGatewayExecutionContextFromStepInput({ stepInput })
 
   let templateQuery = supabase
@@ -142,10 +142,13 @@ export async function executeGenerateDocumentStep({
   doc.render(resolvedDocumentSchema)
 
   const outputBuffer = doc.getZip().generate({ type: "nodebuffer" })
+  const outputFileNameTemplateRaw =
+    typeof nodeData?.outputFileName === "string" ? nodeData.outputFileName.trim() : ""
+  const outputFileNameTemplate =
+    outputFileNameTemplateRaw.length > 0 ? outputFileNameTemplateRaw : "generated-document.docx"
+  const resolvedOutputStem = resolveTemplate(outputFileNameTemplate, context).trim()
   const safeOutputFileName =
-    typeof nodeData?.outputFileName === "string" && nodeData.outputFileName.trim()
-      ? nodeData.outputFileName.trim()
-      : "generated-document.docx"
+    resolvedOutputStem.length > 0 ? resolvedOutputStem : "generated-document.docx"
   const outputFileName = safeOutputFileName.endsWith(".docx")
     ? safeOutputFileName
     : `${safeOutputFileName}.docx`

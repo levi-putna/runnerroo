@@ -1,3 +1,4 @@
+import { showDocumentDownload } from "@/ai/tools/documents/show-document-download";
 import { generateRandomNumber } from "@/ai/tools/example/generate-random-number";
 import { showLocation } from "@/ai/tools/geo-map/show-location";
 import { createSearchUserMemoriesTool } from "@/ai/tools/memories/search-user-memories";
@@ -45,6 +46,7 @@ export async function createAssistantTools({
       tavilyCrawl,
       askQuestion,
       generateRandomNumber,
+      showDocumentDownload,
       showLocation,
       searchUserMemories: createSearchUserMemoriesTool({ supabase, userId }),
       ...integrationTools,

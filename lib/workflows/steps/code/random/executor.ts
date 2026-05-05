@@ -23,7 +23,7 @@ export function executeRandomNumberStep({
 }): Record<string, unknown> {
   const data = node.data as Record<string, unknown> | undefined
   const label = typeof data?.label === "string" ? data.label : node.id
-  const context = buildResolutionContext(stepInput)
+  const context = buildResolutionContext({ stepInput, stepId: node.id })
   const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
   const resolvedInputs = resolveDeclaredInputsMap({ inputSchema, context })
 

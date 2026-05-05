@@ -1,4 +1,4 @@
-import type { NodeInputField } from "@/lib/workflows/engine/input-schema"
+import type { NodeInputField, NodeInputFieldType } from "@/lib/workflows/engine/input-schema"
 import { createEmptyNodeInputField } from "@/lib/workflows/engine/input-schema"
 import type { ExtractFieldRow } from "@/lib/workflows/steps/ai/extract/defaults"
 
@@ -123,6 +123,120 @@ export function mergeExtractOutputSchemaFromExtractFields({
       type: src.type,
       required: src.required,
       description: src.description,
+      value: nextValue,
+    }
+  })
+
+  const tail = existingOutputFields.filter((f) => !consumedKeys.has(f.key))
+  return [...mergedLeading, ...tail]
+}
+
+/**
+ * Describes one downstream output row mirrored from Generate document runtime `exe` fields.
+ *
+ * Keys are authoring-facing (`file_name`, …); `mappingValue` points at camelCase props on `exe`.
+ */
+export interface DocumentGenerateExecutionOutputSpecRow {
+  key: string
+  label: string
+  type: NodeInputFieldType
+  description: string
+  /** Resolved after upload — e.g. `{{exe.documentUrl}}`. */
+  mappingValue: string
+}
+
+/**
+ * Canonical execution outputs for Generate document steps, in merge order for "Import from execution".
+ */
+export const DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS: readonly DocumentGenerateExecutionOutputSpecRow[] = [
+  {
+    key: "file_name",
+    label: "File name",
+    type: "string",
+    description:
+      "Generated filename (.docx), matching the Execution tab output name or step default.",
+    mappingValue: "{{exe.outputFileName}}",
+  },
+  {
+    key: "document_url",
+    label: "Document URL",
+    type: "string",
+    description: "Fully qualified signed URL callers can open to download the generated document.",
+    mappingValue: "{{exe.documentUrl}}",
+  },
+  {
+    key: "storage_path",
+    label: "Storage path",
+    type: "string",
+    description: "Object key within the workflow document outputs bucket (not a browser URL).",
+    mappingValue: "{{exe.outputPath}}",
+  },
+  {
+    key: "output_bucket",
+    label: "Output bucket",
+    type: "string",
+    description: "Supabase Storage bucket hosting the uploaded .docx.",
+    mappingValue: "{{exe.outputBucket}}",
+  },
+  {
+    key: "template_id",
+    label: "Template id",
+    type: "string",
+    description: "Registered template row used to render this run.",
+    mappingValue: "{{exe.templateFileId}}",
+  },
+  {
+    key: "template_name",
+    label: "Template name",
+    type: "string",
+    description: "Human-readable template label from registry metadata.",
+    mappingValue: "{{exe.templateName}}",
+  },
+]
+
+export interface MergeGenerateDocumentOutputFromExecutionParams {
+  existingOutputFields: NodeInputField[]
+  /** Rows to merge — defaults to {@link DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS}. */
+  executionSpecs?: readonly DocumentGenerateExecutionOutputSpecRow[]
+}
+
+/**
+ * Mirrors Generate document execution fields into outbound mapping rows (`mappingValue` per spec).
+ *
+ * Rows that already have mapping text stay unchanged unless the cell was blank — same semantics as extraction sync.
+ */
+export function mergeGenerateDocumentOutputFromExecutionFields({
+  existingOutputFields,
+  executionSpecs = DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS,
+}: MergeGenerateDocumentOutputFromExecutionParams): NodeInputField[] {
+  const existingByKey = new Map(existingOutputFields.map((f) => [f.key, f]))
+  const consumedKeys = new Set<string>()
+
+  const mergedLeading: NodeInputField[] = executionSpecs.map((spec) => {
+    consumedKeys.add(spec.key)
+    const prev = existingByKey.get(spec.key)
+
+    if (!prev) {
+      return createEmptyNodeInputField({
+        partial: {
+          key: spec.key,
+          label: spec.label,
+          type: spec.type,
+          required: false,
+          description: spec.description,
+          value: spec.mappingValue,
+        },
+      })
+    }
+
+    const nextValue =
+      !isUnsetSchemaText({ value: prev.value }) ? prev.value : spec.mappingValue
+
+    return {
+      ...prev,
+      label: spec.label,
+      type: spec.type,
+      description: spec.description,
       value: nextValue,
     }
   })

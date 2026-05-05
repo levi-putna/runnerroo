@@ -15,10 +15,12 @@ import {
 } from "@/lib/workflows/engine/input-schema"
 import { InputSchemaEditor } from "@/components/workflow/input-schema-editor"
 import {
-  SchemaFromPromptDialog,
-  SchemaFromPromptImportTrigger,
-} from "@/components/workflow/schema-from-prompt-dialog"
-import type { WorkflowInputSchemaFromPromptFlavourId } from "@/lib/workflows/input-schema-from-prompt-flavours"
+  WorkflowSchemaBuilderToolbar,
+  type WorkflowSchemaConfirmableImport,
+  type WorkflowSchemaBuilderToolbarPromptImport,
+} from "@/components/workflow/workflow-schema-builder-toolbar"
+
+export type { WorkflowSchemaConfirmableImport, WorkflowSchemaBuilderToolbarPromptImport }
 
 export interface InputSchemaBuilderProps {
   fields: NodeInputField[]
@@ -31,14 +33,12 @@ export interface InputSchemaBuilderProps {
   /** Execution-level tags (`{{exe.*}}`) and similar merged after upstream tags in mapping controls. */
   contextualPromptTags?: PromptTagDefinition[]
   /**
-   * When set, shows an “Import from prompt” control that calls the shared schema agent.
-   * Add flavours in `WORKFLOW_INPUT_SCHEMA_FROM_PROMPT_FLAVOURS` (see `lib/workflows/input-schema-from-prompt-flavours.ts`) for future schema sinks.
+   * Ordered confirm-before imports (sync from upstream artefact, extraction fields, invoke payload, …).
+   * The first row anchors the split button; extras and {@link promptImport} land in the dropdown.
    */
-  promptImport?: {
-    flavourId: WorkflowInputSchemaFromPromptFlavourId
-    dialogTitle?: string
-    dialogDescription?: string
-  }
+  confirmableImports?: WorkflowSchemaConfirmableImport[]
+  /** When set with or without {@link confirmableImports}, opens the shared prompt-to-schema flow. */
+  promptImport?: WorkflowSchemaBuilderToolbarPromptImport | null
 }
 
 /**
@@ -52,14 +52,12 @@ export function InputSchemaBuilder({
   panelTitle,
   upstreamPromptTags = [],
   contextualPromptTags = [],
+  confirmableImports,
   promptImport,
 }: InputSchemaBuilderProps) {
   const [editorTab, setEditorTab] = React.useState<"visual" | "json">("visual")
   const [jsonDraft, setJsonDraft] = React.useState("")
   const [jsonError, setJsonError] = React.useState<string | null>(null)
-  const [promptImportOpen, setPromptImportOpen] = React.useState(false)
-  /** Bumps whenever the prompt import modal opens so the dialog remounts with a fresh form state. */
-  const [promptImportSession, setPromptImportSession] = React.useState(0)
 
   const resolvedPanelTitle =
     panelTitle ??
@@ -79,6 +77,10 @@ export function InputSchemaBuilder({
           : usageContext === "globals"
             ? "Optional tag names and expressions. Each key becomes {{global.key}} for any later step; the same key from a later step overrides earlier values."
             : "Define typed inputs as {{input.*}} on this step and {{prev.*}} from the inbound predecessor when connected."
+
+  const trimmedConfirmables = [...(confirmableImports ?? [])].filter((row) => row != null)
+  const showHeaderToolbar =
+    trimmedConfirmables.length > 0 || (promptImport != null && typeof promptImport === "object")
 
   /** Keeps the JSON textarea aligned with the latest visual edits whenever the user opens that tab. */
   function handleEditorTabChange({ next }: { next: string }) {
@@ -131,14 +133,13 @@ export function InputSchemaBuilder({
           <p className="text-sm font-semibold leading-none tracking-tight text-foreground">{resolvedPanelTitle}</p>
           <p className="text-xs text-muted-foreground leading-relaxed">{shellSubtitle}</p>
         </div>
-        {/* Optional AI import — registry-driven flavours keep this reusable across schema panels */}
-        {promptImport ? (
-          <SchemaFromPromptImportTrigger
-            compact
-            onOpen={() => {
-              setPromptImportSession((session) => session + 1)
-              setPromptImportOpen(true)
-            }}
+        {/* Import / generate — confirmable merges + optional AI prompt fill */}
+        {showHeaderToolbar ? (
+          <WorkflowSchemaBuilderToolbar
+            confirmableImports={trimmedConfirmables}
+            promptImport={promptImport ?? undefined}
+            existingFields={fields}
+            onPromptApplyFields={({ fields: next }) => onChange({ fields: next })}
           />
         ) : null}
       </div>
@@ -233,19 +234,6 @@ export function InputSchemaBuilder({
           </TabsContent>
         </Tabs>
       </div>
-
-      {promptImport ? (
-        <SchemaFromPromptDialog
-          key={promptImportSession}
-          open={promptImportOpen}
-          onOpenChange={setPromptImportOpen}
-          flavourId={promptImport.flavourId}
-          existingFields={fields}
-          title={promptImport.dialogTitle}
-          description={promptImport.dialogDescription}
-          onApply={({ fields: next }) => onChange({ fields: next })}
-        />
-      ) : null}
     </div>
   )
 }

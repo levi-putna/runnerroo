@@ -38,6 +38,7 @@ export type ToolUIProps = {
 /** Component type for a tool UI panel. */
 export type ToolUIComponent = React.ComponentType<ToolUIProps>;
 
+import { ShowDocumentDownloadUI } from "@/ai/tools/documents/show-document-download-ui";
 import { GenerateRandomNumberUI } from "@/ai/tools/example/generate-random-number-ui";
 import { ShowLocationUI } from "@/ai/tools/geo-map/show-location-ui";
 import { SearchUserMemoriesUI } from "@/ai/tools/memories/search-user-memories-ui";
@@ -54,6 +55,7 @@ const toolUIRegistry: Record<string, ToolUIComponent> = {
   tavilyCrawl: TavilyCrawlUI,
   askQuestion: AskQuestionUI,
   generateRandomNumber: GenerateRandomNumberUI,
+  showDocumentDownload: ShowDocumentDownloadUI,
   showLocation: ShowLocationUI,
   searchUserMemories: SearchUserMemoriesUI,
 };
@@ -67,17 +69,20 @@ type ToolRendererProps = {
 
 /**
  * Resolves the registered UI for a tool part (static `tool-*` or `dynamic-tool`).
+ * Wrapped in `w-full min-w-0` so every tool aligns with the assistant column width and loading vs loaded states do not change horizontal sizing.
  */
 export function ToolRenderer({ part, addToolApprovalResponse, addToolOutput }: ToolRendererProps) {
   const toolName = getToolOrDynamicToolName(part);
 
   if (isWorkflowAssistantToolName({ toolName })) {
     return (
-      <WorkflowInvokeToolUI
-        part={part as DynamicToolUIPart}
-        addToolApprovalResponse={addToolApprovalResponse}
-        addToolOutput={addToolOutput}
-      />
+      <div className="w-full min-w-0">
+        <WorkflowInvokeToolUI
+          part={part as DynamicToolUIPart}
+          addToolApprovalResponse={addToolApprovalResponse}
+          addToolOutput={addToolOutput}
+        />
+      </div>
     );
   }
 
@@ -86,11 +91,13 @@ export function ToolRenderer({ part, addToolApprovalResponse, addToolOutput }: T
   if (!Component) return null;
 
   return (
-    <Component
-      part={part as DynamicToolUIPart}
-      addToolApprovalResponse={addToolApprovalResponse}
-      addToolOutput={addToolOutput}
-    />
+    <div className="w-full min-w-0">
+      <Component
+        part={part as DynamicToolUIPart}
+        addToolApprovalResponse={addToolApprovalResponse}
+        addToolOutput={addToolOutput}
+      />
+    </div>
   );
 }
 

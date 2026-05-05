@@ -164,7 +164,7 @@ async function runWorkflowAssistantInvokeExecution({
 }) {
   const { data: workflow, error } = await supabase
     .from("workflows")
-    .select("id, nodes, edges, trigger_type, run_count, user_id")
+    .select("id, name, nodes, edges, trigger_type, run_count, user_id")
     .eq("id", descriptor.workflowId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -172,6 +172,10 @@ async function runWorkflowAssistantInvokeExecution({
   if (error || !workflow) {
     throw new Error("Workflow not found or access denied.");
   }
+
+  const {
+    data: { user: runnerUser },
+  } = await supabase.auth.getUser();
 
   const nodes = parseWorkflowNodes(workflow.nodes as unknown);
 
@@ -185,6 +189,17 @@ async function runWorkflowAssistantInvokeExecution({
       supabaseUserId: userId,
       workflowId: descriptor.workflowId,
     },
+    runnerIdentity:
+      runnerUser != null
+        ? {
+            displayName:
+              typeof runnerUser.user_metadata?.full_name === "string" &&
+              runnerUser.user_metadata.full_name.trim() !== ""
+                ? runnerUser.user_metadata.full_name.trim()
+                : runnerUser.email?.split("@")[0] ?? "",
+            email: runnerUser.email ?? null,
+          }
+        : undefined,
   });
 
   const endStepOutputs = extractEndStepOutputsFromNodeResults({

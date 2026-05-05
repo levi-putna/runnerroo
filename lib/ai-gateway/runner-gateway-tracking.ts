@@ -19,6 +19,12 @@ export type RunnerGatewayExecutionContext = {
   supabaseUserId: string;
   workflowId: string;
   workflowRunId: string;
+  /** Persisted workflow title for `{{workflow.name}}`; optional when callers omit it. */
+  workflowName?: string;
+  /** Resolved display name for `{{user.name}}`; optional when callers omit identity. */
+  userDisplayName?: string;
+  /** Account email for `{{user.email}}`; optional when callers omit identity. */
+  userEmail?: string | null;
 };
 
 /**
@@ -43,7 +49,24 @@ export function readRunnerGatewayExecutionContextFromStepInput({
   if (!supabaseUserId || !workflowId || !workflowRunId) {
     return null;
   }
-  return { supabaseUserId, workflowId, workflowRunId };
+  const workflowName =
+    typeof o.workflowName === "string" && o.workflowName.trim() !== ""
+      ? o.workflowName.trim()
+      : undefined;
+  const userDisplayName =
+    typeof o.userDisplayName === "string" ? o.userDisplayName.trim() : undefined;
+  const rawEmail = o.userEmail;
+  const out: RunnerGatewayExecutionContext = { supabaseUserId, workflowId, workflowRunId };
+  if (workflowName) {
+    out.workflowName = workflowName;
+  }
+  if (userDisplayName) {
+    out.userDisplayName = userDisplayName;
+  }
+  if (typeof rawEmail === "string" && rawEmail.trim() !== "") {
+    out.userEmail = rawEmail.trim();
+  }
+  return out;
 }
 
 /**

@@ -27,7 +27,7 @@ export function executeEntryNode({
   const outputSchema = readInputSchemaFromNodeData({ value: data?.outputSchema })
   const globalsSchema = readInputSchemaFromNodeData({ value: data?.globalsSchema })
 
-  const context = buildResolutionContext(stepInput)
+  const context = buildResolutionContext({ stepInput, stepId: node.id })
 
   const output: Record<string, unknown> = {
     kind: "entry_output",

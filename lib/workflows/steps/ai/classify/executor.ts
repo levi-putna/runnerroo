@@ -196,7 +196,7 @@ export async function executeAiClassifyStep({
   const gatewayModelId = resolveWorkflowGatewayModelId({ modelId: rawModelId })
   const instructionsTemplate = typeof data?.prompt === "string" ? data.prompt : ""
 
-  const context = buildResolutionContext(stepInput)
+  const context = buildResolutionContext({ stepInput, stepId: node.id })
   const resolvedInstructions = resolveTemplate(instructionsTemplate, context)
 
   const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })

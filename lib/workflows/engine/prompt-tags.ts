@@ -36,6 +36,112 @@ export const GLOBAL_PROMPT_TAGS: PromptTagDefinition[] = [
     label: "Today (UTC date)",
     description: "Current calendar date in UTC as YYYY-MM-DD when this expression is resolved.",
   },
+  {
+    id: "now.year",
+    label: "Now · year (UTC)",
+    description: "Four-digit calendar year in UTC when this expression is resolved.",
+  },
+  {
+    id: "now.day",
+    label: "Now · day of month (UTC)",
+    description: "Day of the month in UTC (1–31) when this expression is resolved.",
+  },
+  {
+    id: "now.month",
+    label: "Now · month number (UTC)",
+    description:
+      "Month number in UTC (1 = January through 12 = December) when this expression is resolved.",
+  },
+  {
+    id: "now.month_full",
+    label: "Now · month name (UTC, full)",
+    description:
+      "Full month name in UTC using the Australian English locale when this expression is resolved.",
+  },
+  {
+    id: "now.month_short",
+    label: "Now · month name (UTC, short)",
+    description:
+      "Abbreviated month name in UTC using the Australian English locale when this expression is resolved.",
+  },
+  {
+    id: "now.time_24",
+    label: "Now · time 24-hour (UTC)",
+    description:
+      "Current UTC time as HH:mm:ss (24-hour, zero-padded) when this expression is resolved.",
+  },
+  {
+    id: "now.time_12",
+    label: "Now · time 12-hour (UTC)",
+    description:
+      "Current UTC time as h:mm:ss am/pm when this expression is resolved.",
+  },
+  {
+    id: "run.id",
+    label: "Run · id",
+    description:
+      "Persisted workflow run row id for this traversal when attribution is present; empty otherwise.",
+  },
+  {
+    id: "workflow.id",
+    label: "Workflow · id",
+    description:
+      "Workflow definition id carried on the run envelope when attribution is present; empty otherwise.",
+  },
+  {
+    id: "workflow.name",
+    label: "Workflow · name",
+    description:
+      "Persisted workflow title captured when the run starts; empty if not supplied on the envelope.",
+  },
+  {
+    id: "step.id",
+    label: "Step · graph node id",
+    description:
+      "React Flow id of the node currently resolving this tagged expression.",
+  },
+  {
+    id: "user.name",
+    label: "Runner · display name",
+    description:
+      "Signed-in workflow owner display name captured when the run starts (Australian English authoring context); empty if unknown.",
+  },
+  {
+    id: "user.email",
+    label: "Runner · email",
+    description:
+      "Signed-in workflow owner email captured when the run starts; empty if unknown.",
+  },
+  {
+    id: "now.day_of_year",
+    label: "Now · day of year (UTC)",
+    description:
+      "Ordinal calendar day within the UTC year (1–366) when this expression is resolved.",
+  },
+  {
+    id: "now.weekday_number",
+    label: "Now · weekday ISO (UTC)",
+    description:
+      "ISO weekday number in UTC: 1 = Monday through 7 = Sunday when this expression is resolved.",
+  },
+  {
+    id: "now.weekday_full",
+    label: "Now · weekday (UTC, full)",
+    description:
+      "Full weekday name in UTC using the Australian English locale when this expression is resolved.",
+  },
+  {
+    id: "now.weekday_short",
+    label: "Now · weekday (UTC, short)",
+    description:
+      "Abbreviated weekday in UTC using the Australian English locale when this expression is resolved.",
+  },
+  {
+    id: "now.slug_timestamp",
+    label: "Now · slug timestamp (UTC)",
+    description:
+      "Current UTC instant as `YYYY-MM-DD_HH-mm-ss`, suitable for filesystem-friendly prefixes.",
+  },
 ]
 
 export interface MergePromptTagDefinitionsParams {

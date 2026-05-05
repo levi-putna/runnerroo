@@ -1,5 +1,6 @@
 import { WORKFLOW_NODE_CORE_META } from "@/lib/workflows/engine/node-type-registry"
 import type { StepDefinition } from "@/lib/workflows/engine/step-definition"
+import { buildDefaultGenerateDocumentOutputSchemaFields } from "@/lib/workflows/engine/input-schema"
 
 const meta = WORKFLOW_NODE_CORE_META.document
 
@@ -18,6 +19,8 @@ export const generateDocumentDefinition: StepDefinition = {
     templateFileId: "",
     templateFileName: "",
     documentSchema: [],
+    outputSchema: buildDefaultGenerateDocumentOutputSchemaFields(),
+    globalsSchema: [],
   },
   Icon: meta.Icon,
   accentBg: meta.accentBg,

@@ -39,7 +39,12 @@ import { DEFAULT_MODEL_ID } from "@/lib/ai-gateway/models"
 import { InputSchemaBuilder } from "@/components/workflow/input-schema-builder"
 import { SystemPromptField } from "@/components/workflow/system-prompt-field"
 import { readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema"
-import { WORKFLOW_STEP_INPUT_PROMPT_IMPORT } from "@/lib/workflows/input-schema-from-prompt-flavours"
+import {
+  WORKFLOW_DOCUMENT_TEMPLATE_PROMPT_IMPORT,
+  WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT,
+  WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT,
+  WORKFLOW_STEP_INPUT_PROMPT_IMPORT,
+} from "@/lib/workflows/input-schema-from-prompt-flavours"
 import {
   mergePromptTagDefinitions,
   generateTextExecutionPromptTags,
@@ -64,8 +69,8 @@ import {
 import {
   mergeEntryOutputSchemaFromInputFields,
   mergeExtractOutputSchemaFromExtractFields,
+  mergeGenerateDocumentOutputFromExecutionFields,
 } from "@/lib/workflows/engine/schema-mapping-merge"
-import { WorkflowSchemaImportButtonWithDialog } from "@/components/workflow/workflow-schema-import-button-with-dialog"
 import { FunctionInput } from "@/components/workflow/function-input"
 import { WorkflowRunContext } from "@/lib/workflows/engine/run-context"
 import { RunStepDetailSheetBody } from "@/components/workflow/run-step-detail-sheet-body"
@@ -487,6 +492,7 @@ export function NodeSheet({
                         data={localData}
                         set={set}
                         upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
                         workflowId={workflowId}
                         nodeId={sheetNode.id}
                       />
@@ -668,6 +674,7 @@ function AiGenerateOutputConfig({
         usageContext="output"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={contextualPromptTags}
+        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
       />
       {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
       <InputSchemaBuilder
@@ -676,6 +683,7 @@ function AiGenerateOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
   )
@@ -719,6 +727,7 @@ function AiClassifyOutputConfig({
         usageContext="output"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={contextualPromptTags}
+        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
       />
       {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
       <InputSchemaBuilder
@@ -727,6 +736,7 @@ function AiClassifyOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
   )
@@ -771,45 +781,45 @@ function AiExtractOutputConfig({
 
   const canSyncFromFields = extractFields.length > 0
 
+  /** Header affordance — merges Execution-tab extraction fields into outbound mapping rows. */
+  const extractOutputConfirmables = React.useMemo(
+    () => [
+      {
+        id: "sync_extract_fields",
+        label: "Sync from extraction fields",
+        TriggerIcon: ArrowDownFromLine,
+        disabled: !canSyncFromFields,
+        alertTitle: "Sync output from extraction fields?",
+        alertDescription: (
+          <span className="text-pretty leading-relaxed">
+            This merges your Execution-tab extraction fields into the output schema. Each field gets a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{exe.<key>}}"}</code> mapping by
+            default. Rows that already have a mapping value keep their contents; any extra output-only rows you added
+            manually stay at the end.
+          </span>
+        ),
+        confirmLabel: "Sync now",
+        onConfirm: () => {
+          const next = mergeExtractOutputSchemaFromExtractFields({
+            existingOutputFields: outputSchemaFields,
+            extractFields,
+          })
+          set("outputSchema", next)
+        },
+      },
+    ],
+    [canSyncFromFields, extractFields, outputSchemaFields, set],
+  )
+
   return (
     <div className="space-y-6">
-      {/* Sync CTA — mirrors extraction field rows into the output schema */}
-      <div className="space-y-3">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Field parity</p>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Sync your extraction fields into the output schema so downstream steps can reference each extracted value by
-          name. Blank mapping cells become{" "}
-          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{exe.<key>}}"}</code> placeholders;
-          cells that already have a value are left unchanged.
-        </p>
-        <WorkflowSchemaImportButtonWithDialog
-          disabled={!canSyncFromFields}
-          triggerLabel="Sync from extraction fields"
-          TriggerIcon={ArrowDownFromLine}
-          alertTitle="Sync output from extraction fields?"
-          alertDescription={
-            <span className="text-pretty leading-relaxed">
-              This merges your Execution-tab extraction fields into the output schema. Each field gets a{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{exe.<key>}}"}</code> mapping
-              by default. Rows that already have a mapping value keep their contents; any extra output-only rows you
-              added manually stay at the end.
-            </span>
-          }
-          confirmLabel="Sync now"
-          onConfirm={() => {
-            const next = mergeExtractOutputSchemaFromExtractFields({
-              existingOutputFields: outputSchemaFields,
-              extractFields,
-            })
-            set("outputSchema", next)
-          }}
-        />
-        {!canSyncFromFields ? (
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Add at least one field on the Execution tab before syncing.
-          </p>
-        ) : null}
-      </div>
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Keep extraction field names aligned with outbound rows — use{" "}
+        <span className="font-medium text-foreground">Sync from extraction fields</span> or{" "}
+        <span className="font-medium text-foreground">Import from prompt</span> on the Output schema header. Blank
+        mapping cells typically receive{" "}
+        <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{exe.<key>}}"}</code> placeholders.
+      </p>
 
       {/* Maps declared outbound keys to expressions — defaults reference structured extract execution fields */}
       <InputSchemaBuilder
@@ -818,6 +828,8 @@ function AiExtractOutputConfig({
         usageContext="output"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={contextualPromptTags}
+        confirmableImports={extractOutputConfirmables}
+        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
       />
       {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
       <InputSchemaBuilder
@@ -826,6 +838,7 @@ function AiExtractOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
   )
@@ -907,23 +920,15 @@ function EndOutputConfig({
           </div>
         ) : null}
 
-        <WorkflowSchemaImportButtonWithDialog
-          disabled={!canImport}
-          triggerLabel="Import from previous output"
-          TriggerIcon={ArrowDownToLine}
-          alertTitle="Import output fields from the upstream step?"
-          alertDescription="New rows and matching keys get {{prev.*}} placeholders from the selected predecessor’s published output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first."
-          confirmLabel="Import fields"
-          onConfirm={() => applyPreviousOutputImport()}
-        />
-
         {predecessorNodes.length === 0 ? (
           <p className="text-xs text-muted-foreground leading-relaxed">
             Connect an upstream step to this End node to import field keys from its output.
           </p>
         ) : (
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Empty mapping cells ingest upstream references; populated cells remain unless you clear them first.
+            Use <span className="font-medium text-foreground">Import from previous output</span> or{" "}
+            <span className="font-medium text-foreground">Import from prompt</span> on the Output schema header.
+            Populated mapping cells remain unless you clear them first.
           </p>
         )}
       </div>
@@ -935,6 +940,20 @@ function EndOutputConfig({
         usageContext="output"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={contextualPromptTags}
+        confirmableImports={[
+          {
+            id: "previous_output",
+            label: "Import from previous output",
+            TriggerIcon: ArrowDownToLine,
+            disabled: !canImport,
+            alertTitle: "Import output fields from the upstream step?",
+            alertDescription:
+              "New rows and matching keys get {{prev.*}} placeholders from the selected predecessor’s published output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first.",
+            confirmLabel: "Import fields",
+            onConfirm: () => applyPreviousOutputImport(),
+          },
+        ]}
+        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
       />
     </div>
   )
@@ -978,6 +997,7 @@ function NumericComputationOutputConfig({
         usageContext="output"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={contextualPromptTags}
+        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
       />
       {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
       <InputSchemaBuilder
@@ -986,6 +1006,7 @@ function NumericComputationOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
   )
@@ -1075,39 +1096,17 @@ function EntryInvokeOutputConfig({
 
   return (
     <div className="space-y-6">
-      {/* CTA banner — pairing with AiInput upstream import for predictable mapping affordances */}
       <div className="space-y-3">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Payload parity</p>
         <p className="text-xs text-muted-foreground leading-relaxed">
           Keep outbound keys aligned with what you collect on the Input tab so later steps consume the same names.
-          Clearing a mapped value beforehand lets another sync hydrate it again.
+          Use <span className="font-medium text-foreground">Sync from input schema</span> on the Output schema header
+          when you want to merge declaration rows. Clearing a mapped value beforehand lets another sync hydrate it
+          again.
         </p>
-        <WorkflowSchemaImportButtonWithDialog
-          disabled={!canSyncFromPayload}
-          triggerLabel="Sync from input schema"
-          TriggerIcon={ArrowDownFromLine}
-          alertTitle="Sync output from input schema?"
-          alertDescription={
-            <span className="text-pretty leading-relaxed">
-              This merges input rows into output: labels, types, and required flags follow your payload declaration.
-              Blank mapping values become{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>{" "}
-              placeholders. Rows that already have mapping or default text keep their contents; extra output-only rows
-              stay at the end.
-            </span>
-          }
-          confirmLabel="Sync now"
-          onConfirm={() => {
-            const next = mergeEntryOutputSchemaFromInputFields({
-              existingOutputFields: outputSchemaFields,
-              inputFields: inputSchemaFields,
-            })
-            set("outputSchema", next)
-          }}
-        />
         {!canSyncFromPayload ? (
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Add at least one field on the Input tab before syncing.
+            Add at least one field on the Input tab before syncing from the Output schema header.
           </p>
         ) : null}
       </div>
@@ -1116,6 +1115,33 @@ function EntryInvokeOutputConfig({
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}
         usageContext="output"
+        confirmableImports={[
+          {
+            id: "sync_input",
+            label: "Sync from input schema",
+            TriggerIcon: ArrowDownFromLine,
+            disabled: !canSyncFromPayload,
+            alertTitle: "Sync output from input schema?",
+            alertDescription: (
+              <span className="text-pretty leading-relaxed">
+                This merges input rows into output: labels, types, and required flags follow your payload declaration.
+                Blank mapping values become{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>{" "}
+                placeholders. Rows that already have mapping or default text keep their contents; extra output-only rows
+                stay at the end.
+              </span>
+            ),
+            confirmLabel: "Sync now",
+            onConfirm: () => {
+              const next = mergeEntryOutputSchemaFromInputFields({
+                existingOutputFields: outputSchemaFields,
+                inputFields: inputSchemaFields,
+              })
+              set("outputSchema", next)
+            },
+          },
+        ]}
+        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
       />
       {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
       <InputSchemaBuilder
@@ -1123,6 +1149,7 @@ function EntryInvokeOutputConfig({
         onChange={({ fields }) => set("globalsSchema", fields)}
         usageContext="globals"
         contextualPromptTags={globalsContextualTags}
+        promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
   )
@@ -1243,22 +1270,15 @@ function AiInputConfig({
             </div>
           ) : null}
 
-          <WorkflowSchemaImportButtonWithDialog
-            disabled={!canImport}
-            triggerLabel="Import from previous step"
-            TriggerIcon={ArrowDownToLine}
-            alertTitle="Import mappings from the upstream step?"
-            alertDescription="New rows and matching keys get {{prev.*}} placeholders that read the inbound step’s output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first."
-            confirmLabel="Import mappings"
-            onConfirm={() => applyPreviousStepMappings()}
-          />
           {predecessorNodes.length === 0 ? (
             <p className="text-xs text-muted-foreground leading-relaxed">
               Connect an upstream step to this one to copy mapped inputs from its output.
             </p>
           ) : (
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Confirm before merging: empty mapping cells ingest upstream references; populated cells remain unless you clear them first.
+              Use <span className="font-medium text-foreground">Import from previous step</span> or{" "}
+              <span className="font-medium text-foreground">Import from prompt</span> on the Input schema header. Empty
+              mapping cells ingest upstream references; populated cells remain unless you clear them first.
             </p>
           )}
         </div>
@@ -1271,6 +1291,23 @@ function AiInputConfig({
         usageContext="prompt"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={workflowGlobalPromptTags}
+        confirmableImports={
+          showsAiInboundImportWizard
+            ? [
+                {
+                  id: "previous_step",
+                  label: "Import from previous step",
+                  TriggerIcon: ArrowDownToLine,
+                  disabled: !canImport,
+                  alertTitle: "Import mappings from the upstream step?",
+                  alertDescription:
+                    "New rows and matching keys get {{prev.*}} placeholders that read the inbound step’s output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first.",
+                  confirmLabel: "Import mappings",
+                  onConfirm: () => applyPreviousStepMappings(),
+                },
+              ]
+            : undefined
+        }
         promptImport={WORKFLOW_STEP_INPUT_PROMPT_IMPORT}
       />
     </div>
@@ -1566,23 +1603,70 @@ function CodeExecutionConfig({
 }
 
 /**
- * Document step execution settings: template upload to the isolated templates bucket, output filename,
- * and docxtemplater schema map.
+ * Document step execution settings: template upload to the isolated templates bucket, file name expression,
+ * docxtemplater template schema map, and optional merge from Input-tab declared fields (`Set from input schema`).
  */
 function DocumentExecutionConfig({
   data,
   set,
   upstreamPromptTags,
+  workflowGlobalPromptTags,
   workflowId,
   nodeId,
 }: {
   data: Record<string, unknown>
   set: (k: string, v: unknown) => void
   upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
   workflowId?: string | null
   nodeId: string
 }) {
+  /** Tag palette for the file name field — mirrors other execution expressions (prev, input schema rows, globals, now). */
+  const outputFileNamePromptTags = React.useMemo(() => {
+    const fields = readInputSchemaFromNodeData({ value: data.inputSchema })
+    return mergePromptTagDefinitions({
+      contextual: [
+        ...workflowGlobalPromptTags,
+        ...upstreamPromptTags,
+        ...nodeInputFieldsToPromptTags({ fields }),
+      ],
+    })
+  }, [data.inputSchema, upstreamPromptTags, workflowGlobalPromptTags])
+
   const documentSchemaFields = readInputSchemaFromNodeData({ value: data.documentSchema })
+  const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
+  const canSetFromInput = inputSchemaFields.length > 0
+
+  /** Header action — mirrors Input-tab fields into docxtemplater placeholder rows (`{{input.*}}` by default). */
+  const documentTemplateConfirmables = React.useMemo(
+    () => [
+      {
+        id: "set_template_from_input",
+        label: "Set from input schema",
+        TriggerIcon: ArrowDownFromLine,
+        disabled: !canSetFromInput,
+        alertTitle: "Set template schema from Input tab?",
+        alertDescription: (
+          <span className="text-pretty leading-relaxed">
+            This merges Input tab rows into the template schema: labels, types, and required flags match your declared
+            step inputs. Blank cells become{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code> placeholders for
+            docxtemplater. Rows that already have mapping or default text keep their contents; extra template-only keys
+            stay at the end.
+          </span>
+        ),
+        confirmLabel: "Apply",
+        onConfirm: () => {
+          const next = mergeEntryOutputSchemaFromInputFields({
+            existingOutputFields: documentSchemaFields,
+            inputFields: inputSchemaFields,
+          })
+          set("documentSchema", next)
+        },
+      },
+    ],
+    [canSetFromInput, documentSchemaFields, inputSchemaFields, set],
+  )
 
   return (
     <div className="space-y-6">
@@ -1605,14 +1689,42 @@ function DocumentExecutionConfig({
         }}
       />
 
+      {/* Generated file name — expression field with tag picker (same as increment / AI bindings) */}
       <div className="space-y-1.5">
-        <Label>Output filename</Label>
-        <Input
+        <Label>File name</Label>
+        <FunctionInput
+          tags={outputFileNamePromptTags}
           value={String(data.outputFileName ?? "generated-document.docx")}
-          onChange={(e) => set("outputFileName", e.target.value)}
+          onChange={({ value }) => set("outputFileName", value)}
+          fieldInstanceId={`${nodeId}-document-output-filename`}
+          rows={3}
           placeholder="generated-document.docx"
+          expressionDialogTitle="File name expression"
+          expressionDialogDescription={
+            <>
+              Build the output filename with literals and tags — type {"{{"} to pick or use the list.{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{prev.*}}"}</code>, workflow{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{global.*}}"}</code>, and{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{now.*}}"}</code> resolve at
+              runtime. When the result has no{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">.docx</code> suffix, one is
+              appended.
+            </>
+          }
         />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Opens the expression editor via the trailing <span className="font-medium text-foreground">fx</span> button for a
+          full tag palette; inline, type {"{{"} for autocomplete.
+        </p>
       </div>
+
+      {!canSetFromInput ? (
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Add at least one field on the Input tab before you can{" "}
+          <span className="font-medium text-foreground">Set from input schema</span> here.
+        </p>
+      ) : null}
 
       <InputSchemaBuilder
         fields={documentSchemaFields}
@@ -1620,7 +1732,8 @@ function DocumentExecutionConfig({
         usageContext="prompt"
         panelTitle="Template schema"
         upstreamPromptTags={upstreamPromptTags}
-        promptImport={{ flavourId: "document_template" }}
+        confirmableImports={documentTemplateConfirmables}
+        promptImport={WORKFLOW_DOCUMENT_TEMPLATE_PROMPT_IMPORT}
       />
     </div>
   )
@@ -1657,29 +1770,84 @@ function DocumentOutputConfig({
       },
       {
         id: "exe.outputFileName",
-        label: "Output filename",
+        label: "File name",
         description: "Filename used for the generated document.",
+      },
+      {
+        id: "exe.outputBucket",
+        label: "Output bucket",
+        description: "Storage bucket holding the uploaded .docx.",
+      },
+      {
+        id: "exe.templateFileId",
+        label: "Template id",
+        description: "Registered template row used for this generation.",
+      },
+      {
+        id: "exe.templateName",
+        label: "Template name",
+        description: "Human-readable template name from the registry.",
       },
     ],
     [],
   )
 
+  /** Primary header action — hydrates output rows from post-generation `exe` fields (prompt import stays in dropdown). */
+  const documentOutputExecutionConfirmables = React.useMemo(
+    () => [
+      {
+        id: "execution_outputs",
+        label: "Import from execution",
+        TriggerIcon: ArrowDownFromLine,
+        alertTitle: "Import outputs from document execution?",
+        alertDescription: (
+          <span className="text-pretty leading-relaxed">
+            This adds or refreshes outbound rows keyed to runtime execution: file name, download URL, storage path,
+            bucket, and template metadata. Existing mapping cells with text are left as-is; clear a cell first if you
+            want it replaced.
+          </span>
+        ),
+        confirmLabel: "Import fields",
+        onConfirm: () => {
+          const next = mergeGenerateDocumentOutputFromExecutionFields({
+            existingOutputFields: outputSchemaFields,
+          })
+          set("outputSchema", next)
+        },
+      },
+    ],
+    [outputSchemaFields, set],
+  )
+
   return (
     <div className="space-y-6">
+      {/* Execution → downstream keys: default new steps ship file name + URL; import fills the full `exe` surface */}
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        New steps default to <span className="font-medium text-foreground">file name</span> and{" "}
+        <span className="font-medium text-foreground">document URL</span> from execution. Use{" "}
+        <span className="font-medium text-foreground">Import from execution</span> on the Output schema header to add
+        storage path, bucket, and template fields, or <span className="font-medium text-foreground">Import from prompt</span>{" "}
+        for AI-assisted rows.
+      </p>
+
       <InputSchemaBuilder
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}
         usageContext="output"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={documentExecutionPromptTags}
+        confirmableImports={documentOutputExecutionConfirmables}
+        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
       />
 
+      {/* Globals — same `exe.*` palette plus workflow-wide `global.*` */}
       <InputSchemaBuilder
         fields={globalsSchemaFields}
         onChange={({ fields }) => set("globalsSchema", fields)}
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={[...documentExecutionPromptTags, ...workflowGlobalPromptTags]}
+        promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
   )

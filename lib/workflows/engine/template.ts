@@ -3,6 +3,7 @@
  * Used by server-side step executors and the runner execution envelope.
  */
 
+import { readRunnerGatewayExecutionContextFromStepInput } from "@/lib/ai-gateway/runner-gateway-tracking"
 import type { NodeInputField } from "@/lib/workflows/engine/input-schema"
 import { readGlobalsFromExecutionStepInput } from "@/lib/workflows/engine/runner"
 
@@ -18,6 +19,85 @@ export function getByPath(obj: unknown, path: string): unknown {
   return cur
 }
 
+/** Pads an integer used in clocks to two digits (`0`–`99`). */
+function padTwoDigits(n: number): string {
+  return String(n).padStart(2, "0")
+}
+
+/**
+ * Builds the UTC-facing `now` map used while resolving workflow tag expressions.
+ *
+ * Month names follow the `en-AU` locale. `day` is the day-of-month in UTC (`1`–`31`).
+ * `time_24` uses `HH:mm:ss`; `time_12` uses `h:mm:ss am/pm`.
+ *
+ * Weekday numbering follows ISO 8601 in UTC (`1` = Monday through `7` = Sunday).
+ */
+export function buildUtcNowPromptFields({ now }: { now: Date }) {
+  const year = now.getUTCFullYear()
+  const monthIndex = now.getUTCMonth()
+  const day = now.getUTCDate()
+  const monthNumber = monthIndex + 1
+
+  const monthFull = new Intl.DateTimeFormat("en-AU", {
+    month: "long",
+    timeZone: "UTC",
+  }).format(now)
+
+  const monthShort = new Intl.DateTimeFormat("en-AU", {
+    month: "short",
+    timeZone: "UTC",
+  }).format(now)
+
+  const hour24 = now.getUTCHours()
+  const minutes = now.getUTCMinutes()
+  const seconds = now.getUTCSeconds()
+
+  const time24 = `${padTwoDigits(hour24)}:${padTwoDigits(minutes)}:${padTwoDigits(seconds)}`
+
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12
+  const dayHalf = hour24 < 12 ? "am" : "pm"
+  const time12 = `${hour12}:${padTwoDigits(minutes)}:${padTwoDigits(seconds)} ${dayHalf}`
+
+  const utcMidnightOrdinal = Date.UTC(year, monthIndex, day)
+  const utcJan1SameYear = Date.UTC(year, 0, 1)
+  const dayOfYear =
+    Math.floor((utcMidnightOrdinal - utcJan1SameYear) / 86_400_000) + 1
+
+  const weekdayJs = now.getUTCDay()
+  /** ISO 8601 weekday in UTC (`1` = Monday … `7` = Sunday). */
+  const weekdayNumber = weekdayJs === 0 ? 7 : weekdayJs
+
+  const weekdayFull = new Intl.DateTimeFormat("en-AU", {
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(now)
+
+  const weekdayShort = new Intl.DateTimeFormat("en-AU", {
+    weekday: "short",
+    timeZone: "UTC",
+  }).format(now)
+
+  const slugTimestamp = `${year}-${padTwoDigits(monthNumber)}-${padTwoDigits(day)}_${padTwoDigits(hour24)}-${padTwoDigits(minutes)}-${padTwoDigits(seconds)}`
+
+  return {
+    iso: now.toISOString(),
+    unix_ms: now.getTime(),
+    date: now.toISOString().slice(0, 10),
+    year,
+    day,
+    month: monthNumber,
+    month_full: monthFull,
+    month_short: monthShort,
+    time_24: time24,
+    time_12: time12,
+    day_of_year: dayOfYear,
+    weekday_number: weekdayNumber,
+    weekday_full: weekdayFull,
+    weekday_short: weekdayShort,
+    slug_timestamp: slugTimestamp,
+  }
+}
+
 /** Stringifies a resolved value to something safe to interpolate into a prompt. */
 export function stringify(value: unknown): string {
   if (value === null || value === undefined) return ""
@@ -30,6 +110,16 @@ export function stringify(value: unknown): string {
   }
 }
 
+export interface BuildResolutionContextParams {
+  /** Runner execution envelope (trigger payload, predecessor, globals, gateway context). */
+  stepInput: unknown
+  /**
+   * React Flow node id for the step currently executing (`{{step.id}}`).
+   * Omit or pass an empty string when resolving without graph context (for example previews).
+   */
+  stepId?: string
+}
+
 /**
  * Builds the template resolution context from the step input envelope.
  *
@@ -38,9 +128,13 @@ export function stringify(value: unknown): string {
  *  - `prev.*`            — predecessor step's evaluated output
  *  - `input.*`           — alias for trigger_inputs (entry-node convention)
  *  - `global.*`          — accumulated workflow globals from prior steps (`{{global.key}}`)
- *  - `now.*`             — current UTC time helpers
+ *  - `run.*`, `workflow.*`, `step.*`, `user.*` — ids and signed-in author fields from the gateway envelope when present
+ *  - `now.*`             — current UTC helpers (see {@link buildUtcNowPromptFields})
  */
-export function buildResolutionContext(stepInput: unknown): Record<string, unknown> {
+export function buildResolutionContext({
+  stepInput,
+  stepId = "",
+}: BuildResolutionContextParams): Record<string, unknown> {
   const envelope =
     stepInput && typeof stepInput === "object" ? (stepInput as Record<string, unknown>) : {}
 
@@ -61,7 +155,16 @@ export function buildResolutionContext(stepInput: unknown): Record<string, unkno
 
   const globalMap = readGlobalsFromExecutionStepInput({ stepInput })
 
-  const now = new Date()
+  const nowUtc = buildUtcNowPromptFields({ now: new Date() })
+
+  const gateway = readRunnerGatewayExecutionContextFromStepInput({ stepInput })
+  const run = { id: gateway?.workflowRunId ?? "" }
+  const workflow = { id: gateway?.workflowId ?? "", name: gateway?.workflowName ?? "" }
+  const step = { id: stepId }
+  const user = {
+    name: gateway?.userDisplayName ?? "",
+    email: gateway?.userEmail ?? "",
+  }
 
   return {
     trigger_inputs: triggerInputs,
@@ -70,11 +173,11 @@ export function buildResolutionContext(stepInput: unknown): Record<string, unkno
     // `prev.*` resolves against the predecessor's evaluated output
     prev: predecessorOutput,
     global: globalMap,
-    now: {
-      iso: now.toISOString(),
-      unix_ms: now.getTime(),
-      date: now.toISOString().slice(0, 10),
-    },
+    run,
+    workflow,
+    step,
+    user,
+    now: nowUtc,
   }
 }
 

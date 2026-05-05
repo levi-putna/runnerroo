@@ -48,7 +48,7 @@ export function buildEndStepPublicOutput({
 }): Record<string, unknown> {
   const data = node.data as Record<string, unknown> | undefined
   const fields = readInputSchemaFromNodeData({ value: data?.outputSchema })
-  const context = buildResolutionContext(stepInput)
+  const context = buildResolutionContext({ stepInput, stepId: node.id })
   const out: Record<string, unknown> = {}
 
   for (const field of fields) {

@@ -247,7 +247,7 @@ export function WorkflowInvokeToolUI({
       <AssistantToolCard title={defaultTitle} icon={Workflow} variant="loading">
         {/* Streaming parameters */}
         <div className="space-y-2 text-xs">
-          <Skeleton className="h-3 w-full max-w-[280px]" />
+          <Skeleton className="h-3 w-full" />
           <Skeleton className="h-16 w-full" />
         </div>
       </AssistantToolCard>

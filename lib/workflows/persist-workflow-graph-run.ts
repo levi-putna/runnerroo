@@ -18,7 +18,14 @@ import { createWorkflowStepExecutor } from "@/lib/workflows/engine/step-executor
 import type { RunnerGatewayExecutionContext } from "@/lib/ai-gateway/runner-gateway-tracking"
 import type { Json } from "@/types/database"
 
+/** Display name / email captured at run start for `{{user.name}}` and `{{user.email}}`. */
+export type RunnerWorkflowIdentity = {
+  displayName?: string
+  email?: string | null
+}
+
 export type PersistWorkflowGraphRunWorkflowRow = {
+  name?: string | null
   trigger_type: string
   run_count: number | null
   nodes: unknown
@@ -33,6 +40,8 @@ export interface PersistWorkflowGraphRunParams {
   workflow: PersistWorkflowGraphRunWorkflowRow
   /** Attribution forwarded after the run row id is allocated (see {@link RunnerGatewayExecutionContext}). */
   gatewayUserAndWorkflow: Pick<RunnerGatewayExecutionContext, "supabaseUserId" | "workflowId">
+  /** Signed-in runner display name / email surfaced as `{{user.*}}` templates (optional). */
+  runnerIdentity?: RunnerWorkflowIdentity
   /** Fires immediately after the `workflow_runs` insert (SSE routes emit the run envelope here). */
   onRunCreated?: ({ runId }: { runId: string }) => void
   /** Invoked for each streamed graph update (running → terminal merge). */
@@ -57,6 +66,7 @@ export async function persistWorkflowGraphRun({
   inputs,
   workflow,
   gatewayUserAndWorkflow,
+  runnerIdentity,
   onRunCreated,
   onNodeResult,
 }: PersistWorkflowGraphRunParams): Promise<PersistWorkflowGraphRunResult> {
@@ -92,6 +102,15 @@ export async function persistWorkflowGraphRun({
     supabaseUserId: gatewayUserAndWorkflow.supabaseUserId,
     workflowId: gatewayUserAndWorkflow.workflowId,
     workflowRunId: runRowId,
+    ...(typeof workflow.name === "string" && workflow.name.trim() !== ""
+      ? { workflowName: workflow.name.trim() }
+      : {}),
+    ...(runnerIdentity?.displayName != null && String(runnerIdentity.displayName).trim() !== ""
+      ? { userDisplayName: String(runnerIdentity.displayName).trim() }
+      : {}),
+    ...(runnerIdentity?.email != null && String(runnerIdentity.email).trim() !== ""
+      ? { userEmail: String(runnerIdentity.email).trim() }
+      : {}),
   }
 
   try {

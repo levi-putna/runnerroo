@@ -29,6 +29,29 @@ export const WORKFLOW_STEP_INPUT_PROMPT_IMPORT = {
   flavourId: "workflow_step_input",
 } as const satisfies { flavourId: WorkflowInputSchemaFromPromptFlavourId }
 
+/** Docxtemplater template field list — uses the document-specific model instructions. */
+export const WORKFLOW_DOCUMENT_TEMPLATE_PROMPT_IMPORT = {
+  flavourId: "document_template",
+} as const satisfies { flavourId: WorkflowInputSchemaFromPromptFlavourId }
+
+/** Outbound `outputSchema` rows — same {@link NodeInputField} model as inputs; copy orients the model toward downstream mappings. */
+export const WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT = {
+  flavourId: "workflow_step_input",
+  dialogTitle: "Import output fields from prompt",
+  dialogDescription:
+    "Describe each key this step should expose downstream (human labels, types, required flags, and any {{exe.*}} or {{prev.*}} mapping hints you want suggested). " +
+    "We will propose matching output schema rows.",
+} as const satisfies { flavourId: WorkflowInputSchemaFromPromptFlavourId; dialogTitle: string; dialogDescription: string }
+
+/** `globalsSchema` panels — keys become {{global.*}} for later steps. */
+export const WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT = {
+  flavourId: "workflow_step_input",
+  dialogTitle: "Import globals from prompt",
+  dialogDescription:
+    "Describe workflow-level global keys (readable names, optional descriptions, and suggested tag expressions where helpful). " +
+    "We will propose matching globals schema rows.",
+} as const satisfies { flavourId: WorkflowInputSchemaFromPromptFlavourId; dialogTitle: string; dialogDescription: string }
+
 /**
  * Parses an API-supplied flavour id into a typed key known to {@link WORKFLOW_INPUT_SCHEMA_FROM_PROMPT_FLAVOURS}.
  *

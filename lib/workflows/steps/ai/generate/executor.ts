@@ -40,7 +40,7 @@ export async function executeAiGenerateStep({
   const systemPromptTemplate =
     typeof data?.systemPrompt === "string" ? data.systemPrompt : undefined
 
-  const context = buildResolutionContext(stepInput)
+  const context = buildResolutionContext({ stepInput, stepId: node.id })
 
   const resolvedPrompt = resolveTemplate(promptTemplate, context)
   const resolvedSystem = systemPromptTemplate

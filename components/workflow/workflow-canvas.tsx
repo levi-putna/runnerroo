@@ -32,6 +32,7 @@ import {
   buildDefaultRandomNumberOutputSchemaFields,
   buildDefaultIterationInputSchemaFields,
   buildDefaultIterationOutputSchemaFields,
+  buildDefaultGenerateDocumentOutputSchemaFields,
 } from "@/lib/workflows/engine/input-schema"
 import { buildDefaultExtractFieldRows } from "@/lib/workflows/steps/ai/extract/defaults"
 import { Plus } from "lucide-react"
@@ -219,6 +220,13 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
         inputSchema: buildDefaultIterationInputSchemaFields(),
         outputSchema: buildDefaultIterationOutputSchemaFields(),
         iterationIncrement: typeof nodeData.iterationIncrement === "string" ? nodeData.iterationIncrement : "1",
+      }
+    }
+
+    if (def.type === "document") {
+      nodeData = {
+        ...nodeData,
+        outputSchema: buildDefaultGenerateDocumentOutputSchemaFields(),
       }
     }
 

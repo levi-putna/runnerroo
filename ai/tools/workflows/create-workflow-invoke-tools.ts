@@ -35,6 +35,9 @@ function buildZodSchemaFromInputFields({ fields }: { fields: NodeInputField[] })
       case "boolean":
         base = z.boolean();
         break;
+      case "json":
+        base = z.unknown();
+        break;
       case "text":
       case "string":
       default:

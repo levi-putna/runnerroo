@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { AlignLeft, GripVertical, Hash, Plus, ToggleLeft, Trash2, Type } from "lucide-react"
+import { AlignLeft, Braces, GripVertical, Hash, Plus, ToggleLeft, Trash2, Type } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -34,6 +34,7 @@ const TYPE_META: Record<
   text: { label: "Text", Icon: AlignLeft },
   number: { label: "Number", Icon: Hash },
   boolean: { label: "Boolean", Icon: ToggleLeft },
+  json: { label: "JSON", Icon: Braces },
 }
 
 export interface InputSchemaEditorProps {
@@ -243,6 +244,9 @@ function schemaValuePlaceholderForType({ type }: { type: NodeInputFieldType }): 
   if (type === "boolean") return "true, false, {{input.some_flag}}, or {{prev.text}}"
   if (type === "number") return "0, {{now.unix_ms}}, or {{prev.age}}"
   if (type === "text") return "Fallback text or {{now.iso}}"
+  if (type === "json") {
+    return '{{prev.risks}} or paste JSON — e.g. [{"description":"…","likelihood":"High","impact":"High","mitigation":"…"}]'
+  }
   return "Fallback — literals or tags"
 }
 
@@ -250,6 +254,7 @@ function schemaValuePlaceholderForType({ type }: { type: NodeInputFieldType }): 
  * Row count for the tagged value editor; long-form `text` gets an extra line.
  */
 function schemaValueRowsForType({ type }: { type: NodeInputFieldType }): number {
+  if (type === "json") return 8
   return type === "text" ? 3 : 2
 }
 

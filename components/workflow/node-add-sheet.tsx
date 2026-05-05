@@ -39,6 +39,7 @@ const STEP_GROUP_ORDER: WorkflowStepGroupId[] = [
   "logic",
   "ai",
   "code",
+  "documents",
   "actions",
   "termination",
 ]

@@ -5,9 +5,24 @@ import { AnimatePresence, motion } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  Activity, ArrowLeft, BrainIcon, ChevronRight, Clock, Command, GitBranch,
-  History, MessageSquareIcon, Search, Settings, Webhook, Workflow, Zap,
-  BarChart3, Book, HelpCircle
+  Activity,
+  ArrowLeft,
+  BarChart3,
+  Book,
+  BrainIcon,
+  ChevronRight,
+  Clock,
+  Command,
+  Files,
+  GitBranch,
+  HelpCircle,
+  History,
+  MessageSquareIcon,
+  Search,
+  Settings,
+  Webhook,
+  Workflow,
+  Zap,
 } from "lucide-react"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
@@ -74,6 +89,12 @@ const navItems: NavItem[] = [
     icon: <Activity className="size-4" />,
   },
   {
+    id: "artifacts",
+    title: "Artefacts",
+    url: "/app/artifacts",
+    icon: <Files className="size-4" />,
+  },
+  {
     id: "triggers",
     title: "Triggers",
     icon: <Zap className="size-4" />,
@@ -110,7 +131,7 @@ const navItems: NavItem[] = [
 const ASSISTANT_SECTION_NAV_IDS = new Set(["assistant", "history"])
 
 /** Nav item ids grouped under the Workflow heading. */
-const WORKFLOW_SECTION_NAV_IDS = new Set(["workflows", "runs"])
+const WORKFLOW_SECTION_NAV_IDS = new Set(["workflows", "runs", "artifacts"])
 
 /** All ids rendered in structured Assistant / Workflow blocks (excluded from core nav). */
 const SIDEBAR_STRUCTURED_NAV_IDS = new Set<string>([

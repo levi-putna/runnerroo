@@ -14,6 +14,11 @@ import {
   serialiseInputSchemaJson,
 } from "@/lib/workflows/engine/input-schema"
 import { InputSchemaEditor } from "@/components/workflow/input-schema-editor"
+import {
+  SchemaFromPromptDialog,
+  SchemaFromPromptImportTrigger,
+} from "@/components/workflow/schema-from-prompt-dialog"
+import type { WorkflowInputSchemaFromPromptFlavourId } from "@/lib/workflows/input-schema-from-prompt-flavours"
 
 export interface InputSchemaBuilderProps {
   fields: NodeInputField[]
@@ -25,6 +30,15 @@ export interface InputSchemaBuilderProps {
   upstreamPromptTags?: PromptTagDefinition[]
   /** Execution-level tags (`{{exe.*}}`) and similar merged after upstream tags in mapping controls. */
   contextualPromptTags?: PromptTagDefinition[]
+  /**
+   * When set, shows an “Import from prompt” control that calls the shared schema agent.
+   * Add flavours in `WORKFLOW_INPUT_SCHEMA_FROM_PROMPT_FLAVOURS` (see `lib/workflows/input-schema-from-prompt-flavours.ts`) for future schema sinks.
+   */
+  promptImport?: {
+    flavourId: WorkflowInputSchemaFromPromptFlavourId
+    dialogTitle?: string
+    dialogDescription?: string
+  }
 }
 
 /**
@@ -38,10 +52,14 @@ export function InputSchemaBuilder({
   panelTitle,
   upstreamPromptTags = [],
   contextualPromptTags = [],
+  promptImport,
 }: InputSchemaBuilderProps) {
   const [editorTab, setEditorTab] = React.useState<"visual" | "json">("visual")
   const [jsonDraft, setJsonDraft] = React.useState("")
   const [jsonError, setJsonError] = React.useState<string | null>(null)
+  const [promptImportOpen, setPromptImportOpen] = React.useState(false)
+  /** Bumps whenever the prompt import modal opens so the dialog remounts with a fresh form state. */
+  const [promptImportSession, setPromptImportSession] = React.useState(0)
 
   const resolvedPanelTitle =
     panelTitle ??
@@ -113,6 +131,16 @@ export function InputSchemaBuilder({
           <p className="text-sm font-semibold leading-none tracking-tight text-foreground">{resolvedPanelTitle}</p>
           <p className="text-xs text-muted-foreground leading-relaxed">{shellSubtitle}</p>
         </div>
+        {/* Optional AI import — registry-driven flavours keep this reusable across schema panels */}
+        {promptImport ? (
+          <SchemaFromPromptImportTrigger
+            compact
+            onOpen={() => {
+              setPromptImportSession((session) => session + 1)
+              setPromptImportOpen(true)
+            }}
+          />
+        ) : null}
       </div>
 
       <div className="space-y-0 px-4 pb-4 pt-3">
@@ -169,7 +197,7 @@ export function InputSchemaBuilder({
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">key</code>,{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">label</code>,{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">type</code>{" "}
-                (string, text, number, boolean),{" "}
+                (string, text, number, boolean, json),{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">required</code>,{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">description</code>,{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">value</code>{" "}
@@ -205,6 +233,19 @@ export function InputSchemaBuilder({
           </TabsContent>
         </Tabs>
       </div>
+
+      {promptImport ? (
+        <SchemaFromPromptDialog
+          key={promptImportSession}
+          open={promptImportOpen}
+          onOpenChange={setPromptImportOpen}
+          flavourId={promptImport.flavourId}
+          existingFields={fields}
+          title={promptImport.dialogTitle}
+          description={promptImport.dialogDescription}
+          onApply={({ fields: next }) => onChange({ fields: next })}
+        />
+      ) : null}
     </div>
   )
 }

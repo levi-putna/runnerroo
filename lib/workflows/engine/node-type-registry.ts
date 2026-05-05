@@ -19,6 +19,7 @@ import {
   Wrench,
   Dice3,
   IterationCw,
+  FileText,
 } from "lucide-react"
 
 /** React Flow node `type` values used on the workflow canvas. */
@@ -28,6 +29,7 @@ export type WorkflowRfNodeType =
   | "code"
   | "random"
   | "iteration"
+  | "document"
   | "ai"
   | "decision"
   | "switch"
@@ -52,6 +54,7 @@ export type WorkflowStepGroupId =
   | "logic"
   | "ai"
   | "code"
+  | "documents"
   | "actions"
   | "termination"
 
@@ -79,6 +82,7 @@ export const WORKFLOW_STEP_GROUP_META: Record<
   logic: { title: "Logic", Icon: Workflow },
   ai: { title: "AI", Icon: Sparkles },
   code: { title: "Code", Icon: Code2 },
+  documents: { title: "Documents", Icon: FileText },
   actions: { title: "Actions", Icon: Wrench },
   termination: { title: "Termination", Icon: CircleStop },
 }
@@ -154,6 +158,12 @@ export const WORKFLOW_NODE_CORE_META: Record<
     accentBg: "bg-lime-600",
     accentHex: "#65a30d",
     typeLabel: "Iteration",
+  },
+  document: {
+    Icon: FileText,
+    accentBg: "bg-indigo-600",
+    accentHex: "#4f46e5",
+    typeLabel: "Generate document",
   },
   decision: {
     Icon: GitBranch,
@@ -337,6 +347,8 @@ export function getWorkflowSheetTypeLabel({ type }: GetWorkflowSheetTypeLabelPar
       return WORKFLOW_NODE_CORE_META.random.typeLabel
     case "iteration":
       return WORKFLOW_NODE_CORE_META.iteration.typeLabel
+    case "document":
+      return WORKFLOW_NODE_CORE_META.document.typeLabel
     case "decision":
       return WORKFLOW_NODE_CORE_META.decision.typeLabel
     case "switch":
@@ -423,6 +435,8 @@ export function getWorkflowNodeCategoryLabel({ type }: GetWorkflowNodeCategoryLa
     case "random":
     case "iteration":
       return WORKFLOW_STEP_GROUP_META.code.title
+    case "document":
+      return WORKFLOW_STEP_GROUP_META.documents.title
     case "action":
       return WORKFLOW_STEP_GROUP_META.actions.title
     case "end":

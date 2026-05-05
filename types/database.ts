@@ -50,6 +50,55 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["workflow_runs"]["Row"], "id" | "started_at">
         Update: Partial<Database["public"]["Tables"]["workflow_runs"]["Insert"]>
       }
+      user_files: {
+        Row: {
+          id: string
+          created_at: string
+          user_id: string
+          bucket: string
+          path: string
+          name: string
+          mime_type: string | null
+          size_bytes: number | null
+          metadata: Json
+        }
+        Insert: {
+          user_id: string
+          bucket: string
+          path: string
+          name: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          metadata?: Json
+        }
+        Update: Partial<Database["public"]["Tables"]["user_files"]["Insert"]>
+      }
+      workflow_document_templates: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          user_id: string
+          workflow_id: string | null
+          name: string
+          bucket: string
+          path: string
+          mime_type: string | null
+          size_bytes: number | null
+          metadata: Json
+        }
+        Insert: {
+          user_id: string
+          workflow_id?: string | null
+          name: string
+          bucket?: string
+          path: string
+          mime_type?: string | null
+          size_bytes?: number | null
+          metadata?: Json
+        }
+        Update: Partial<Database["public"]["Tables"]["workflow_document_templates"]["Insert"]>
+      }
     }
   }
 }

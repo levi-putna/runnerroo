@@ -18,6 +18,7 @@ import { executeCodeStep } from "@/lib/workflows/steps/code/code/executor"
 import { executeIterationStep } from "@/lib/workflows/steps/code/iteration/executor"
 import { executeRandomNumberStep } from "@/lib/workflows/steps/code/random/executor"
 import { buildStubOkStepOutput } from "@/lib/workflows/engine/build-stub-step-output"
+import { executeGenerateDocumentStep } from "@/lib/workflows/steps/documents/generate-document/executor"
 import { executeDecisionStep } from "@/lib/workflows/steps/logic/decision/executor"
 import { executeSplitStep } from "@/lib/workflows/steps/logic/split/executor"
 import { executeSwitchStep } from "@/lib/workflows/steps/logic/switch/executor"
@@ -74,6 +75,10 @@ export async function dispatchWorkflowStep({
 
   if (t === "iteration") {
     return executeIterationStep({ node, stepInput })
+  }
+
+  if (t === "document") {
+    return executeGenerateDocumentStep({ node, stepInput })
   }
 
   if (t === "decision") {

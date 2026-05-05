@@ -12,6 +12,7 @@ import { aiTransformDefinition } from "@/lib/workflows/steps/ai/transform/defini
 import { codeRunDefinition } from "@/lib/workflows/steps/code/code/definition"
 import { iterationDefinition } from "@/lib/workflows/steps/code/iteration/definition"
 import { randomNumberDefinition } from "@/lib/workflows/steps/code/random/definition"
+import { generateDocumentDefinition } from "@/lib/workflows/steps/documents/generate-document/definition"
 import { decisionDefinition } from "@/lib/workflows/steps/logic/decision/definition"
 import { splitDefinition } from "@/lib/workflows/steps/logic/split/definition"
 import { switchDefinition } from "@/lib/workflows/steps/logic/switch/definition"
@@ -38,6 +39,7 @@ export const STEP_CATALOGUE: StepDefinition[] = [
   codeRunDefinition,
   randomNumberDefinition,
   iterationDefinition,
+  generateDocumentDefinition,
   actionDefinition,
   endDefinition,
 ]

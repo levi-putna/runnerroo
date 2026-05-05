@@ -4,8 +4,8 @@
  * how to reference values in prompts or code via `{{input.key}}`.
  */
 
-/** Supported primitive types for a declared input field. */
-export type NodeInputFieldType = "string" | "number" | "boolean" | "text"
+/** Supported primitive types for a declared input field (`json`: parsed JSON arrays/objects — e.g. docxtemplater loops). */
+export type NodeInputFieldType = "string" | "number" | "boolean" | "text" | "json"
 
 /** One field in a step's input schema. */
 export interface NodeInputField {
@@ -20,6 +20,7 @@ export interface NodeInputField {
   description?: string
   /**
    * Literal or tag expression (`{{now.iso}}`, `{{input.other_key}}`, `{{prev.text}}`, booleans as `true`/`false` strings).
+   * For `type: "json"`, use a JSON array/object literal or a tag such as `{{prev.items}}` that resolves to JSON for docxtemplater loops.
    * Serialised as JSON `value`; legacy `defaultValue` is still read when migrating.
    */
   value?: string
@@ -46,7 +47,7 @@ export interface CoerceNodeInputFieldParams {
   raw: unknown
 }
 
-const NODE_INPUT_FIELD_TYPES: NodeInputFieldType[] = ["string", "number", "boolean", "text"]
+const NODE_INPUT_FIELD_TYPES: NodeInputFieldType[] = ["string", "number", "boolean", "text", "json"]
 
 /**
  * Merges persisted value slots: prefers legacy `defaultValue`, then canonical `value` (covers older rows that stored mapping-only under `value`).
@@ -85,13 +86,20 @@ export interface NormaliseDefaultValueFromRawParams {
 }
 
 /**
- * Accepts string, number, or boolean JSON values and stores a normalised string for the editor model.
+ * Accepts string, number, boolean, or structured JSON-able values for the canonical `value` slot.
  */
 export function normaliseDefaultValueFromRaw({ raw }: NormaliseDefaultValueFromRawParams): string | undefined {
   if (raw === undefined || raw === null) return undefined
   if (typeof raw === "boolean") return raw ? "true" : "false"
   if (typeof raw === "number" && Number.isFinite(raw)) return String(raw)
   if (typeof raw === "string") return raw.trim() === "" ? undefined : raw
+  if (typeof raw === "object" && raw !== null) {
+    try {
+      return JSON.stringify(raw)
+    } catch {
+      return undefined
+    }
+  }
   return undefined
 }
 
@@ -326,6 +334,15 @@ export function buildDefaultIterationOutputSchemaFields(): NodeInputField[] {
   ]
 }
 
+/** Inline JSON payloads allowed when editing schema arrays/objects in JSON mode. */
+export type InputSchemaJsonInlineValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Record<string, unknown>
+  | unknown[]
+
 /** Shape accepted in JSON mode (ids are refreshed when missing). */
 export interface InputSchemaJsonItem {
   id?: string
@@ -334,9 +351,10 @@ export interface InputSchemaJsonItem {
   type?: NodeInputFieldType
   required?: boolean
   description?: string
-  value?: string | number | boolean
+  /** Plain string, number/boolean primitives, or inline JSON/array objects for `json`-typed rows. */
+  value?: InputSchemaJsonInlineValue
   /** @deprecated Read when migrating; canonical field is `value`. */
-  defaultValue?: string | number | boolean
+  defaultValue?: InputSchemaJsonInlineValue
 }
 
 export interface SerialiseInputSchemaJsonParams {
@@ -368,6 +386,12 @@ export function serialiseInputSchemaJson({
       } else if (f.type === "number") {
         const n = Number(dv)
         row.value = Number.isFinite(n) ? n : dv
+      } else if (f.type === "json") {
+        try {
+          row.value = JSON.parse(dv) as InputSchemaJsonInlineValue
+        } catch {
+          row.value = dv
+        }
       } else {
         row.value = dv
       }
@@ -460,4 +484,34 @@ export function parseInputSchemaJson({ text }: ParseInputSchemaJsonParams): Pars
     })
   }
   return { ok: true, fields: out }
+}
+
+export interface MergeIncomingInputFieldsAppendParams {
+  /** Current editor rows preserved in order. */
+  existing: NodeInputField[]
+  /** Newly generated rows; duplicates by key are skipped. */
+  incoming: NodeInputField[]
+}
+
+/**
+ * Appends generated fields after existing ones while skipping keys that already exist — keeps authored rows authoritative.
+ *
+ * @param params - Existing editor fields plus an incoming batch (usually from AI import).
+ */
+export function mergeIncomingInputFieldsAppend({
+  existing,
+  incoming,
+}: MergeIncomingInputFieldsAppendParams): { merged: NodeInputField[]; skippedDuplicateKeys: string[] } {
+  const keysSeen = new Set(existing.map((field) => field.key))
+  const skippedDuplicateKeys: string[] = []
+  const additions: NodeInputField[] = []
+  for (const row of incoming) {
+    if (keysSeen.has(row.key)) {
+      skippedDuplicateKeys.push(row.key)
+      continue
+    }
+    keysSeen.add(row.key)
+    additions.push(row)
+  }
+  return { merged: [...existing, ...additions], skippedDuplicateKeys }
 }

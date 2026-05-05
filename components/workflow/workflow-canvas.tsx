@@ -85,7 +85,7 @@ interface WorkflowCanvasProps {
 export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCanvasProps>(
   function WorkflowCanvas(
     {
-      workflowId: _workflowId,
+      workflowId,
       initialNodes: initialNodesProp,
       initialEdges: initialEdgesProp,
       onGraphChange,
@@ -94,8 +94,6 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
     },
     ref
   ) {
-    void _workflowId
-
     const seedNodes = initialNodesProp ?? initialNodes
     const seedEdges = initialEdgesProp ?? initialEdges
 
@@ -358,6 +356,7 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
       {/* Node detail sheet */}
       <NodeSheet
         node={selectedNode}
+        workflowId={workflowId}
         open={detailSheetOpen}
         onClose={() => setDetailSheetOpen(false)}
         onUpdate={handleUpdateNode}

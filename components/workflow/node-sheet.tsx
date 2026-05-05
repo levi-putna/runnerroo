@@ -39,6 +39,7 @@ import { DEFAULT_MODEL_ID } from "@/lib/ai-gateway/models"
 import { InputSchemaBuilder } from "@/components/workflow/input-schema-builder"
 import { SystemPromptField } from "@/components/workflow/system-prompt-field"
 import { readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema"
+import { WORKFLOW_STEP_INPUT_PROMPT_IMPORT } from "@/lib/workflows/input-schema-from-prompt-flavours"
 import {
   mergePromptTagDefinitions,
   generateTextExecutionPromptTags,
@@ -69,6 +70,7 @@ import { FunctionInput } from "@/components/workflow/function-input"
 import { WorkflowRunContext } from "@/lib/workflows/engine/run-context"
 import { RunStepDetailSheetBody } from "@/components/workflow/run-step-detail-sheet-body"
 import { resolveRunStepTimelineLabel } from "@/lib/workflows/engine/run-timeline"
+import { DocumentTemplateUploadField } from "@/components/workflow/document-template-upload-field"
 
 interface NodeSheetProps {
   node: Node | null
@@ -76,6 +78,8 @@ interface NodeSheetProps {
   onClose: () => void
   onUpdate: (nodeId: string, data: Record<string, unknown>) => void
   onDelete: (nodeId: string) => void
+  /** Owning workflow id — required for document template uploads (omit on legacy callers). */
+  workflowId?: string | null
   /** When set, enables wiring Generate text inputs to upstream step outputs. */
   graphNodes?: Node[]
   graphEdges?: Edge[]
@@ -166,11 +170,13 @@ function getNodeSheetTabVisibility({
     nodeType === "code" ||
     nodeType === "random" ||
     nodeType === "iteration" ||
+    nodeType === "document" ||
     nodeType === "decision" ||
     nodeType === "switch"
 
   // Step behaviour distinct from inbound payload shaping (instructions, runnable code, numeric increment, etc.).
-  const showExecution = nodeType === "ai" || nodeType === "code" || nodeType === "iteration"
+  const showExecution =
+    nodeType === "ai" || nodeType === "code" || nodeType === "iteration" || nodeType === "document"
 
   const invokeEntryShowsOutput = nodeType === "entry" && entryKind === "invoke"
 
@@ -190,6 +196,7 @@ function getNodeSheetTabVisibility({
     nodeType === "decision" ||
     nodeType === "switch" ||
     nodeType === "split" ||
+    nodeType === "document" ||
     invokeEntryShowsOutput ||
     showAiGenerateOutput ||
     showAiTransformOutput ||
@@ -212,6 +219,7 @@ export function NodeSheet({
   onClose,
   onUpdate,
   onDelete,
+  workflowId,
   graphNodes = [],
   graphEdges = [],
   liveRunId,
@@ -440,7 +448,8 @@ export function NodeSheet({
                     ) : null}
                     {sheetNode.type === "code" ||
                     sheetNode.type === "random" ||
-                    sheetNode.type === "iteration" ? (
+                    sheetNode.type === "iteration" ||
+                    sheetNode.type === "document" ? (
                       <CodeInputConfig data={localData} set={set} upstreamPromptTags={upstreamPromptTags} />
                     ) : null}
                     {sheetNode.type === "decision" ? (
@@ -471,6 +480,15 @@ export function NodeSheet({
                         nodeId={sheetNode.id}
                         upstreamPromptTags={upstreamPromptTags}
                         workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "document" ? (
+                      <DocumentExecutionConfig
+                        data={localData}
+                        set={set}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowId={workflowId}
+                        nodeId={sheetNode.id}
                       />
                     ) : null}
                   </TabsContent>
@@ -520,6 +538,14 @@ export function NodeSheet({
                     {sheetNode.type === "split" ? <SplitOutputConfig data={localData} set={set} /> : null}
                     {sheetNode.type === "random" || sheetNode.type === "iteration" ? (
                       <NumericComputationOutputConfig
+                        data={localData}
+                        set={set}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "document" ? (
+                      <DocumentOutputConfig
                         data={localData}
                         set={set}
                         upstreamPromptTags={upstreamPromptTags}
@@ -1152,6 +1178,7 @@ function EntryInputConfig({ data, set }: { data: Record<string, unknown>; set: (
         fields={inputSchemaFields}
         onChange={({ fields }) => set("inputSchema", fields)}
         usageContext="trigger"
+        promptImport={WORKFLOW_STEP_INPUT_PROMPT_IMPORT}
       />
     </div>
   )
@@ -1244,6 +1271,7 @@ function AiInputConfig({
         usageContext="prompt"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={workflowGlobalPromptTags}
+        promptImport={WORKFLOW_STEP_INPUT_PROMPT_IMPORT}
       />
     </div>
   )
@@ -1488,6 +1516,7 @@ function CodeInputConfig({
         onChange={({ fields }) => set("inputSchema", fields)}
         usageContext="code"
         upstreamPromptTags={upstreamPromptTags}
+        promptImport={WORKFLOW_STEP_INPUT_PROMPT_IMPORT}
       />
     </div>
   )
@@ -1532,6 +1561,126 @@ function CodeExecutionConfig({
         />
         <p className="text-xs text-muted-foreground">Runs in an isolated Vercel Sandbox</p>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Document step execution settings: template upload to the isolated templates bucket, output filename,
+ * and docxtemplater schema map.
+ */
+function DocumentExecutionConfig({
+  data,
+  set,
+  upstreamPromptTags,
+  workflowId,
+  nodeId,
+}: {
+  data: Record<string, unknown>
+  set: (k: string, v: unknown) => void
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowId?: string | null
+  nodeId: string
+}) {
+  const documentSchemaFields = readInputSchemaFromNodeData({ value: data.documentSchema })
+
+  return (
+    <div className="space-y-6">
+      {/* Template file — uploads to workflow-document-templates (not outputs / other artefacts) */}
+      <DocumentTemplateUploadField
+        workflowId={workflowId}
+        nodeId={nodeId}
+        templateFileId={String(data.templateFileId ?? "").trim()}
+        templateFileName={String(data.templateFileName ?? "").trim()}
+        onTemplateRegistered={({
+          templateFileId: nextTemplateId,
+          templateFileName: nextTemplateName,
+        }) => {
+          set("templateFileId", nextTemplateId)
+          set("templateFileName", nextTemplateName)
+        }}
+        onTemplateRemoved={() => {
+          set("templateFileId", "")
+          set("templateFileName", "")
+        }}
+      />
+
+      <div className="space-y-1.5">
+        <Label>Output filename</Label>
+        <Input
+          value={String(data.outputFileName ?? "generated-document.docx")}
+          onChange={(e) => set("outputFileName", e.target.value)}
+          placeholder="generated-document.docx"
+        />
+      </div>
+
+      <InputSchemaBuilder
+        fields={documentSchemaFields}
+        onChange={({ fields }) => set("documentSchema", fields)}
+        usageContext="prompt"
+        panelTitle="Template schema"
+        upstreamPromptTags={upstreamPromptTags}
+        promptImport={{ flavourId: "document_template" }}
+      />
+    </div>
+  )
+}
+
+/**
+ * Output mappings for document steps. `{{exe.documentUrl}}` and related execution fields are available.
+ */
+function DocumentOutputConfig({
+  data,
+  set,
+  upstreamPromptTags,
+  workflowGlobalPromptTags,
+}: {
+  data: Record<string, unknown>
+  set: (k: string, v: unknown) => void
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
+}) {
+  const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
+  const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
+
+  const documentExecutionPromptTags = React.useMemo(
+    () => [
+      {
+        id: "exe.documentUrl",
+        label: "Generated document URL",
+        description: "Signed URL for the generated document output.",
+      },
+      {
+        id: "exe.outputPath",
+        label: "Storage path",
+        description: "Storage object path of the generated file.",
+      },
+      {
+        id: "exe.outputFileName",
+        label: "Output filename",
+        description: "Filename used for the generated document.",
+      },
+    ],
+    [],
+  )
+
+  return (
+    <div className="space-y-6">
+      <InputSchemaBuilder
+        fields={outputSchemaFields}
+        onChange={({ fields }) => set("outputSchema", fields)}
+        usageContext="output"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={documentExecutionPromptTags}
+      />
+
+      <InputSchemaBuilder
+        fields={globalsSchemaFields}
+        onChange={({ fields }) => set("globalsSchema", fields)}
+        usageContext="globals"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={[...documentExecutionPromptTags, ...workflowGlobalPromptTags]}
+      />
     </div>
   )
 }
@@ -1594,6 +1743,7 @@ function SwitchInputConfig({
         onChange={({ fields }) => set("inputSchema", fields)}
         usageContext="code"
         upstreamPromptTags={upstreamPromptTags}
+        promptImport={WORKFLOW_STEP_INPUT_PROMPT_IMPORT}
       />
 
       <Separator />
@@ -1832,6 +1982,7 @@ function DecisionInputConfig({
         onChange={({ fields }) => set("inputSchema", fields)}
         usageContext="code"
         upstreamPromptTags={upstreamPromptTags}
+        promptImport={WORKFLOW_STEP_INPUT_PROMPT_IMPORT}
       />
 
       <Separator />

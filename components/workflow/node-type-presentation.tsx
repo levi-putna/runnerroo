@@ -16,6 +16,7 @@ export interface WorkflowNodeGlyphProps {
   className?: string
   entryType?: string | null
   aiSubtype?: string | null
+  documentSubtype?: string | null
 }
 
 const GLYPH_STROKE_WIDTH: Record<WorkflowGlyphStroke, number> = {
@@ -33,8 +34,9 @@ export function WorkflowNodeGlyph({
   className,
   entryType,
   aiSubtype,
+  documentSubtype,
 }: WorkflowNodeGlyphProps) {
-  const p = resolveWorkflowNodeTilePresentation({ type, entryType, aiSubtype })
+  const p = resolveWorkflowNodeTilePresentation({ type, entryType, aiSubtype, documentSubtype })
   const Icon = p.Icon
   const dim = WORKFLOW_GLYPH_SIZE_CLASSES[size]
 
@@ -57,6 +59,7 @@ export interface WorkflowNodeIconTileProps {
   glyphClassName?: string
   entryType?: string | null
   aiSubtype?: string | null
+  documentSubtype?: string | null
 }
 
 /**
@@ -70,8 +73,9 @@ export function WorkflowNodeIconTile({
   glyphClassName,
   entryType,
   aiSubtype,
+  documentSubtype,
 }: WorkflowNodeIconTileProps) {
-  const p = resolveWorkflowNodeTilePresentation({ type, entryType, aiSubtype })
+  const p = resolveWorkflowNodeTilePresentation({ type, entryType, aiSubtype, documentSubtype })
 
   return (
     <div
@@ -89,6 +93,7 @@ export function WorkflowNodeIconTile({
         className={glyphClassName}
         entryType={entryType}
         aiSubtype={aiSubtype}
+        documentSubtype={documentSubtype}
       />
     </div>
   )

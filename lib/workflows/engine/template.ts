@@ -4,7 +4,7 @@
  */
 
 import { readRunnerGatewayExecutionContextFromStepInput } from "@/lib/ai-gateway/runner-gateway-tracking"
-import type { NodeInputField } from "@/lib/workflows/engine/input-schema"
+import type { NodeInputField, NodeInputFieldType } from "@/lib/workflows/engine/input-schema"
 import { readGlobalsFromExecutionStepInput } from "@/lib/workflows/engine/runner"
 
 /** Flat dot-path accessor: `get(obj, "a.b.c")` → `obj?.a?.b?.c`. */
@@ -194,7 +194,70 @@ export function resolveTemplate(template: string, context: Record<string, unknow
 }
 
 /**
+ * Coerces a resolved template string to a runtime value matching the declared field type.
+ *
+ * Centralises the same logic used by the gate-expression evaluator and the document executor
+ * so that all step outputs and globals carry properly-typed primitives rather than raw strings.
+ * Falls back to the original string when coercion is not possible (e.g. non-finite number input).
+ */
+export function coerceFieldValue({
+  text,
+  type,
+}: {
+  text: string
+  type: NodeInputFieldType
+}): unknown {
+  const trimmed = text.trim()
+  switch (type) {
+    case "number": {
+      const n = Number(trimmed)
+      return Number.isFinite(n) ? n : trimmed
+    }
+    case "boolean": {
+      if (trimmed === "true") return true
+      if (trimmed === "false") return false
+      return trimmed
+    }
+    case "json": {
+      try {
+        return JSON.parse(trimmed) as unknown
+      } catch {
+        return trimmed
+      }
+    }
+    default:
+      // "string" | "text" — return the raw resolved string unchanged
+      return text
+  }
+}
+
+/**
+ * Resolves output schema fields against the given context and coerces each value to its
+ * declared type. Replaces the ad-hoc `resolveTemplate` loop in step executors so that
+ * numeric, boolean, and JSON outputs are stored with the correct runtime type rather than
+ * always as strings — allowing downstream condition checks like `prev.score > 90` to work
+ * correctly without relying solely on JavaScript's implicit type coercion.
+ */
+export function resolveOutputSchemaFields({
+  outputSchema,
+  context,
+}: {
+  outputSchema: NodeInputField[]
+  context: Record<string, unknown>
+}): Record<string, unknown> {
+  const resolvedOutputs: Record<string, unknown> = {}
+  for (const field of outputSchema) {
+    if (!field.value) continue
+    const text = resolveTemplate(field.value, context)
+    resolvedOutputs[field.key] = coerceFieldValue({ text, type: field.type })
+  }
+  return resolvedOutputs
+}
+
+/**
  * Resolves optional globals schema rows into a map for `stepOutput.globals`.
+ * Values are coerced to their declared type so `global.count` is a number when the
+ * field is typed as `number`, enabling reliable numeric comparisons in gate conditions.
  */
 export function resolveGlobalsSchema({
   globalsSchema,
@@ -206,7 +269,8 @@ export function resolveGlobalsSchema({
   const globals: Record<string, unknown> = {}
   for (const field of globalsSchema) {
     if (!field.value) continue
-    globals[field.key] = resolveTemplate(field.value, context)
+    const text = resolveTemplate(field.value, context)
+    globals[field.key] = coerceFieldValue({ text, type: field.type })
   }
   return globals
 }

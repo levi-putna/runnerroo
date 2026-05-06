@@ -11,6 +11,8 @@ export const randomNumberDefinition: StepDefinition = {
   defaultData: {
     label: "Random number",
     description: "Generate a random number from resolved lower and upper bounds",
+    randomMinExpression: "0",
+    randomMaxExpression: "100",
   },
   Icon: meta.Icon,
   accentBg: meta.accentBg,

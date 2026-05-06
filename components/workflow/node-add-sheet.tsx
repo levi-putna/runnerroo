@@ -37,6 +37,7 @@ interface NodeGroupDefinition {
 const STEP_GROUP_ORDER: WorkflowStepGroupId[] = [
   "triggers",
   "logic",
+  "human",
   "ai",
   "code",
   "documents",
@@ -111,6 +112,14 @@ function getPickerEntryType({ node }: { node: StepDefinition }): string | undefi
  */
 function getPickerAiSubtype({ node }: { node: StepDefinition }): string | undefined {
   if (node.type !== "ai") return undefined
+  return node.subtype
+}
+
+/**
+ * Resolves document subtype for picker tiles (undefined treats legacy catalogue rows as template mode).
+ */
+function getPickerDocumentSubtype({ node }: { node: StepDefinition }): string | undefined {
+  if (node.type !== "document") return undefined
   return node.subtype
 }
 
@@ -221,6 +230,7 @@ export function NodeAddSheet({ open, onClose, onAdd }: NodeAddSheetProps) {
                         frameClassName="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                         entryType={getPickerEntryType({ node })}
                         aiSubtype={getPickerAiSubtype({ node })}
+                        documentSubtype={getPickerDocumentSubtype({ node })}
                       />
                       {/* Label + single-line description (full text in tooltip) */}
                       <div className="flex-1 min-w-0">

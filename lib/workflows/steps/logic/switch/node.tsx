@@ -17,6 +17,8 @@ export interface SwitchBranch {
   id: string
   label?: string
   condition?: string
+  /** Visual gate-builder state synced with {@link SwitchBranch.condition} in the sheet; shape from `gate-rule`. */
+  gateGroup?: unknown
 }
 
 export interface SwitchNodeData {

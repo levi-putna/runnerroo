@@ -1,9 +1,12 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { displayRunDuration } from "@/lib/workflows/engine/run-formatting"
 import type { ParsedRunTimelineStep } from "@/lib/workflows/engine/run-timeline"
-import { shortRunIdForDisplay } from "@/lib/workflows/engine/run-timeline"
+import { buildRunTimelineDisplayLayout, shortRunIdForDisplay } from "@/lib/workflows/engine/run-timeline"
 import { RunStatusGlyph } from "@/components/workflow/run-status-glyph"
 import type { Database } from "@/types/database"
 
@@ -25,6 +28,7 @@ export interface RunExecutionOverviewProps {
 
 /**
  * Summary header plus a waterfall / Gantt-style step timeline inspired by Vercel workflow run observability.
+ * Optionally compresses long steps (over 60 seconds wall time by default) so shorter steps stay visible.
  */
 export function RunExecutionOverview({
   status,
@@ -36,9 +40,22 @@ export function RunExecutionOverview({
   selectedReactKey,
   onSelectStep,
 }: RunExecutionOverviewProps) {
+  const [compressLongSteps, setCompressLongSteps] = useState(true)
   const safeTotal = Math.max(1, timelineTotalMs)
+  const { rows: timelineRows, compressRegionsDisplay } = useMemo(
+    () =>
+      buildRunTimelineDisplayLayout({
+        timelineTotalMs,
+        steps,
+        compressLongSteps,
+      }),
+    [compressLongSteps, timelineTotalMs, steps]
+  )
   const runIdLine = (wdkRunId && wdkRunId.trim()) || shortRunIdForDisplay(runId)
-  const durationLabel = displayRunDuration(durationMs ?? (status === "running" ? null : safeTotal))
+  const durationLabel =
+    status === "waiting_approval"
+      ? "Paused for approval…"
+      : displayRunDuration(durationMs ?? (status === "running" ? null : safeTotal))
 
   return (
     <div className="rounded-xl border border-border/80 bg-card shadow-sm overflow-hidden">
@@ -63,9 +80,23 @@ export function RunExecutionOverview({
 
       {/* Waterfall timeline */}
       <div className="p-4 space-y-3">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Execution
-        </p>
+        {/* Toolbar — timeline truncation toggle */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Execution</p>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="timeline-compress-long-steps" className="cursor-pointer text-[11px] font-normal text-muted-foreground">
+              Compress long steps
+            </Label>
+            <Switch
+              id="timeline-compress-long-steps"
+              size="sm"
+              checked={compressLongSteps}
+              onCheckedChange={(checked) => {
+                setCompressLongSteps(checked)
+              }}
+            />
+          </div>
+        </div>
 
         <div className="relative rounded-lg border border-border/50 bg-muted/20 px-2 py-3">
           {/* Faint vertical time grid */}
@@ -82,34 +113,52 @@ export function RunExecutionOverview({
           </div>
 
           <div className="relative space-y-2">
-            {/* Parent workflow span */}
-            <div
-              className={cn(
-                "relative flex h-9 w-full items-center justify-between rounded-md border px-2.5 font-mono text-[11px] sm:text-xs",
-                "border-sky-400/55 bg-sky-500/10 text-sky-900 dark:border-sky-500/45 dark:bg-sky-500/15 dark:text-sky-100"
-              )}
-            >
-              <span className="truncate pr-2">workflow()</span>
-              <span className="shrink-0 tabular-nums text-sky-800/90 dark:text-sky-100/90">
-                {durationLabel}
-              </span>
+            {/* Parent workflow span — same display axis as steps; cuts align with truncated step interiors */}
+            <div className="relative h-9 w-full">
+              <div
+                className={cn(
+                  "absolute inset-0 flex items-center rounded-md border px-2.5 font-mono text-[11px] sm:text-xs",
+                  "border-sky-400/55 bg-sky-500/10 text-sky-900 dark:border-sky-500/45 dark:bg-sky-500/15 dark:text-sky-100"
+                )}
+                aria-hidden
+              />
+              {compressRegionsDisplay.map((region, regionIdx) => {
+                // Same fixed width as step-row cuts; centre on the compressed display interval (not full pctWidth).
+                const centrePct = region.pctLeft + region.pctWidth / 2
+                return (
+                  <div
+                    key={regionIdx}
+                    className="pointer-events-none absolute inset-y-0 z-[1] -translate-x-1/2"
+                    style={{
+                      left: `${centrePct}%`,
+                      width: TIMELINE_COMPRESSION_GAP_PX,
+                    }}
+                  >
+                    <TimelineZigzagCut
+                      borderStrokeClass={WORKFLOW_BAR_ZIGZAG_STROKE_CLASS}
+                      className="h-full min-h-0"
+                      omittedWallMs={region.omittedWallMs}
+                      stepDurationMs={safeTotal}
+                    />
+                  </div>
+                )
+              })}
+              <div className="relative z-[2] flex h-9 w-full min-w-0 items-center justify-between px-2.5 font-mono text-[11px] sm:text-xs text-sky-900 dark:text-sky-100">
+                <span className="truncate pr-2">workflow()</span>
+                <span className="shrink-0 tabular-nums text-sky-800/90 dark:text-sky-100/90">
+                  {durationLabel}
+                </span>
+              </div>
             </div>
 
-            {/* Per-step bars */}
+            {/* Per-step bars — horizontal % use a display time axis when compression is on. */}
             {steps.length === 0 ? (
               <p className="relative text-sm text-muted-foreground italic pl-1">
                 No steps were recorded for this run.
               </p>
             ) : (
-              steps.map((step) => {
-                const pctStartRaw = (step.startMs / safeTotal) * 100
-                const pctStart = Math.min(100, Math.max(0, pctStartRaw))
-                const pctWidthRaw =
-                  step.hasTimelineBar ? (step.durationMs / safeTotal) * 100 : 0
-                const pctWidthCap = Math.max(0, 100 - pctStart)
-                const pctWidth = step.hasTimelineBar
-                  ? Math.min(Math.max(pctWidthRaw, 0.45), pctWidthCap)
-                  : 0
+              timelineRows.map((row) => {
+                const { step, pctStart, pctWidth, compression } = row
 
                 return (
                   <div key={step.reactKey} className="relative h-8 w-full">
@@ -117,12 +166,19 @@ export function RunExecutionOverview({
                       <button
                         type="button"
                         aria-pressed={selectedReactKey === step.reactKey}
+                        aria-label={
+                          compression
+                            ? `${step.label}: ${displayRunDuration(step.durationMs)} total; middle of long step compressed on timeline (${displayRunDuration(compression.omittedWallMs)} omitted visually)`
+                            : undefined
+                        }
                         onClick={() => onSelectStep({ reactKey: step.reactKey })}
                         className={cn(
-                          "absolute top-1/2 h-7 max-w-[calc(100%-4px)] -translate-y-1/2 rounded-md border px-2 text-left font-mono text-[10px] leading-none sm:text-[11px]",
-                          "transition-[box-shadow,transform] hover:brightness-[1.02] active:scale-[0.99]",
-                          "flex min-w-0 flex-col justify-center gap-0.5 overflow-hidden",
-                          stepBarVisualClass(step.status),
+                          "absolute top-1/2 max-w-[calc(100%-4px)] -translate-y-1/2 font-mono text-[10px] leading-none sm:text-[11px]",
+                          "flex min-w-0 flex-row items-stretch overflow-hidden p-0 text-left",
+                          compression
+                            ? "h-7 border-0 bg-transparent shadow-none transition-[transform,box-shadow] active:scale-[0.99] hover:brightness-100"
+                            : "h-7 flex-col justify-center gap-0.5 rounded-md border px-2 transition-[box-shadow,transform] hover:brightness-[1.02] active:scale-[0.99]",
+                          !compression && stepBarVisualClass(step.status),
                           selectedReactKey === step.reactKey &&
                             "ring-2 ring-primary ring-offset-2 ring-offset-background"
                         )}
@@ -131,10 +187,47 @@ export function RunExecutionOverview({
                           width: `${pctWidth}%`,
                         }}
                       >
-                        <span className="truncate">{step.label}</span>
-                        <span className="tabular-nums opacity-90">
-                          {displayRunDuration(step.durationMs)}
-                        </span>
+                        {compression ? (
+                          <>
+                            {/* Start segment — label (step colour only on this side of the cut) */}
+                            <span
+                              className={cn(
+                                "flex min-h-0 min-w-0 flex-col justify-center gap-0.5 rounded-l-md rounded-r-none border border-r-0 px-2 py-0.5 pr-1.5",
+                                "transition-[filter] hover:brightness-[1.02]",
+                                stepBarVisualClass(step.status)
+                              )}
+                              style={{ flex: `${compression.leftFlex} 1 0%` }}
+                            >
+                              <span className="truncate">{step.label}</span>
+                            </span>
+                            {/* Middle — fixed-width track-coloured gap with zigzag “paper tear” (no step fill) */}
+                            <TimelineZigzagCut
+                              omittedWallMs={compression.omittedWallMs}
+                              status={step.status}
+                              stepDurationMs={step.durationMs}
+                            />
+                            {/* End segment — duration (step colour only on this side of the cut) */}
+                            <span
+                              className={cn(
+                                "flex min-w-0 flex-col justify-center rounded-l-none rounded-r-md border border-l-0 px-2 py-0.5 pl-1.5 text-right",
+                                "transition-[filter] hover:brightness-[1.02]",
+                                stepBarVisualClass(step.status)
+                              )}
+                              style={{ flex: `${compression.rightFlex} 1 0%` }}
+                            >
+                              <span className="tabular-nums opacity-90">
+                                {displayRunDuration(step.durationMs)}
+                              </span>
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="truncate">{step.label}</span>
+                            <span className="tabular-nums opacity-90">
+                              {displayRunDuration(step.durationMs)}
+                            </span>
+                          </>
+                        )}
                       </button>
                     ) : (
                       <button
@@ -162,10 +255,101 @@ export function RunExecutionOverview({
   )
 }
 
+/** Matches the workflow summary bar border tint so cuts read as part of the same rail. */
+const WORKFLOW_BAR_ZIGZAG_STROKE_CLASS = "stroke-sky-500/50"
+
+/** Fixed physical width so summary-row cuts match per-step tears (display % width would look huge). */
+const TIMELINE_COMPRESSION_GAP_PX = 28
+
+/**
+ * Track-coloured gap with edge-aligned zigzag strokes matching the step or workflow border.
+ */
+function TimelineZigzagCut({
+  omittedWallMs,
+  stepDurationMs,
+  status,
+  borderStrokeClass,
+  className,
+}: {
+  omittedWallMs: number
+  stepDurationMs: number
+  status?: ParsedRunTimelineStep["status"]
+  borderStrokeClass?: string
+  /** Merged onto the outer gap strip (e.g. `h-full` for the workflow summary row). */
+  className?: string
+}) {
+  const title = `Timeline shortened: ${displayRunDuration(omittedWallMs)} of wall time is omitted in this gap. Reference span: ${displayRunDuration(stepDurationMs)}.`
+
+  const w = TIMELINE_COMPRESSION_GAP_PX
+  const strokeClass =
+    borderStrokeClass ?? (status != null ? stepBarZigzagBorderStrokeClass(status) : WORKFLOW_BAR_ZIGZAG_STROKE_CLASS)
+
+  return (
+    <span
+      className={cn(
+        "relative flex min-h-7 shrink-0 items-center justify-center bg-muted/95",
+        "border-x border-dashed border-border/90 dark:border-border/95",
+        className
+      )}
+      style={{
+        width: w,
+        minWidth: w,
+        maxWidth: w,
+      }}
+      role="img"
+      title={title}
+      aria-label={`Timeline cut: ${displayRunDuration(omittedWallMs)} of wall time omitted in this gap.`}
+    >
+      {/* Left and right edges match x=0 / x=w so fill runs flush to the tear; stroke matches bar border tokens */}
+      <svg
+        aria-hidden
+        className="pointer-events-none absolute inset-0 size-full [stroke-linecap:butt] [stroke-linejoin:miter]"
+        preserveAspectRatio="none"
+        viewBox={`0 0 ${w} 100`}
+      >
+        <path
+          className={strokeClass}
+          d="M 0 0 L 3.25 10 L 0 20 L 3.25 30 L 0 40 L 3.25 50 L 0 60 L 3.25 70 L 0 80 L 3.25 90 L 0 100"
+          fill="none"
+          strokeWidth="1.35"
+          vectorEffect="nonScalingStroke"
+        />
+        <path
+          className={strokeClass}
+          d={`M ${w} 0 L ${w - 3.25} 10 L ${w} 20 L ${w - 3.25} 30 L ${w} 40 L ${w - 3.25} 50 L ${w} 60 L ${w - 3.25} 70 L ${w} 80 L ${w - 3.25} 90 L ${w} 100`}
+          fill="none"
+          strokeWidth="1.35"
+          vectorEffect="nonScalingStroke"
+        />
+      </svg>
+      {/* Centre cue — omitted time (decorative; label comes from aria-label on parent). */}
+      <span
+        aria-hidden
+        className="relative z-[1] select-none text-[10px] font-semibold leading-none tracking-wide text-foreground/45"
+      >
+        {"\u2026"}
+      </span>
+    </span>
+  )
+}
+
+/**
+ * Stroke utilities aligned with `stepBarVisualClass` border hues so the tear reads as part of the bar edge.
+ */
+function stepBarZigzagBorderStrokeClass(status: ParsedRunTimelineStep["status"]) {
+  if (status === "success") return "stroke-emerald-500/45"
+  if (status === "failed") return "stroke-rose-500/55"
+  if (status === "running") return "stroke-amber-500/50"
+  if (status === "awaiting_approval") return "stroke-violet-500/50"
+  if (status === "skipped") return "stroke-muted-foreground/35"
+  return "stroke-border/70"
+}
+
 function runStatusLabel(status: RunStatus) {
   if (status === "success") return "Completed"
   if (status === "failed") return "Failed"
   if (status === "cancelled") return "Cancelled"
+  if (status === "waiting_approval") return "Awaiting approval"
   return "Running"
 }
 
@@ -178,6 +362,9 @@ function stepBarVisualClass(status: ParsedRunTimelineStep["status"]) {
   }
   if (status === "running") {
     return "border-amber-500/50 bg-amber-500/12 text-amber-950 dark:text-amber-50"
+  }
+  if (status === "awaiting_approval") {
+    return "border-violet-500/50 bg-violet-500/12 text-violet-950 dark:text-violet-50"
   }
   if (status === "skipped") {
     return "border-muted-foreground/35 bg-muted/50 text-muted-foreground"

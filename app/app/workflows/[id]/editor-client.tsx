@@ -24,8 +24,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Play, Plus, Save, History, Square } from "lucide-react"
+import {
+  ArrowLeft,
+  Play,
+  Save,
+  History,
+  Square,
+  MoreHorizontal,
+  AlignVerticalJustifyStart,
+  ImageDown,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
+import { WorkflowApprovalDialog } from "@/components/workflow/workflow-approval-dialog"
 import {
   defaultWorkflowCanvasNodes,
   parseWorkflowEdges,
@@ -33,6 +43,7 @@ import {
   workflowGraphBaseline,
 } from "@/lib/workflows/engine/persist"
 import type { Database } from "@/types/database"
+import type { WorkflowApprovalListRow } from "@/lib/workflows/queries/approval-queries"
 import { ManualWorkflowRunDialog } from "@/components/workflow/run-dialog"
 import { readInputSchemaFromNodeData, type NodeInputField } from "@/lib/workflows/engine/input-schema"
 import { normaliseEntryKind } from "@/lib/workflows/engine/node-type-registry"
@@ -41,18 +52,58 @@ import type { NodeResult } from "@/lib/workflows/engine/types"
 import {
   WorkflowEditorActionsContext,
 } from "@/lib/workflows/engine/run-context"
+import { buildWorkflowImageDownloadFileName } from "@/lib/workflows/engine/download-workflow-flow-image"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 type WorkflowRow = Database["public"]["Tables"]["workflows"]["Row"]
+type WorkflowRunStatus = Database["public"]["Tables"]["workflow_runs"]["Row"]["status"]
+
+type WorkflowLifecycleStatus = "active" | "inactive" | "draft"
 
 interface WorkflowEditorClientProps {
   workflowId: string
   initialWorkflow: WorkflowRow | null
 }
 
-const statusConfig = {
+const statusConfig: Record<WorkflowLifecycleStatus, string> = {
   active: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
   draft: "bg-muted text-muted-foreground",
   inactive: "bg-muted text-muted-foreground",
+}
+
+/** Display order and copy for the toolbar lifecycle control. */
+const WORKFLOW_LIFECYCLE_OPTIONS: { value: WorkflowLifecycleStatus; label: string }[] = [
+  { value: "draft", label: "Draft" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+]
+
+/**
+ * Normalises persisted `node_results` into the editor run-state map keyed by node id.
+ */
+function mapNodeResultsByNodeId({ nodeResults }: { nodeResults: unknown }): Map<string, NodeResult> {
+  if (!Array.isArray(nodeResults)) return new Map()
+  const next = new Map<string, NodeResult>()
+  for (const item of nodeResults) {
+    if (!item || typeof item !== "object") continue
+    const row = item as NodeResult
+    if (typeof row.node_id !== "string" || row.node_id.trim() === "") continue
+    next.set(row.node_id, row)
+  }
+  return next
 }
 
 /**
@@ -64,10 +115,10 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
   const canvasRef = React.useRef<WorkflowCanvasHandle>(null)
 
   const initialName = initialWorkflow?.name ?? "Untitled workflow"
-  const initialStatus = (initialWorkflow?.status ?? "draft") as "active" | "inactive" | "draft"
+  const initialStatus = (initialWorkflow?.status ?? "draft") as WorkflowLifecycleStatus
 
   const [workflowName, setWorkflowName] = React.useState(initialName)
-  const [status] = React.useState<"active" | "inactive" | "draft">(initialStatus)
+  const [status, setStatus] = React.useState<WorkflowLifecycleStatus>(initialStatus)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isEditingName, setIsEditingName] = React.useState(false)
 
@@ -94,6 +145,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
 
   const [baselineName, setBaselineName] = React.useState(initialName.trim())
   const [baselineGraph, setBaselineGraph] = React.useState(graphStr)
+  const [baselineStatus, setBaselineStatus] = React.useState<WorkflowLifecycleStatus>(initialStatus)
 
   const [leaveDialogOpen, setLeaveDialogOpen] = React.useState(false)
   const [pendingHref, setPendingHref] = React.useState<string | null>(null)
@@ -114,9 +166,128 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
   const [runStateMap, setRunStateMap] = React.useState(() => new Map<string, NodeResult>())
   /** Persisted run row id from the latest streamed execution (for linking step I/O in the editor). */
   const [liveRunId, setLiveRunId] = React.useState<string | null>(null)
+  const [liveRunStatus, setLiveRunStatus] = React.useState<WorkflowRunStatus | null>(null)
+  const [approvalDialogOpen, setApprovalDialogOpen] = React.useState(false)
+  const [pendingApproval, setPendingApproval] = React.useState<WorkflowApprovalListRow | null>(null)
+  const [approvalDialogNodeId, setApprovalDialogNodeId] = React.useState<string | null>(null)
+  const [approvalFetchError, setApprovalFetchError] = React.useState<string | null>(null)
+  const [approvalFetching, setApprovalFetching] = React.useState(false)
+  const [approvalBusy, setApprovalBusy] = React.useState<{ id: string; action: "approved" | "declined" } | null>(null)
+
+  const [layoutBusy, setLayoutBusy] = React.useState(false)
+
+  const [imageExportBusy, setImageExportBusy] = React.useState(false)
+  const runHasAwaitingApproval = React.useMemo(
+    () => Array.from(runStateMap.values()).some((result) => result.status === "awaiting_approval"),
+    [runStateMap],
+  )
+  const canReviewInlineApproval = runHasAwaitingApproval && liveRunId !== null
+
+  React.useEffect(() => {
+    if (!liveRunId) return
+    if (
+      liveRunStatus !== null &&
+      liveRunStatus !== "running" &&
+      liveRunStatus !== "waiting_approval"
+    ) {
+      return
+    }
+
+    let cancelled = false
+
+    /**
+     * Polls persisted run state so post-approval background resume updates still appear in the editor.
+     */
+    const pollRun = async () => {
+      try {
+        const response = await fetch(`/api/run/${liveRunId}`, { cache: "no-store" })
+        if (!response.ok || cancelled) return
+        const body = (await response.json()) as {
+          run?: { status?: WorkflowRunStatus; node_results?: unknown }
+        }
+        if (cancelled || !body.run) return
+        if (typeof body.run.status === "string") {
+          setLiveRunStatus(body.run.status)
+        }
+        setRunStateMap(mapNodeResultsByNodeId({ nodeResults: body.run.node_results }))
+      } catch {
+        // Keep polling; transient failures should self-recover.
+      }
+    }
+
+    void pollRun()
+    const intervalId = window.setInterval(() => {
+      void pollRun()
+    }, 2500)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [liveRunId, liveRunStatus])
+
+  React.useEffect(() => {
+    if (!canReviewInlineApproval || !liveRunId) {
+      setApprovalDialogOpen(false)
+      setApprovalDialogNodeId(null)
+      setPendingApproval(null)
+      setApprovalFetchError(null)
+      setApprovalFetching(false)
+      return
+    }
+
+    let cancelled = false
+
+    /**
+     * Loads the pending approval row for this run so the editor can approve inline while the graph is paused.
+     */
+    const loadApproval = async () => {
+      if (cancelled) return
+      setApprovalFetching(true)
+      if (approvalDialogOpen) {
+        setApprovalFetchError(null)
+      }
+      try {
+        const response = await fetch(
+          `/api/approvals?workflow_run_id=${encodeURIComponent(liveRunId)}`,
+          { cache: "no-store" },
+        )
+        const body = (await response.json().catch(() => ({}))) as {
+          approvals?: WorkflowApprovalListRow[]
+          error?: string
+        }
+        if (cancelled) return
+        if (!response.ok) {
+          if (approvalDialogOpen) {
+            setApprovalFetchError(typeof body.error === "string" ? body.error : "Could not load approval.")
+          }
+          setPendingApproval(null)
+          return
+        }
+        const rows = Array.isArray(body.approvals) ? body.approvals : []
+        const preferredRow =
+          approvalDialogNodeId != null
+            ? rows.find((row) => row.node_id === approvalDialogNodeId) ?? null
+            : null
+        setPendingApproval(preferredRow ?? rows[0] ?? null)
+      } finally {
+        if (!cancelled) setApprovalFetching(false)
+      }
+    }
+
+    void loadApproval()
+    const intervalId = window.setInterval(() => {
+      void loadApproval()
+    }, 2000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [approvalDialogNodeId, approvalDialogOpen, canReviewInlineApproval, liveRunId])
 
   const isDirty =
-    workflowName.trim() !== baselineName.trim() || graphStr !== baselineGraph
+    workflowName.trim() !== baselineName.trim() ||
+    graphStr !== baselineGraph ||
+    status !== baselineStatus
 
   const onGraphChange = React.useCallback((p: { graphBaseline: string }) => {
     setGraphStr(p.graphBaseline)
@@ -173,6 +344,15 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
     setPendingHref(null)
   }
 
+  /**
+   * Saves the current workflow and then continues navigation.
+   */
+  async function saveAndLeave() {
+    const ok = await handleSave()
+    if (!ok) return
+    confirmLeave()
+  }
+
   function cancelLeave() {
     setLeaveDialogOpen(false)
     setPendingHref(null)
@@ -211,6 +391,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
         if (!json.workflow) return false
         setBaselineName(workflowName.trim())
         setBaselineGraph(workflowGraphBaseline({ nodes: graph.nodes, edges: graph.edges }))
+        setBaselineStatus(status)
         router.replace(`/app/workflows/${json.workflow.id}`)
         router.refresh()
         return true
@@ -233,6 +414,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
       }
       setBaselineName(workflowName.trim())
       setBaselineGraph(workflowGraphBaseline({ nodes: graph.nodes, edges: graph.edges }))
+      setBaselineStatus(status)
       router.refresh()
       return true
     } finally {
@@ -298,6 +480,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
     setManualRunOpen(false)
     setManualRunSubmitting(true)
     setLiveRunId(null)
+    setLiveRunStatus("running")
     setRunStateMap(new Map())
 
     const ac = new AbortController()
@@ -347,6 +530,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           const rec = payload as Record<string, unknown>
           if (rec.kind === "run" && typeof rec.runId === "string" && rec.runId.trim()) {
             setLiveRunId(rec.runId.trim())
+            setLiveRunStatus("running")
           }
           if (rec.kind === "node_result" && rec.result && typeof rec.result === "object") {
             const result = rec.result as NodeResult
@@ -393,8 +577,87 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
       runWorkflow,
       isRunning: manualRunSubmitting,
       stopRun,
+      openPendingApprovalDialog: ({ nodeId } = {}) => {
+        if (!canReviewInlineApproval) return
+        setApprovalDialogNodeId(typeof nodeId === "string" && nodeId.trim() !== "" ? nodeId : null)
+        setApprovalDialogOpen(true)
+      },
+      canOpenPendingApprovalDialog: canReviewInlineApproval && pendingApproval !== null && approvalBusy === null,
     }),
-    [openManualRunDialog, runWorkflow, manualRunSubmitting, stopRun]
+    [
+      openManualRunDialog,
+      runWorkflow,
+      manualRunSubmitting,
+      stopRun,
+      canReviewInlineApproval,
+      pendingApproval,
+      approvalBusy,
+    ]
+  )
+
+  /** Applies ELK vertical layered layout via the canvas ref (see React Flow elkjs example). */
+  const handleCleanLayout = React.useCallback(async () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    setLayoutBusy(true)
+    try {
+      await canvas.applyVerticalElkLayout()
+    } finally {
+      setLayoutBusy(false)
+    }
+  }, [])
+
+  /** PNG export of the canvas via html-to-image (React Flow download-image pattern). */
+  const handleDownloadWorkflowImage = React.useCallback(async () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    setImageExportBusy(true)
+    try {
+      const fileName = buildWorkflowImageDownloadFileName({ name: workflowName })
+      await canvas.downloadAsImage({ fileName })
+    } finally {
+      setImageExportBusy(false)
+    }
+  }, [workflowName])
+
+  /**
+   * Posts an inline approval decision from the workflow editor and then refreshes the run row for newest node states.
+   */
+  const respondToInlineApproval = React.useCallback(
+    async ({ approvalId, decision }: { approvalId: string; decision: "approved" | "declined" }) => {
+      setApprovalBusy({ id: approvalId, action: decision })
+      setApprovalFetchError(null)
+      try {
+        const response = await fetch(`/api/approvals/${approvalId}/respond`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision }),
+        })
+        const body = (await response.json().catch(() => ({}))) as { error?: string }
+        if (!response.ok) {
+          setApprovalFetchError(typeof body.error === "string" ? body.error : "Request failed")
+          return
+        }
+
+        setApprovalDialogOpen(false)
+        setPendingApproval(null)
+        setLiveRunStatus("running")
+
+        if (!liveRunId) return
+        const runResponse = await fetch(`/api/run/${liveRunId}`, { cache: "no-store" })
+        if (!runResponse.ok) return
+        const runBody = (await runResponse.json()) as {
+          run?: { status?: WorkflowRunStatus; node_results?: unknown }
+        }
+        if (typeof runBody.run?.status === "string") {
+          setLiveRunStatus(runBody.run.status)
+        }
+        setRunStateMap(mapNodeResultsByNodeId({ nodeResults: runBody.run?.node_results }))
+      } finally {
+        setApprovalBusy(null)
+      }
+    },
+    [liveRunId],
   )
 
   return (
@@ -477,18 +740,31 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
       <Dialog open={leaveDialogOpen} onOpenChange={(o) => !o && cancelLeave()}>
         <DialogContent showCloseButton>
           <DialogHeader>
-            <DialogTitle>Discard unsaved changes?</DialogTitle>
+            <DialogTitle>Leave workflow editor?</DialogTitle>
             <DialogDescription>
-              You have unsaved changes to this workflow. If you leave now, those changes will be
-              lost.
+              You have unsaved changes. Save and leave this view, or abandon these edits and continue.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:justify-end">
-            <Button type="button" variant="outline" onClick={cancelLeave}>
-              Keep editing
+            <Button
+              type="button"
+              variant="destructive"
+              className="focus-visible:ring-offset-2"
+              onClick={confirmLeave}
+              disabled={isSaving}
+            >
+              Save and Abandon
             </Button>
-            <Button type="button" variant="destructive" onClick={confirmLeave}>
-              Discard and leave
+            <Button
+              type="button"
+              autoFocus
+              className="focus-visible:ring-offset-2"
+              onClick={() => {
+                void saveAndLeave()
+              }}
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving…" : "Save and Exit"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -511,8 +787,6 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           <ArrowLeft className="size-4" />
         </Button>
 
-        <Separator orientation="vertical" className="h-4" />
-
         {/* Editable workflow name */}
         <div className="flex items-center gap-2 min-w-0">
           {isEditingName ? (
@@ -534,32 +808,40 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
             </button>
           )}
 
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-md shrink-0",
-              statusConfig[status]
-            )}
+          {/* Lifecycle: draft / active / inactive — persisted with Save */}
+          <Select
+            value={status}
+            onValueChange={(v) => setStatus(v as WorkflowLifecycleStatus)}
           >
-            {status === "active" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
-            {status}
-          </span>
+            <SelectTrigger
+              size="sm"
+              id="workflow-lifecycle-status"
+              aria-label="Workflow status"
+              className={cn(
+                "h-7 w-fit min-w-0 shrink-0 gap-1 border-0 px-1.5 py-0 text-xs font-medium shadow-none [&_svg]:size-3",
+                statusConfig[status]
+              )}
+            >
+              <span className="inline-flex items-center gap-1">
+                {status === "active" && (
+                  <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+                )}
+                <SelectValue />
+              </span>
+            </SelectTrigger>
+            <SelectContent align="start">
+              {WORKFLOW_LIFECYCLE_OPTIONS.map(({ value, label }) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex-1" />
 
-        {/* New workflow — primary icon; hidden on /workflows/new */}
-        {!isNew && (
-          <Button
-            type="button"
-            size="sm"
-            className="h-7 w-7 shrink-0 p-0"
-            aria-label="New workflow"
-            onClick={() => requestLeave("/app/workflows/new")}
-          >
-            <Plus className="size-3.5" />
-          </Button>
-        )}
-
+        {/* Toolbar — run history */}
         <Button
           type="button"
           variant="ghost"
@@ -573,9 +855,62 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           <History className="size-4" />
         </Button>
 
+        {/* Toolbar — overflow (run / stop, clean layout), then save */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label="More workflow actions"
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {manualRunSubmitting ? (
+              <DropdownMenuItem
+                className="gap-2 text-destructive focus:text-destructive"
+                onClick={() => stopRun()}
+              >
+                <Square className="size-3.5 fill-current" />
+                Stop run
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                className="gap-2"
+                disabled={isNew}
+                onClick={() => openManualRunDialog()}
+              >
+                <Play className="size-3.5 fill-current" />
+                Run
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2"
+              disabled={isNew || layoutBusy}
+              onClick={() => void handleCleanLayout()}
+            >
+              <AlignVerticalJustifyStart className="size-3.5" />
+              {layoutBusy ? "Layout…" : "Clean layout"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2"
+              disabled={imageExportBusy}
+              onClick={() => void handleDownloadWorkflowImage()}
+            >
+              <ImageDown className="size-3.5" />
+              {imageExportBusy ? "Exporting…" : "Download as image"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <Button
           type="button"
-          variant="outline"
+          variant="default"
           size="sm"
           className="gap-1.5 h-7 text-xs"
           onClick={() => void handleSave()}
@@ -584,31 +919,6 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           <Save className="size-3.5" />
           {isSaving ? "Saving…" : "Save"}
         </Button>
-
-        {/* Run / Stop button — swaps to destructive Stop while a run is in flight */}
-        {manualRunSubmitting ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            className="gap-1.5 h-7 text-xs"
-            onClick={() => stopRun()}
-          >
-            <Square className="size-3.5 fill-current" />
-            Stop
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            className="gap-1.5 h-7 text-xs"
-            disabled={isNew}
-            onClick={() => openManualRunDialog()}
-          >
-            <Play className="size-3.5 fill-current" />
-            Run
-          </Button>
-        )}
       </div>
 
       {/* React Flow canvas — remount when switching between new and persisted id */}
@@ -624,6 +934,22 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           liveRunId={liveRunId}
         />
       </div>
+
+      <WorkflowApprovalDialog
+        open={approvalDialogOpen}
+        onOpenChange={({ open }) => {
+          setApprovalDialogOpen(open)
+          if (!open) {
+            setApprovalDialogNodeId(null)
+            setApprovalFetchError(null)
+          }
+        }}
+        approval={pendingApproval}
+        isLoading={approvalDialogOpen && approvalFetching && pendingApproval === null && approvalFetchError === null}
+        loadError={approvalFetchError}
+        busyRow={approvalBusy}
+        onRespond={(params) => void respondToInlineApproval(params)}
+      />
     </div>
     </WorkflowEditorActionsContext.Provider>
   )

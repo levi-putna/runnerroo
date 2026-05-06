@@ -129,7 +129,7 @@ function SuggestionList({ items, selectedIndex, rect, onSelect }: SuggestionList
         minWidth: 240,
         maxWidth: 380,
       }}
-      className="overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg"
+      className="overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground"
     >
       <ul className="m-0 max-h-72 list-none overflow-y-auto p-0 py-1">
         {items.map((item, idx) => (
@@ -715,7 +715,7 @@ function TagPaletteCard({ tag, onInsert }: TagPaletteCardProps) {
       }}
       onDoubleClick={() => onInsert()}
       className={cn(
-        "flex cursor-grab gap-2 rounded-lg border border-border/80 bg-card p-2.5 text-left shadow-sm",
+        "flex cursor-grab gap-2 rounded-lg border border-border/80 bg-card p-2.5 text-left",
         "active:cursor-grabbing hover:border-ring/60 hover:bg-accent/40",
         "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
       )}

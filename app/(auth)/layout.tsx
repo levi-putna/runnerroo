@@ -1,5 +1,8 @@
-import { Zap } from "lucide-react"
+import { DailifyMark, DailifyWordmark } from "@/components/brand/dailify-logos"
 
+/**
+ * Centres auth flows with shared Dailify branding above the form.
+ */
 export default function AuthLayout({
   children,
 }: {
@@ -8,13 +11,11 @@ export default function AuthLayout({
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/40 p-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
+        {/* Logo — icon + wordmark */}
         <div className="flex justify-center mb-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary">
-              <Zap className="size-4 text-primary-foreground fill-primary-foreground" />
-            </div>
-            <span className="text-lg font-semibold tracking-tight">Runneroo</span>
+          <div className="flex items-center gap-3">
+            <DailifyMark className="h-10 w-auto shrink-0" />
+            <DailifyWordmark className="h-7 w-auto max-w-[200px]" />
           </div>
         </div>
         {children}

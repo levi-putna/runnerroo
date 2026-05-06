@@ -1,6 +1,12 @@
 import type { Edge, Node } from "@xyflow/react"
 import type { RunnerGatewayExecutionContext } from "@/lib/ai-gateway/runner-gateway-tracking"
 import { RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY } from "@/lib/ai-gateway/runner-gateway-tracking"
+import {
+  planDecisionGate,
+  planSwitchGate,
+  type WorkflowGatePlan,
+} from "@/lib/workflows/engine/evaluate-workflow-gate-expression"
+import { isApprovalRequiredError } from "@/lib/workflows/engine/approval-required-error"
 import type { NodeResult } from "@/lib/workflows/engine/types"
 
 export type { RunnerGatewayExecutionContext }
@@ -30,6 +36,11 @@ export interface TraverseWorkflowGraphParams {
   executeStep?: StepExecutorFn
   /** When set, forwards Gateway attribution (`user` + `workflow_run` tags) on every downstream envelope. */
   gatewayExecutionContext?: RunnerGatewayExecutionContext
+  /**
+   * Continue a paused run from `nodeId` with the given inbound payload — skips entry resolution and
+   * does not replay upstream steps.
+   */
+  resumeFrom?: { nodeId: string; stepInput: unknown }
 }
 
 /** Default simulated step delay (~300–800 ms). */
@@ -95,6 +106,36 @@ function buildOutboundIndex({ edges }: { edges: Edge[] }) {
   return { allFromSource, pickFromSource, allFromSourceSorted }
 }
 
+type OutboundIndex = ReturnType<typeof buildOutboundIndex>
+
+/**
+ * Resolves the primary default successor for serial steps (entry, action, approval, AI, code, etc.).
+ */
+function pickPrimarySuccessorTargetId({ idx, sourceId }: { idx: OutboundIndex; sourceId: string }): string | null {
+  const outgoingAll = idx.allFromSourceSorted(sourceId)
+  if (outgoingAll.length === 0) return null
+  const primary =
+    idx.pickFromSource(sourceId, "__default") ??
+    outgoingAll.find((e) => normaliseHandle(e.sourceHandle ?? undefined) === "__default") ??
+    outgoingAll[0] ??
+    null
+  return primary?.target ?? null
+}
+
+/**
+ * Public helper for suspend/resume flows — matches the single-exit edge choice in `traverseWorkflowGraph`.
+ */
+export function resolveWorkflowPrimarySuccessorTargetId({
+  edges,
+  sourceNodeId,
+}: {
+  edges: Edge[]
+  sourceNodeId: string
+}): string | null {
+  const idx = buildOutboundIndex({ edges })
+  return pickPrimarySuccessorTargetId({ idx, sourceId: sourceNodeId })
+}
+
 function nowIso() {
   return new Date().toISOString()
 }
@@ -145,6 +186,20 @@ export function readGlobalsFromExecutionStepInput({ stepInput }: { stepInput: un
 }
 
 /**
+ * Reads the immediate predecessor node id from a runner execution envelope carried on `stepInput`,
+ * if present (every step after the entry receives this from {@link mergeDownstreamSimulationPayload}).
+ */
+export function readPredecessorNodeIdFromRunStepInput({ stepInput }: { stepInput: unknown }): string | null {
+  if (typeof stepInput !== "object" || stepInput === null) return null
+  const e = stepInput as Record<string, unknown>
+  if (e[RUNNER_EXECUTION_MARKER] !== true) return null
+  const pred = e.predecessor
+  if (!pred || typeof pred !== "object") return null
+  const id = (pred as Record<string, unknown>).node_id
+  return typeof id === "string" && id.trim() !== "" ? id : null
+}
+
+/**
  * Wraps invoke-trigger REST payloads so successors can distinguish trigger data from envelopes.
  */
 function wrapInitialInvokeTriggerPayload({
@@ -167,7 +222,7 @@ function wrapInitialInvokeTriggerPayload({
 /**
  * Carry-forward envelope: keeps original trigger_inputs, shallow-merged workflow globals, and predecessor step I/O for the next hop.
  */
-function mergeDownstreamSimulationPayload({
+export function mergeDownstreamSimulationPayload({
   node,
   stepInput,
   stepOutput,
@@ -216,7 +271,8 @@ function mergeDownstreamSimulationPayload({
  * Async generator that walks the graph from the entry node, yielding {@link NodeResult}
  * updates (`running` then terminal status) for observability on the client.
  *
- * Branching: decision → `true` handle; switch → `default`; split → each outbound path
+ * Branching: decision evaluates `data.condition`; switch evaluates case conditions top to bottom;
+ * split → each outbound path
  * sequentially. Convergent merges skip re‑execution via a visited set.
  *
  * Stops when: `end` node, no outgoing edges, unknown node id, or an error is thrown inside a step.
@@ -228,23 +284,11 @@ export async function* traverseWorkflowGraph({
   stepDelayMs = DEFAULT_STEP_DELAY_MS,
   executeStep,
   gatewayExecutionContext,
+  resumeFrom,
 }: TraverseWorkflowGraphParams): AsyncGenerator<NodeResult> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const idx = buildOutboundIndex({ edges })
   const visited = new Set<string>()
-
-  const entryId = resolveWorkflowEntryNodeId({ nodes })
-  if (!entryId) {
-    const started_at = nowIso()
-    yield {
-      node_id: "__workflow__",
-      status: "failed",
-      started_at,
-      completed_at: nowIso(),
-      error: "This workflow has no entry node.",
-    }
-    return
-  }
 
   async function* runFrom(currentId: string, stepInput: unknown): AsyncGenerator<NodeResult> {
     /** Convergence: do not re‑execute merged nodes nor walk their outbound edges again. */
@@ -283,12 +327,52 @@ export async function* traverseWorkflowGraph({
       try {
         stepOutput = await executeStep({ node, stepInput })
       } catch (err) {
+        if (isApprovalRequiredError(err)) {
+          const paused: NodeResult = {
+            node_id: currentId,
+            status: "awaiting_approval",
+            started_at,
+            completed_at: nowIso(),
+            input: stepInput,
+            output: {
+              awaiting_approval: true,
+              title: err.title,
+              description: err.description,
+              reviewerInstructions: err.reviewerInstructions,
+            },
+          }
+          yield paused
+          /** Stop traversal without treating this branch as failure */
+          return
+        }
         stepError = err instanceof Error ? err.message : String(err)
       }
     } else {
       // Simulated execution path
       await sleepMs(delayMsBetween(stepDelayMs))
       stepOutput = buildSimulatedStepOutput({ node })
+    }
+
+    const nodeType = typeof node.type === "string" ? node.type : ""
+
+    let gateRoute: WorkflowGatePlan = { kind: "none" }
+
+    if (stepError === undefined && nodeType === "decision") {
+      const planned = planDecisionGate({ node, stepInput })
+      if (!planned.ok) {
+        stepError = planned.error
+      } else {
+        gateRoute = planned.plan
+      }
+    }
+
+    if (stepError === undefined && nodeType === "switch") {
+      const planned = planSwitchGate({ node, stepInput })
+      if (!planned.ok) {
+        stepError = planned.error
+      } else {
+        gateRoute = planned.plan
+      }
     }
 
     if (stepError !== undefined) {
@@ -321,7 +405,7 @@ export async function* traverseWorkflowGraph({
       stepOutput,
     })
 
-    const t = node.type
+    const t = nodeType
 
     /** Graph sink — stop traversing */
     if (t === "end") {
@@ -336,8 +420,10 @@ export async function* traverseWorkflowGraph({
     }
 
     if (t === "decision") {
+      const truthy = gateRoute.kind === "decision" ? gateRoute.truthy : false
+      const handle = truthy ? "true" : "false"
       const picked =
-        idx.pickFromSource(currentId, "true") ??
+        idx.pickFromSource(currentId, handle) ??
         idx.pickFromSource(currentId, "__default") ??
         outgoingAll[0] ??
         null
@@ -347,11 +433,23 @@ export async function* traverseWorkflowGraph({
     }
 
     if (t === "switch") {
-      const picked =
-        idx.pickFromSource(currentId, "default") ??
-        outgoingAll.find((e) => normaliseHandle(e.sourceHandle ?? undefined).startsWith("case-")) ??
-        outgoingAll[0] ??
-        null
+      const caseId = gateRoute.kind === "switch" ? gateRoute.caseId : null
+      let picked: Edge | null = null
+      if (caseId) {
+        picked = idx.pickFromSource(currentId, `case-${caseId}`)
+      }
+      if (!picked) {
+        picked =
+          idx.pickFromSource(currentId, "default") ??
+          idx.pickFromSource(currentId, "__default") ??
+          null
+      }
+      if (!picked && outgoingAll.length > 0) {
+        picked =
+          outgoingAll.find((e) => normaliseHandle(e.sourceHandle ?? undefined).startsWith("case-")) ??
+          outgoingAll[0] ??
+          null
+      }
       if (!picked) return
       yield* runFrom(picked.target, cloneExecutionPayload(mergedDownstreamPayload))
       return
@@ -364,14 +462,32 @@ export async function* traverseWorkflowGraph({
       return
     }
 
-    /** Single primary exit (entry, action, ai, code, etc.) — one outbound edge expected */
-    const primary =
-      idx.pickFromSource(currentId, "__default") ??
-      outgoingAll.find((e) => normaliseHandle(e.sourceHandle ?? undefined) === "__default") ??
-      outgoingAll[0] ??
-      null
-    if (!primary) return
-    yield* runFrom(primary.target, cloneExecutionPayload(mergedDownstreamPayload))
+    /** Single primary exit (entry, action, ai, approval, code, etc.) — one outbound edge expected */
+    const nextId = pickPrimarySuccessorTargetId({ idx, sourceId: currentId })
+    if (!nextId) return
+    yield* runFrom(nextId, cloneExecutionPayload(mergedDownstreamPayload))
+  }
+
+  if (resumeFrom) {
+    try {
+      yield* runFrom(resumeFrom.nodeId, resumeFrom.stepInput)
+    } catch {
+      /** Failure already yielded from generator */
+    }
+    return
+  }
+
+  const entryId = resolveWorkflowEntryNodeId({ nodes })
+  if (!entryId) {
+    const started_at = nowIso()
+    yield {
+      node_id: "__workflow__",
+      status: "failed",
+      started_at,
+      completed_at: nowIso(),
+      error: "This workflow has no entry node.",
+    }
+    return
   }
 
   try {

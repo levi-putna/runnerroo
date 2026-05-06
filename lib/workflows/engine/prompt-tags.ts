@@ -250,6 +250,44 @@ export function prevPromptTagsFromPredecessorNode({
 }
 
 /**
+ * Prompt tags for Webhook steps — expose the HTTP status code from `exe.*` after the call completes.
+ */
+export function webhookCallExePromptTags(): PromptTagDefinition[] {
+  return [
+    {
+      id: "exe.status_code",
+      label: "Execution · HTTP status code",
+      description:
+        "Numeric HTTP status code returned by the remote server after the webhook call (e.g. 200, 201, 400, 500).",
+    },
+    {
+      id: "exe.ok",
+      label: "Execution · response ok",
+      description:
+        'Boolean — true when the server returned a 2xx status code, false otherwise. Use "true" or "false" in expressions.',
+    },
+  ]
+}
+
+/**
+ * Prompt tags exposed when an Approval step completes after approval — fills `exe.*` for Output tab mappings.
+ */
+export function approvalExePromptTags(): PromptTagDefinition[] {
+  return [
+    {
+      id: "exe.decision",
+      label: "Execution · decision",
+      description: "After a successful inbox review this is always the string approved.",
+    },
+    {
+      id: "exe.responded_at",
+      label: "Execution · responded at",
+      description: "ISO 8601 timestamp when the reviewer approved or declined.",
+    },
+  ]
+}
+
+/**
  * Prompt tag for numeric steps that expose a single `exe.number` execution field (random draw, iteration result).
  */
 export function numericExeNumberPromptTags(): PromptTagDefinition[] {

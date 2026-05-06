@@ -201,6 +201,7 @@ function humaniseStepStatus(status: NodeResult["status"]) {
   if (status === "running") return "running"
   if (status === "failed") return "failed"
   if (status === "skipped") return "skipped"
+  if (status === "awaiting_approval") return "awaiting approval"
   return status
 }
 

@@ -253,31 +253,11 @@ export function buildDefaultClassifyInputSchemaFields(): NodeInputField[] {
 }
 
 /**
- * Default declared inputs for a **Random number** step: inclusive bounds resolved from literals or tags.
+ * Default declared inputs for a **Random number** step.
+ * Bounds are configured on the Execution tab, so this starts empty by default.
  */
 export function buildDefaultRandomNumberInputSchemaFields(): NodeInputField[] {
-  return [
-    createEmptyNodeInputField({
-      partial: {
-        key: "min",
-        label: "Min",
-        type: "number",
-        required: true,
-        description: "Lower bound (inclusive). May be a literal or a tagged expression.",
-        value: "0",
-      },
-    }),
-    createEmptyNodeInputField({
-      partial: {
-        key: "max",
-        label: "Max",
-        type: "number",
-        required: true,
-        description: "Upper bound (inclusive). May be a literal or a tagged expression.",
-        value: "100",
-      },
-    }),
-  ]
+  return []
 }
 
 /**
@@ -335,7 +315,25 @@ export function buildDefaultIterationOutputSchemaFields(): NodeInputField[] {
 }
 
 /**
- * Default outbound mapping for **Generate document** steps: filename and downloadable URL from execution.
+ * Default outbound mapping for **Webhook** steps: HTTP status code from the response.
+ */
+export function buildDefaultWebhookCallOutputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "status_code",
+        label: "Status code",
+        type: "number",
+        required: false,
+        description: "HTTP status code returned by the remote server (e.g. 200, 201, 400, 500).",
+        value: "{{exe.status_code}}",
+      },
+    }),
+  ]
+}
+
+/**
+ * Default outbound mapping for **Document from Template** steps: filename and downloadable URL from execution.
  */
 export function buildDefaultGenerateDocumentOutputSchemaFields(): NodeInputField[] {
   return [

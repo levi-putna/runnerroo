@@ -1,5 +1,10 @@
 import type { NodeInputField, NodeInputFieldType } from "@/lib/workflows/engine/input-schema"
 import { createEmptyNodeInputField } from "@/lib/workflows/engine/input-schema"
+import {
+  approvalExePromptTags,
+  classifyObjectExecutionPromptTags,
+  generateTextExecutionPromptTags,
+} from "@/lib/workflows/engine/prompt-tags"
 import type { ExtractFieldRow } from "@/lib/workflows/steps/ai/extract/defaults"
 
 export interface IsUnsetSchemaTextParams {
@@ -132,7 +137,7 @@ export function mergeExtractOutputSchemaFromExtractFields({
 }
 
 /**
- * Describes one downstream output row mirrored from Generate document runtime `exe` fields.
+ * Describes one downstream output row mirrored from Document from Template runtime `exe` fields.
  *
  * Keys are authoring-facing (`file_name`, …); `mappingValue` points at camelCase props on `exe`.
  */
@@ -146,7 +151,7 @@ export interface DocumentGenerateExecutionOutputSpecRow {
 }
 
 /**
- * Canonical execution outputs for Generate document steps, in merge order for "Import from execution".
+ * Canonical execution outputs for Document from Template steps, in merge order for "Import from execution".
  */
 export const DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS: readonly DocumentGenerateExecutionOutputSpecRow[] = [
   {
@@ -194,25 +199,65 @@ export const DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS: readonly DocumentGenerate
   },
 ]
 
+/**
+ * Execution output specs for docxml-generated documents — omits template registry rows.
+ */
+export const DOCUMENT_XML_EXECUTION_IMPORT_SPECS: readonly DocumentGenerateExecutionOutputSpecRow[] = [
+  {
+    key: "file_name",
+    label: "File name",
+    type: "string",
+    description:
+      "Generated filename (.docx), matching the Execution tab output name or step default.",
+    mappingValue: "{{exe.outputFileName}}",
+  },
+  {
+    key: "document_url",
+    label: "Document URL",
+    type: "string",
+    description: "Fully qualified signed URL callers can open to download the generated document.",
+    mappingValue: "{{exe.documentUrl}}",
+  },
+  {
+    key: "storage_path",
+    label: "Storage path",
+    type: "string",
+    description: "Object key within the workflow document outputs bucket (not a browser URL).",
+    mappingValue: "{{exe.outputPath}}",
+  },
+  {
+    key: "output_bucket",
+    label: "Output bucket",
+    type: "string",
+    description: "Supabase Storage bucket hosting the uploaded .docx.",
+    mappingValue: "{{exe.outputBucket}}",
+  },
+]
+
 export interface MergeGenerateDocumentOutputFromExecutionParams {
   existingOutputFields: NodeInputField[]
   /** Rows to merge — defaults to {@link DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS}. */
   executionSpecs?: readonly DocumentGenerateExecutionOutputSpecRow[]
 }
 
+export interface MergeOutputSchemaFromExecutionSpecsParams {
+  existingOutputFields: NodeInputField[]
+  specs: readonly DocumentGenerateExecutionOutputSpecRow[]
+}
+
 /**
- * Mirrors Generate document execution fields into outbound mapping rows (`mappingValue` per spec).
+ * Mirrors known execution `exe.*` fields into outbound mapping rows (`mappingValue` per spec).
  *
  * Rows that already have mapping text stay unchanged unless the cell was blank — same semantics as extraction sync.
  */
-export function mergeGenerateDocumentOutputFromExecutionFields({
+export function mergeOutputSchemaFromExecutionSpecs({
   existingOutputFields,
-  executionSpecs = DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS,
-}: MergeGenerateDocumentOutputFromExecutionParams): NodeInputField[] {
+  specs,
+}: MergeOutputSchemaFromExecutionSpecsParams): NodeInputField[] {
   const existingByKey = new Map(existingOutputFields.map((f) => [f.key, f]))
   const consumedKeys = new Set<string>()
 
-  const mergedLeading: NodeInputField[] = executionSpecs.map((spec) => {
+  const mergedLeading: NodeInputField[] = specs.map((spec) => {
     consumedKeys.add(spec.key)
     const prev = existingByKey.get(spec.key)
 
@@ -243,4 +288,117 @@ export function mergeGenerateDocumentOutputFromExecutionFields({
 
   const tail = existingOutputFields.filter((f) => !consumedKeys.has(f.key))
   return [...mergedLeading, ...tail]
+}
+
+/**
+ * Mirrors Document from Template execution fields into outbound mapping rows (`mappingValue` per spec).
+ *
+ * Rows that already have mapping text stay unchanged unless the cell was blank — same semantics as extraction sync.
+ */
+export function mergeGenerateDocumentOutputFromExecutionFields({
+  existingOutputFields,
+  executionSpecs = DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS,
+}: MergeGenerateDocumentOutputFromExecutionParams): NodeInputField[] {
+  return mergeOutputSchemaFromExecutionSpecs({
+    existingOutputFields,
+    specs: executionSpecs,
+  })
+}
+
+/** Turns `exe.a.b` style tag ids into stable output-schema keys (`a_b`). */
+function exeTagIdToAuthoringKey({ id }: { id: string }): string {
+  const trimmed = id.replace(/^exe\./, "")
+  return trimmed.replace(/\./g, "_")
+}
+
+/** Best-effort output field type from execution tag id (token counts and lengths are numeric). */
+function inferOutputFieldTypeForExecutionTag({ id }: { id: string }): NodeInputFieldType {
+  const lower = id.toLowerCase()
+  if (lower.includes("usage") || lower.endsWith(".length") || lower.includes("confidence")) {
+    return "number"
+  }
+  if (id === "exe.ok") {
+    return "boolean"
+  }
+  return "text"
+}
+
+/**
+ * Execution-field rows for **Generate / transform / summarise** steps (`generateText` result shape).
+ */
+export function buildGenerateTextExecutionImportSpecs(): readonly DocumentGenerateExecutionOutputSpecRow[] {
+  return generateTextExecutionPromptTags().map((t) => ({
+    key: exeTagIdToAuthoringKey({ id: t.id }),
+    label: t.label.replace(/^Execution · /, "").trim() || exeTagIdToAuthoringKey({ id: t.id }),
+    type: inferOutputFieldTypeForExecutionTag({ id: t.id }),
+    description: t.description,
+    mappingValue: `{{${t.id}}}`,
+  }))
+}
+
+/**
+ * Execution-field rows for **Classify** steps (`exe.classifier_*` and shared telemetry).
+ */
+export function buildClassifyExecutionImportSpecs(): readonly DocumentGenerateExecutionOutputSpecRow[] {
+  return classifyObjectExecutionPromptTags().map((t) => ({
+    key: exeTagIdToAuthoringKey({ id: t.id }),
+    label: t.label.replace(/^Execution · /, "").trim() || exeTagIdToAuthoringKey({ id: t.id }),
+    type: inferOutputFieldTypeForExecutionTag({ id: t.id }),
+    description: t.description,
+    mappingValue: `{{${t.id}}}`,
+  }))
+}
+
+/** Execution-field rows for **Approval** steps after a reviewer approves (`exe.decision`, `exe.responded_at`). */
+export function buildApprovalExecutionImportSpecs(): readonly DocumentGenerateExecutionOutputSpecRow[] {
+  return approvalExePromptTags().map((t) => ({
+    key: exeTagIdToAuthoringKey({ id: t.id }),
+    label: t.label.replace(/^Execution · /, "").trim() || exeTagIdToAuthoringKey({ id: t.id }),
+    type: inferOutputFieldTypeForExecutionTag({ id: t.id }),
+    description: t.description,
+    mappingValue: `{{${t.id}}}`,
+  }))
+}
+
+/** Canonical webhook HTTP execution outputs for "Import from execution". */
+export const WEBHOOK_CALL_EXECUTION_IMPORT_SPECS: readonly DocumentGenerateExecutionOutputSpecRow[] = [
+  {
+    key: "status_code",
+    label: "Status code",
+    type: "number",
+    description: "HTTP status code returned by the remote server.",
+    mappingValue: "{{exe.status_code}}",
+  },
+  {
+    key: "ok",
+    label: "Response ok",
+    type: "boolean",
+    description: "True when the server returned a 2xx status code.",
+    mappingValue: "{{exe.ok}}",
+  },
+]
+
+export interface BuildNumericStepExecutionImportSpecsParams {
+  /** Outbound key for the numeric result (`random_number` vs `number`). */
+  resultKey: string
+  /** Row label in the output schema editor. */
+  resultLabel: string
+}
+
+/**
+ * Single-row execution import for **Random number** and **Iteration** (`{{exe.number}}`).
+ */
+export function buildNumericStepExecutionImportSpecs({
+  resultKey,
+  resultLabel,
+}: BuildNumericStepExecutionImportSpecsParams): readonly DocumentGenerateExecutionOutputSpecRow[] {
+  return [
+    {
+      key: resultKey,
+      label: resultLabel,
+      type: "number",
+      description: "Numeric result from this step after execution (random draw or starting value plus increment).",
+      mappingValue: "{{exe.number}}",
+    },
+  ]
 }

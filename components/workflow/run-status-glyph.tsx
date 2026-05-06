@@ -1,6 +1,6 @@
 "use client"
 
-import { CircleCheck, CircleX, Loader2 } from "lucide-react"
+import { CircleCheck, CircleX, Loader2, PauseCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Database } from "@/types/database"
 
@@ -20,6 +20,14 @@ export function RunStatusGlyph({ status, className }: RunStatusGlyphProps) {
       <CircleCheck
         aria-hidden
         className={cn("size-4 text-emerald-600 dark:text-emerald-400", className)}
+      />
+    )
+  }
+  if (status === "waiting_approval") {
+    return (
+      <PauseCircle
+        aria-hidden
+        className={cn("size-4 text-amber-600 dark:text-amber-400", className)}
       />
     )
   }

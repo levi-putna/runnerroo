@@ -21,10 +21,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import type { NodeInputField } from "@/lib/workflows/engine/input-schema"
 import type { WorkflowInputSchemaFromPromptFlavourId } from "@/lib/workflows/input-schema-from-prompt-flavours"
 import { SchemaFromPromptDialog } from "@/components/workflow/schema-from-prompt-dialog"
+
+/** How a confirmable import merges with rows already in the editor (when the dialog offers a choice). */
+export type WorkflowSchemaImportApplyMode = "replace" | "append"
 
 /** Confirmed merge/sync action surfaced on schema panel headers (after user accepts the alert). */
 export interface WorkflowSchemaConfirmableImport {
@@ -38,7 +42,17 @@ export interface WorkflowSchemaConfirmableImport {
   cancelLabel?: string
   confirmLabel: string
   confirmVariant?: React.ComponentProps<typeof Button>["variant"]
-  onConfirm: () => void
+  /**
+   * When true, the confirmation dialog offers replace vs append (same idea as prompt import).
+   * The chosen mode is passed to {@link onConfirm}; when false, omit {@link params.applyMode} and callers should merge.
+   */
+  offerApplyModeChoice?: boolean
+  /**
+   * Runs after the author confirms. When {@link offerApplyModeChoice} is set, `applyMode` reflects their choice.
+   *
+   * @param params - Optional bag; `applyMode` is present only when {@link offerApplyModeChoice} is true.
+   */
+  onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => void
 }
 
 /** Prompt-backed generation — matches {@link WorkflowInputSchemaFromPromptFlavourId} registry entries. */
@@ -69,8 +83,15 @@ export function WorkflowSchemaBuilderToolbar({
   onPromptApplyFields,
 }: WorkflowSchemaBuilderToolbarProps) {
   const [confirmTarget, setConfirmTarget] = React.useState<ConfirmTarget>(null)
+  const [confirmApplyMode, setConfirmApplyMode] = React.useState<WorkflowSchemaImportApplyMode>("append")
   const [promptOpen, setPromptOpen] = React.useState(false)
   const [promptSession, setPromptSession] = React.useState(0)
+
+  /** Opens a confirmable import and resets merge mode so each prompt starts from append. */
+  const openConfirmable = React.useCallback((row: WorkflowSchemaConfirmableImport) => {
+    setConfirmApplyMode("append")
+    setConfirmTarget(row)
+  }, [])
 
   const confirmables = [...confirmableImports].filter((row) => row != null)
   const primaryConfirmable = confirmables[0]
@@ -107,7 +128,7 @@ export function WorkflowSchemaBuilderToolbar({
       ) : primaryConfirmable ? (
         <div
           className={cn(
-            "inline-flex items-stretch overflow-hidden rounded-lg border border-input bg-background shadow-sm",
+            "inline-flex items-stretch overflow-hidden rounded-lg border border-input bg-background",
           )}
         >
           <Button
@@ -115,7 +136,7 @@ export function WorkflowSchemaBuilderToolbar({
             variant="outline"
             size="sm"
             disabled={primaryConfirmable.disabled}
-            onClick={() => setConfirmTarget(primaryConfirmable)}
+            onClick={() => openConfirmable(primaryConfirmable)}
             className={cn(
               "h-8 min-w-0 gap-2 border-0 px-3 font-normal shadow-none hover:bg-accent",
               showDropdown ? "max-w-[9rem] rounded-none sm:max-w-[13rem]" : "max-w-[16rem] rounded-none sm:max-w-[18rem]",
@@ -148,7 +169,7 @@ export function WorkflowSchemaBuilderToolbar({
                       key={item.id}
                       disabled={item.disabled}
                       onSelect={() => {
-                        setConfirmTarget(item)
+                        openConfirmable(item)
                       }}
                     >
                       {RowIcon ? <RowIcon className="mr-2 size-4 text-muted-foreground" aria-hidden /> : null}
@@ -177,8 +198,39 @@ export function WorkflowSchemaBuilderToolbar({
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{confirmTarget.alertTitle}</AlertDialogTitle>
-              <AlertDialogDescription>
-                <div className="leading-relaxed">{confirmTarget.alertDescription}</div>
+              <AlertDialogDescription className="text-left">
+                <div className="space-y-4">
+                  <div className="leading-relaxed">{confirmTarget.alertDescription}</div>
+                  {confirmTarget.offerApplyModeChoice ? (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-foreground">How to apply</Label>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={confirmApplyMode === "append" ? "default" : "outline"}
+                          className="font-normal"
+                          onClick={() => setConfirmApplyMode("append")}
+                        >
+                          Append new keys
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={confirmApplyMode === "replace" ? "default" : "outline"}
+                          className="font-normal"
+                          onClick={() => setConfirmApplyMode("replace")}
+                        >
+                          Replace existing
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Append keeps your current rows and merges placeholders into matching keys. Replace rebuilds the
+                        list from this import source only.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -186,7 +238,11 @@ export function WorkflowSchemaBuilderToolbar({
               <AlertDialogAction
                 variant={confirmTarget.confirmVariant ?? "default"}
                 onClick={() => {
-                  confirmTarget.onConfirm()
+                  if (confirmTarget.offerApplyModeChoice) {
+                    confirmTarget.onConfirm({ applyMode: confirmApplyMode })
+                  } else {
+                    confirmTarget.onConfirm()
+                  }
                   setConfirmTarget(null)
                 }}
               >

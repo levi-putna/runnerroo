@@ -20,12 +20,17 @@ import {
   Dice3,
   IterationCw,
   FileText,
+  PenLine,
+  UserCheck,
+  UsersRound,
+  Send,
 } from "lucide-react"
 
 /** React Flow node `type` values used on the workflow canvas. */
 export type WorkflowRfNodeType =
   | "entry"
   | "action"
+  | "approval"
   | "code"
   | "random"
   | "iteration"
@@ -35,6 +40,7 @@ export type WorkflowRfNodeType =
   | "switch"
   | "split"
   | "end"
+  | "webhookCall"
 
 /** How an entry step is triggered (stored on `data.entryType`). Legacy graphs may still use `manual`. */
 export type WorkflowEntryKind = "invoke" | "webhook" | "schedule"
@@ -48,10 +54,14 @@ export type WorkflowAiSubtype =
   | "chat"
   | "transform"
 
+/** Document step discriminator (stored on `data.subtype`). */
+export type WorkflowDocumentSubtype = "template" | "docxml"
+
 /** Catalogue section ids for the add-step sheet. */
 export type WorkflowStepGroupId =
   | "triggers"
   | "logic"
+  | "human"
   | "ai"
   | "code"
   | "documents"
@@ -80,6 +90,7 @@ export const WORKFLOW_STEP_GROUP_META: Record<
 > = {
   triggers: { title: "Triggers", Icon: Zap },
   logic: { title: "Logic", Icon: Workflow },
+  human: { title: "Human", Icon: UsersRound },
   ai: { title: "AI", Icon: Sparkles },
   code: { title: "Code", Icon: Code2 },
   documents: { title: "Documents", Icon: FileText },
@@ -135,6 +146,12 @@ export const WORKFLOW_NODE_CORE_META: Record<
     typeLabel: string
   }
 > = {
+  approval: {
+    Icon: UserCheck,
+    accentBg: "bg-amber-500",
+    accentHex: "#f59e0b",
+    typeLabel: "Approval",
+  },
   action: {
     Icon: Zap,
     accentBg: "bg-emerald-500",
@@ -163,7 +180,7 @@ export const WORKFLOW_NODE_CORE_META: Record<
     Icon: FileText,
     accentBg: "bg-indigo-600",
     accentHex: "#4f46e5",
-    typeLabel: "Generate document",
+    typeLabel: "Document step",
   },
   decision: {
     Icon: GitBranch,
@@ -188,6 +205,12 @@ export const WORKFLOW_NODE_CORE_META: Record<
     accentBg: "bg-rose-600",
     accentHex: "#e11d48",
     typeLabel: "End",
+  },
+  webhookCall: {
+    Icon: Send,
+    accentBg: "bg-blue-600",
+    accentHex: "#2563eb",
+    typeLabel: "Webhook",
   },
 }
 
@@ -239,10 +262,38 @@ export const WORKFLOW_AI_SUBTYPE_META: Record<
   },
 }
 
+/** Shared document step chrome; subtypes swap the glyph + canvas pill. */
+export const WORKFLOW_DOCUMENT_FAMILY_META = {
+  accentBg: "bg-indigo-600",
+  accentHex: "#4f46e5",
+  sheetTypeLabel: "Document step",
+} as const
+
+export const WORKFLOW_DOCUMENT_SUBTYPE_META: Record<
+  WorkflowDocumentSubtype,
+  {
+    Icon: LucideIcon
+    canvasBadge: string
+    defaultLabel: string
+  }
+> = {
+  template: {
+    Icon: FileText,
+    canvasBadge: "Document · Template",
+    defaultLabel: "Document from Template",
+  },
+  docxml: {
+    Icon: PenLine,
+    canvasBadge: "Document · XML",
+    defaultLabel: "Generate document (XML)",
+  },
+}
+
 export interface ResolveWorkflowNodeTilePresentationParams {
   type: string
   entryType?: string | null
   aiSubtype?: string | null
+  documentSubtype?: string | null
 }
 
 export interface WorkflowNodeTilePresentation {
@@ -259,6 +310,7 @@ export function resolveWorkflowNodeTilePresentation({
   type,
   entryType,
   aiSubtype,
+  documentSubtype,
 }: ResolveWorkflowNodeTilePresentationParams): WorkflowNodeTilePresentation {
   if (type === "entry") {
     const kind = normaliseEntryKind({ value: entryType })
@@ -278,6 +330,16 @@ export function resolveWorkflowNodeTilePresentation({
       Icon: row.Icon,
       accentBg: WORKFLOW_AI_FAMILY_META.accentBg,
       accentHex: WORKFLOW_AI_FAMILY_META.accentHex,
+    }
+  }
+
+  if (type === "document") {
+    const st = normaliseDocumentSubtype({ value: documentSubtype })
+    const row = WORKFLOW_DOCUMENT_SUBTYPE_META[st]
+    return {
+      Icon: row.Icon,
+      accentBg: WORKFLOW_DOCUMENT_FAMILY_META.accentBg,
+      accentHex: WORKFLOW_DOCUMENT_FAMILY_META.accentHex,
     }
   }
 
@@ -326,6 +388,18 @@ export function normaliseAiSubtype({ value }: NormaliseAiSubtypeParams): Workflo
   return "generate"
 }
 
+export interface NormaliseDocumentSubtypeParams {
+  value?: string | null
+}
+
+/**
+ * Maps loose `data.subtype` values on document nodes — legacy graphs without the field stay on the template step.
+ */
+export function normaliseDocumentSubtype({ value }: NormaliseDocumentSubtypeParams): WorkflowDocumentSubtype {
+  if (value === "docxml") return "docxml"
+  return "template"
+}
+
 export interface GetWorkflowSheetTypeLabelParams {
   type?: string | null
 }
@@ -348,7 +422,9 @@ export function getWorkflowSheetTypeLabel({ type }: GetWorkflowSheetTypeLabelPar
     case "iteration":
       return WORKFLOW_NODE_CORE_META.iteration.typeLabel
     case "document":
-      return WORKFLOW_NODE_CORE_META.document.typeLabel
+      return WORKFLOW_DOCUMENT_FAMILY_META.sheetTypeLabel
+    case "approval":
+      return WORKFLOW_NODE_CORE_META.approval.typeLabel
     case "decision":
       return WORKFLOW_NODE_CORE_META.decision.typeLabel
     case "switch":
@@ -357,6 +433,8 @@ export function getWorkflowSheetTypeLabel({ type }: GetWorkflowSheetTypeLabelPar
       return WORKFLOW_NODE_CORE_META.split.typeLabel
     case "end":
       return WORKFLOW_NODE_CORE_META.end.typeLabel
+    case "webhookCall":
+      return WORKFLOW_NODE_CORE_META.webhookCall.typeLabel
     default:
       return "Node"
   }
@@ -366,6 +444,7 @@ export interface GetWorkflowCanvasTypeBadgeParams {
   type?: string | null
   entryType?: string | null
   aiSubtype?: string | null
+  documentSubtype?: string | null
 }
 
 /**
@@ -375,6 +454,7 @@ export function getWorkflowCanvasTypeBadge({
   type,
   entryType,
   aiSubtype,
+  documentSubtype,
 }: GetWorkflowCanvasTypeBadgeParams): string {
   if (type === "entry") {
     const kind = normaliseEntryKind({ value: entryType })
@@ -383,6 +463,10 @@ export function getWorkflowCanvasTypeBadge({
   if (type === "ai") {
     const st = normaliseAiSubtype({ value: aiSubtype })
     return WORKFLOW_AI_SUBTYPE_META[st].canvasBadge
+  }
+  if (type === "document") {
+    const st = normaliseDocumentSubtype({ value: documentSubtype })
+    return WORKFLOW_DOCUMENT_SUBTYPE_META[st].canvasBadge
   }
   if (type && type in WORKFLOW_NODE_CORE_META) {
     return WORKFLOW_NODE_CORE_META[type as keyof typeof WORKFLOW_NODE_CORE_META].typeLabel
@@ -438,7 +522,10 @@ export function getWorkflowNodeCategoryLabel({ type }: GetWorkflowNodeCategoryLa
     case "document":
       return WORKFLOW_STEP_GROUP_META.documents.title
     case "action":
+    case "webhookCall":
       return WORKFLOW_STEP_GROUP_META.actions.title
+    case "approval":
+      return WORKFLOW_STEP_GROUP_META.human.title
     case "end":
       return WORKFLOW_STEP_GROUP_META.termination.title
     default:

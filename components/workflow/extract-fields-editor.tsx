@@ -217,11 +217,11 @@ export function ExtractFieldsEditor({ data, set, nodeId }: ExtractFieldsEditorPr
   }
 
   return (
-    <div className={cn("min-w-0 w-full overflow-hidden rounded-xl border border-border/80 bg-card/40 shadow-sm")}>
+    <div className={cn("min-w-0 w-full overflow-hidden rounded-xl border border-border/80 bg-card/40")}>
       {/* Panel header — mirrors InputSchemaBuilder */}
       <div className="flex items-start gap-3 border-b border-border/70 bg-muted/25 px-4 py-3">
         <span
-          className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background shadow-sm"
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background"
           aria-hidden
         >
           <ScanSearch className="size-4 text-muted-foreground" />

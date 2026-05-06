@@ -2,12 +2,9 @@ import { GatewayUsagePanel } from "@/components/settings/gateway-usage-panel";
 
 /**
  * AI Gateway usage for the signed-in user (assistant conversations, workflow runs, memory embeddings).
- * Filters and the usage table are implemented in {@link GatewayUsagePanel}, which also renders the page header so layout matches other settings screens.
+ * Summary cards (below filters), filters at the top of the body, the usage table, and pagination live in {@link GatewayUsagePanel}, which renders {@link PageHeader} and
+ * the padded body — same top alignment as profile, integrations, and memories (no outer page padding).
  */
 export default function SettingsUsagePage() {
-  return (
-    <div className="mx-auto flex w-full max-w-none flex-1 flex-col px-4 py-6 md:px-8 md:py-10">
-      <GatewayUsagePanel className="w-full max-w-none" />
-    </div>
-  );
+  return <GatewayUsagePanel className="w-full" />;
 }

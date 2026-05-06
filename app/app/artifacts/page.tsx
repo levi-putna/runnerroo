@@ -10,7 +10,7 @@ export interface ArtifactListItem extends UserFileRow {
 }
 
 /**
- * Artefacts index page for browsing user-owned stored files.
+ * Artefacts index for browsing user-owned stored files — layout matches Workflows / Runs index pages.
  */
 export default async function ArtifactsPage() {
   const [userFiles, templateFiles] = await Promise.all([
@@ -48,5 +48,5 @@ export default async function ArtifactsPage() {
   const artifacts = [...mappedUserFiles, ...templateFileRowsFromTemplates]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-  return <ArtifactsIndex artifacts={artifacts} />
+  return <ArtifactsIndex artifacts={artifacts} className="w-full" />
 }

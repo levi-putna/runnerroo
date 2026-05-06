@@ -14,6 +14,9 @@ export const WORKFLOW_NODE_SURFACE =
  */
 export function workflowNodeRunRingClassName(status: NodeResult["status"] | undefined): string | null {
   if (status === "running") return "ring-4 ring-amber-400/95 animate-pulse shadow-[0_0_22px_oklch(76%_0.16_80_/_22%)]"
+  if (status === "awaiting_approval") {
+    return "ring-4 ring-violet-500 shadow-[0_0_16px_oklch(72%_0.19_300_/_22%)]"
+  }
   if (status === "success") return "ring-4 ring-emerald-500 shadow-[0_0_14px_oklch(72%_0.17_150_/_20%)]"
   if (status === "failed") return "ring-4 ring-red-500 shadow-[0_0_14px_oklch(63%_0.22_25_/_25%)]"
   return null
@@ -59,6 +62,8 @@ interface BaseNodeProps {
   /** Hover, selection ring, or simulated run halo — typically {@link workflowStepShellClassName}. */
   shellClassName: string
   accentColor?: string
+  /** Optional compact action shown at the right side of the heading row. */
+  headerAction?: React.ReactNode
   children?: React.ReactNode
 }
 
@@ -75,6 +80,7 @@ export function BaseNode({
   descriptionClassName,
   shellClassName,
   accentColor = "bg-slate-500",
+  headerAction,
   children,
 }: BaseNodeProps) {
   const descriptionText = (typeof description === "string" ? description : description != null ? String(description) : "").trim()
@@ -98,9 +104,12 @@ export function BaseNode({
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold uppercase tracking-wide leading-tight truncate text-foreground">
-            {label}
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="min-w-0 flex-1 truncate text-[13px] font-semibold uppercase leading-tight tracking-wide text-foreground">
+              {label}
+            </p>
+            {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
+          </div>
           {/* Step kind pill */}
           <span className="mt-1 inline-flex max-w-full items-center rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground truncate">
             {typeBadge}

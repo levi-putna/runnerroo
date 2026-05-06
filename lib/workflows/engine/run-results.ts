@@ -16,7 +16,8 @@ export function normaliseWorkflowRunNodeResults({ value }: { value: Json }): Nod
       o.status === "running" ||
       o.status === "success" ||
       o.status === "failed" ||
-      o.status === "skipped"
+      o.status === "skipped" ||
+      o.status === "awaiting_approval"
         ? o.status
         : null
     if (!node_id || !status) continue

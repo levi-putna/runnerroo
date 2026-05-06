@@ -22,6 +22,13 @@ export interface WorkflowEditorActionsValue {
    * No-op when no run is in flight.
    */
   stopRun: () => void
+  /**
+   * Opens the approval modal for the currently paused approval step in the active editor run.
+   * No-op when the run is not currently awaiting approval.
+   */
+  openPendingApprovalDialog: (params?: { nodeId?: string }) => void
+  /** True when an approval decision can be taken inline in the editor. */
+  canOpenPendingApprovalDialog: boolean
 }
 
 export const WorkflowEditorActionsContext = React.createContext<WorkflowEditorActionsValue | null>(null)

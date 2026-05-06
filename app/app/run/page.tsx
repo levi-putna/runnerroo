@@ -4,7 +4,7 @@ import { fetchRecentWorkflowRunsForUser } from "@/lib/workflows/queries/run-quer
 import { WorkflowRunHubClient } from "./run-hub-client"
 
 /**
- * Authenticated hub: lists recent workflow runs persisted in Supabase across the user’s graphs.
+ * Authenticated hub: recent workflow runs with filters and overview tiles aligned with Workflows / Usage.
  */
 export default async function RunsHubPage() {
   const supabase = await createClient()
@@ -25,5 +25,5 @@ export default async function RunsHubPage() {
 
   const runs = await fetchRecentWorkflowRunsForUser({ limit: 100 })
 
-  return <WorkflowRunHubClient runs={runs} />
+  return <WorkflowRunHubClient runs={runs} className="w-full" />
 }

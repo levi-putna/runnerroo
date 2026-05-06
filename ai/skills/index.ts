@@ -18,11 +18,28 @@ export function buildRunnerAssistantInstructions({
   integrationsContext?: string;
   workflowsInvokeContext?: string;
 } = {}): string {
+  const now = new Date();
+  const currentDate = now.toLocaleDateString("en-AU", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const currentTime = now.toLocaleTimeString("en-AU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+
   let base = `${runnerooDomainSkill}
 
 ${toneSkill}
 
-${toolBehaviourSkill}`;
+${toolBehaviourSkill}
+
+## Current date and time
+
+Today is ${currentDate} at ${currentTime}.`;
 
   if (planning) {
     base += `

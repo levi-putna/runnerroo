@@ -19,6 +19,8 @@ export type AssistantToolCardProps = {
   testId?: string
   /** Optional meta text displayed to the left of the status icon */
   meta?: string
+  /** When true, keeps the card expanded (used for required user actions). */
+  forceExpanded?: boolean
 }
 
 /**
@@ -33,15 +35,12 @@ export function AssistantToolCard({
   variant,
   testId,
   meta,
+  forceExpanded = false,
 }: AssistantToolCardProps) {
-  const [isExpanded, setIsExpanded] = React.useState(true)
+  const [expandedOverride, setExpandedOverride] = React.useState<boolean | null>(null)
   const [isHovered, setIsHovered] = React.useState(false)
-
-  React.useEffect(() => {
-    if (variant === "success" || variant === "denied") {
-      setIsExpanded(false)
-    }
-  }, [variant])
+  const autoCollapsed = variant === "success" || variant === "denied"
+  const isCardExpanded = forceExpanded ? true : expandedOverride ?? !autoCollapsed
 
   const getBorderClasses = () => {
     switch (variant) {
@@ -75,7 +74,10 @@ export function AssistantToolCard({
   const statusIcon = getStatusIcon()
 
   const handleHeaderClick = () => {
-    setIsExpanded((prev) => !prev)
+    setExpandedOverride((prev) => {
+      const current = prev ?? !autoCollapsed
+      return !current
+    })
   }
 
   /**
@@ -101,14 +103,14 @@ export function AssistantToolCard({
           <div
             role="button"
             tabIndex={0}
-            aria-expanded={isExpanded}
-            aria-label={isExpanded ? "Collapse details" : "Expand details"}
+            aria-expanded={isCardExpanded}
+            aria-label={isCardExpanded ? "Collapse details" : "Expand details"}
             className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             onClick={handleHeaderClick}
             onKeyDown={handleHeaderKeyDown}
           >
             {isHovered ? (
-              isExpanded ? (
+              isCardExpanded ? (
                 <ChevronUp size={14} className="flex-shrink-0 text-muted-foreground/70" />
               ) : (
                 <ChevronDown size={14} className="flex-shrink-0 text-muted-foreground/70" />
@@ -127,7 +129,7 @@ export function AssistantToolCard({
         </div>
 
         {/* Body: nested panel with bg-background to mirror table inner content style */}
-        {isExpanded ? (
+        {isCardExpanded ? (
           <div className="rounded-md border border-border bg-background overflow-hidden">
             <div className="p-3 space-y-2">{children}</div>
           </div>

@@ -19,6 +19,7 @@ import { readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema
 import {
   buildResolutionContext,
   resolveGlobalsSchema,
+  resolveOutputSchemaFields,
   resolveTemplate,
 } from "@/lib/workflows/engine/template"
 import {
@@ -246,13 +247,9 @@ export async function executeAiExtractStep({
     },
   }
 
-  const outputSchema = readInputSchemaFromNodeData({ value: data?.outputSchema })
-  const resolvedOutputs: Record<string, unknown> = {}
   const outputContext = { ...context, exe: exeContext }
-  for (const field of outputSchema) {
-    if (!field.value) continue
-    resolvedOutputs[field.key] = resolveTemplate(field.value, outputContext)
-  }
+  const outputSchema = readInputSchemaFromNodeData({ value: data?.outputSchema })
+  const resolvedOutputs = resolveOutputSchemaFields({ outputSchema, context: outputContext })
 
   const globalsSchema = readInputSchemaFromNodeData({ value: data?.globalsSchema })
   const resolvedGlobals = resolveGlobalsSchema({ globalsSchema, context: outputContext })

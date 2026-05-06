@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getResolvedAvatarUrlForAuthUser } from "@/lib/avatar/dicebear"
 import { createClient } from "@/lib/supabase/server"
+import { countPendingWorkflowApprovalsForUser } from "@/lib/workflows/queries/approval-queries"
 import { fetchWorkflowsForUser } from "@/lib/workflows/queries/queries"
 import { AppLayoutClient } from "./layout-client"
 
@@ -20,10 +21,13 @@ export default async function AppLayout({
     avatar: getResolvedAvatarUrlForAuthUser({ user }),
   }
 
-  const recentWorkflows = await fetchWorkflowsForUser({ limit: 12 })
+  const [recentWorkflows, pendingApprovalCount] = await Promise.all([
+    fetchWorkflowsForUser({ limit: 12 }),
+    countPendingWorkflowApprovalsForUser(),
+  ])
 
   return (
-    <AppLayoutClient recentWorkflows={recentWorkflows} user={userData}>
+    <AppLayoutClient pendingApprovalCount={pendingApprovalCount} recentWorkflows={recentWorkflows} user={userData}>
       {children}
     </AppLayoutClient>
   )

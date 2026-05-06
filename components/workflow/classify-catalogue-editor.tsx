@@ -204,13 +204,13 @@ export function ClassifyCatalogueEditor({ data, set, nodeId, promptTags }: Class
   return (
     <div
       className={cn(
-        "min-w-0 w-full overflow-hidden rounded-xl border border-border/80 bg-card/40 shadow-sm",
+        "min-w-0 w-full overflow-hidden rounded-xl border border-border/80 bg-card/40",
       )}
     >
       {/* Panel header — matches InputSchemaBuilder */}
       <div className="flex items-start gap-3 border-b border-border/70 bg-muted/25 px-4 py-3">
         <span
-          className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background shadow-sm"
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background"
           aria-hidden
         >
           <Tag className="size-4 text-muted-foreground" />
@@ -233,14 +233,14 @@ export function ClassifyCatalogueEditor({ data, set, nodeId, promptTags }: Class
           <TabsList className="grid h-9 w-full grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1">
             <TabsTrigger
               value="visual"
-              className="gap-2 rounded-md text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              className="gap-2 rounded-md text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-none"
             >
               <LayoutList className="size-3.5 shrink-0 opacity-70" aria-hidden />
               Visual
             </TabsTrigger>
             <TabsTrigger
               value="expression"
-              className="gap-2 rounded-md text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              className="gap-2 rounded-md text-xs font-medium data-[state=active]:bg-background data-[state=active]:shadow-none"
             >
               <Braces className="size-3.5 shrink-0 opacity-70" aria-hidden />
               Expression

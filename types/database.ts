@@ -36,7 +36,7 @@ export interface Database {
         Row: {
           id: string
           workflow_id: string
-          status: "running" | "success" | "failed" | "cancelled"
+          status: "running" | "success" | "failed" | "cancelled" | "waiting_approval"
           started_at: string
           completed_at: string | null
           duration_ms: number | null
@@ -49,6 +49,42 @@ export interface Database {
         }
         Insert: Omit<Database["public"]["Tables"]["workflow_runs"]["Row"], "id" | "started_at">
         Update: Partial<Database["public"]["Tables"]["workflow_runs"]["Insert"]>
+      }
+      workflow_approvals: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          workflow_run_id: string
+          workflow_id: string
+          user_id: string
+          node_id: string
+          status: "pending" | "approved" | "declined"
+          title: string
+          description: string | null
+          /** Shown in Inbox to guide the reviewer (from the approval step). */
+          reviewer_instructions: string | null
+          step_input: Json
+          step_output: Json | null
+          responded_at: string | null
+          responded_by: string | null
+        }
+        Insert: {
+          workflow_run_id: string
+          workflow_id: string
+          user_id: string
+          node_id: string
+          title?: string
+          description?: string | null
+          reviewer_instructions?: string | null
+          step_input?: Json
+          status?: "pending" | "approved" | "declined"
+          step_output?: Json | null
+          responded_at?: string | null
+          responded_by?: string | null
+          id?: string
+        }
+        Update: Partial<Database["public"]["Tables"]["workflow_approvals"]["Insert"]>
       }
       user_files: {
         Row: {

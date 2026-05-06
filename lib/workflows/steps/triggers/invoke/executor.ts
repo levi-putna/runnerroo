@@ -1,5 +1,6 @@
 /**
- * Entry step execution — resolves outputSchema and globalsSchema against the trigger envelope.
+ * Entry step execution — resolves `outputSchema` and `globalsSchema` against the trigger envelope.
+ * Used for invoke, webhook, and schedule triggers (webhook/schedule re-export this module).
  */
 
 import type { Node } from "@xyflow/react"

@@ -125,8 +125,14 @@ function AlertDialogTitle({
   )
 }
 
+/**
+ * Alert dialog body copy. Base UI’s description primitive defaults to a `<p>`, which cannot wrap
+ * block-level children; we default `render` to a `<div>` so rich markup stays valid HTML. Pass
+ * `render` explicitly to override the host element.
+ */
 function AlertDialogDescription({
   className,
+  render,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Description>) {
   return (
@@ -136,6 +142,7 @@ function AlertDialogDescription({
         "text-sm text-balance text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
         className
       )}
+      render={render ?? <div />}
       {...props}
     />
   )

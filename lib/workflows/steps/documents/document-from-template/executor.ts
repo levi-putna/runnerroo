@@ -4,7 +4,7 @@ import PizZip from "pizzip"
 
 import { readRunnerGatewayExecutionContextFromStepInput } from "@/lib/ai-gateway/runner-gateway-tracking"
 import { readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema"
-import { buildResolutionContext, resolveGlobalsSchema, resolveTemplate } from "@/lib/workflows/engine/template"
+import { buildResolutionContext, resolveGlobalsSchema, resolveOutputSchemaFields, resolveTemplate } from "@/lib/workflows/engine/template"
 import { createClient } from "@/lib/supabase/server"
 import { WORKFLOW_DOCUMENT_OUTPUTS_BUCKET } from "@/lib/workflows/storage/workflow-document-buckets"
 
@@ -93,9 +93,9 @@ function buildDocumentSchema({
 }
 
 /**
- * Generates a document from a stored template and uploads the output artefact to storage.
+ * Executes the Document from Template step: merges resolved values into a stored template file and uploads the output artefact.
  */
-export async function executeGenerateDocumentStep({
+export async function executeDocumentFromTemplateStep({
   node,
   stepInput,
 }: {
@@ -107,7 +107,7 @@ export async function executeGenerateDocumentStep({
   const label = typeof nodeData?.label === "string" ? nodeData.label : node.id
   const templateFileId = typeof nodeData?.templateFileId === "string" ? nodeData.templateFileId.trim() : ""
   if (!templateFileId) {
-    throw new Error('Generate document step requires "templateFileId".')
+    throw new Error('Document from Template step requires "templateFileId".')
   }
 
   const context = buildResolutionContext({ stepInput, stepId: node.id })
@@ -208,13 +208,9 @@ export async function executeGenerateDocumentStep({
     documentUrl: signedUrlData.signedUrl,
   }
 
-  const outputSchema = readInputSchemaFromNodeData({ value: nodeData?.outputSchema })
   const outputContext = { ...context, exe: exeContext }
-  const resolvedOutputs: Record<string, unknown> = {}
-  for (const field of outputSchema) {
-    if (!field.value) continue
-    resolvedOutputs[field.key] = resolveTemplate(field.value, outputContext)
-  }
+  const outputSchema = readInputSchemaFromNodeData({ value: nodeData?.outputSchema })
+  const resolvedOutputs = resolveOutputSchemaFields({ outputSchema, context: outputContext })
 
   const globalsSchema = readInputSchemaFromNodeData({ value: nodeData?.globalsSchema })
   const resolvedGlobals = resolveGlobalsSchema({ globalsSchema, context: outputContext })

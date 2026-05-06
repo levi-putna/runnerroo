@@ -11,6 +11,7 @@ import {
   parseFiniteNumberFromResolved,
   resolveDeclaredInputsMap,
   resolveGlobalsSchema,
+  resolveOutputSchemaFields,
   resolveTemplate,
 } from "@/lib/workflows/engine/template"
 
@@ -27,20 +28,22 @@ export function executeRandomNumberStep({
   const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
   const resolvedInputs = resolveDeclaredInputsMap({ inputSchema, context })
 
-  const minStr = resolvedInputs.min ?? ""
-  const maxStr = resolvedInputs.max ?? ""
-  const min = parseFiniteNumberFromResolved({ text: minStr, fieldLabel: 'Input "min"' })
-  const max = parseFiniteNumberFromResolved({ text: maxStr, fieldLabel: 'Input "max"' })
+  const minExpression = typeof data?.randomMinExpression === "string" ? data.randomMinExpression : "0"
+  const maxExpression = typeof data?.randomMaxExpression === "string" ? data.randomMaxExpression : "100"
+  const min = parseFiniteNumberFromResolved({
+    text: resolveTemplate(minExpression, context),
+    fieldLabel: 'Execution "Minimum"',
+  })
+  const max = parseFiniteNumberFromResolved({
+    text: resolveTemplate(maxExpression, context),
+    fieldLabel: 'Execution "Maximum"',
+  })
   const drawn = drawUniformInclusiveBetween({ min, max })
 
   const exeContext: Record<string, unknown> = { number: drawn }
-  const outputSchema = readInputSchemaFromNodeData({ value: data?.outputSchema })
-  const resolvedOutputs: Record<string, unknown> = {}
   const outputContext = { ...context, exe: exeContext }
-  for (const field of outputSchema) {
-    if (!field.value) continue
-    resolvedOutputs[field.key] = resolveTemplate(field.value, outputContext)
-  }
+  const outputSchema = readInputSchemaFromNodeData({ value: data?.outputSchema })
+  const resolvedOutputs = resolveOutputSchemaFields({ outputSchema, context: outputContext })
 
   const globalsSchema = readInputSchemaFromNodeData({ value: data?.globalsSchema })
   const resolvedGlobals = resolveGlobalsSchema({ globalsSchema, context: outputContext })

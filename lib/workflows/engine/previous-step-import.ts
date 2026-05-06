@@ -1,7 +1,10 @@
 import type { Node } from "@xyflow/react"
 import type { Edge } from "@xyflow/react"
 import type { NodeInputField, NodeInputFieldType } from "@/lib/workflows/engine/input-schema"
-import { createEmptyNodeInputField, readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema"
+import {
+  createEmptyNodeInputField,
+  readInputSchemaFromNodeData,
+} from "@/lib/workflows/engine/input-schema"
 import { isUnsetSchemaText } from "@/lib/workflows/engine/schema-mapping-merge"
 
 export interface ListInboundSourcesParams {
@@ -137,6 +140,127 @@ export function inferPreviousStepOutputFields({
     ]
   }
 
+  if (previousNode.type === "decision") {
+    const data = previousNode.data as Record<string, unknown>
+    const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
+    if (fromOutput.length > 0) {
+      return fromOutput.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        suggestedValue: templatePrevPath({ path: f.key }),
+      }))
+    }
+    // Fallback when no output schema is defined — expose the condition result only.
+    return [
+      {
+        key: "decision_result",
+        label: "Decision result",
+        type: "boolean" as NodeInputFieldType,
+        suggestedValue: templatePrevPath({ path: "decision_result" }),
+      },
+    ]
+  }
+
+  if (previousNode.type === "approval") {
+    const data = previousNode.data as Record<string, unknown>
+    const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
+    if (fromOutput.length > 0) {
+      return fromOutput.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        suggestedValue: templatePrevPath({ path: f.key }),
+      }))
+    }
+    // Fallback when no output schema is defined — expose the approval decision.
+    return [
+      {
+        key: "decision",
+        label: "Decision",
+        type: "text" as NodeInputFieldType,
+        suggestedValue: templatePrevPath({ path: "decision" }),
+      },
+    ]
+  }
+
+  if (previousNode.type === "switch") {
+    const data = previousNode.data as Record<string, unknown>
+    const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
+    if (fromOutput.length > 0) {
+      return fromOutput.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        suggestedValue: templatePrevPath({ path: f.key }),
+      }))
+    }
+    // Fallback when no output schema is defined — expose routing outcome only.
+    return [
+      {
+        key: "switch_matched_case_id",
+        label: "Matched case id",
+        type: "text" as NodeInputFieldType,
+        suggestedValue: templatePrevPath({ path: "switch_matched_case_id" }),
+      },
+      {
+        key: "switch_used_default",
+        label: "Used default (Else) branch",
+        type: "boolean" as NodeInputFieldType,
+        suggestedValue: templatePrevPath({ path: "switch_used_default" }),
+      },
+    ]
+  }
+
+  if (previousNode.type === "split") {
+    const data = previousNode.data as Record<string, unknown>
+    const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
+    if (fromOutput.length > 0) {
+      return fromOutput.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        suggestedValue: templatePrevPath({ path: f.key }),
+      }))
+    }
+    return [
+      {
+        key: "split_fanout_count",
+        label: "Parallel path count",
+        type: "number" as NodeInputFieldType,
+        suggestedValue: templatePrevPath({ path: "split_fanout_count" }),
+      },
+    ]
+  }
+
+  if (previousNode.type === "document") {
+    const data = previousNode.data as Record<string, unknown>
+    const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
+    if (fromOutput.length > 0) {
+      return fromOutput.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        suggestedValue: templatePrevPath({ path: `outputs.${f.key}` }),
+      }))
+    }
+    // Fallback to the known default document output keys
+    return [
+      {
+        key: "file_name",
+        label: "File name",
+        type: "text" as NodeInputFieldType,
+        suggestedValue: templatePrevPath({ path: "outputs.file_name" }),
+      },
+      {
+        key: "document_url",
+        label: "Document URL",
+        type: "text" as NodeInputFieldType,
+        suggestedValue: templatePrevPath({ path: "outputs.document_url" }),
+      },
+    ]
+  }
+
   if (previousNode.type === "end") {
     const data = previousNode.data as Record<string, unknown>
     const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
@@ -213,4 +337,26 @@ export function mergeInputSchemaWithPreviousStepImport({
   }
 
   return updated
+}
+
+export interface ReplaceInputSchemaWithPreviousStepImportParams {
+  inferred: InferredImportField[]
+}
+
+/**
+ * Rebuilds the inbound field list solely from inferred upstream keys (replace semantics).
+ */
+export function replaceInputSchemaWithPreviousStepImport({
+  inferred,
+}: ReplaceInputSchemaWithPreviousStepImportParams): NodeInputField[] {
+  return inferred.map((inf) =>
+    createEmptyNodeInputField({
+      partial: {
+        key: inf.key,
+        label: inf.label,
+        type: inf.type,
+        value: inf.suggestedValue,
+      },
+    }),
+  )
 }

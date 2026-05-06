@@ -3,6 +3,7 @@
  */
 
 import { actionDefinition } from "@/lib/workflows/steps/actions/action/definition"
+import { webhookCallDefinition } from "@/lib/workflows/steps/actions/webhook-call/definition"
 import { aiChatDefinition } from "@/lib/workflows/steps/ai/chat/definition"
 import { aiClassifyDefinition } from "@/lib/workflows/steps/ai/classify/definition"
 import { aiExtractDefinition } from "@/lib/workflows/steps/ai/extract/definition"
@@ -12,13 +13,15 @@ import { aiTransformDefinition } from "@/lib/workflows/steps/ai/transform/defini
 import { codeRunDefinition } from "@/lib/workflows/steps/code/code/definition"
 import { iterationDefinition } from "@/lib/workflows/steps/code/iteration/definition"
 import { randomNumberDefinition } from "@/lib/workflows/steps/code/random/definition"
-import { generateDocumentDefinition } from "@/lib/workflows/steps/documents/generate-document/definition"
+import { documentFromTemplateDefinition } from "@/lib/workflows/steps/documents/document-from-template/definition"
+import { documentFromXmlDefinition } from "@/lib/workflows/steps/documents/document-xml/definition"
 import { decisionDefinition } from "@/lib/workflows/steps/logic/decision/definition"
 import { splitDefinition } from "@/lib/workflows/steps/logic/split/definition"
 import { switchDefinition } from "@/lib/workflows/steps/logic/switch/definition"
 import { invokeTriggerDefinition } from "@/lib/workflows/steps/triggers/invoke/definition"
 import { scheduleTriggerDefinition } from "@/lib/workflows/steps/triggers/schedule/definition"
 import { webhookTriggerDefinition } from "@/lib/workflows/steps/triggers/webhook/definition"
+import { approvalDefinition } from "@/lib/workflows/steps/human/approval/definition"
 import { endDefinition } from "@/lib/workflows/steps/termination/end/definition"
 import type { StepDefinition } from "@/lib/workflows/engine/step-definition"
 
@@ -30,6 +33,7 @@ export const STEP_CATALOGUE: StepDefinition[] = [
   decisionDefinition,
   switchDefinition,
   splitDefinition,
+  approvalDefinition,
   aiGenerateDefinition,
   aiSummarizeDefinition,
   aiClassifyDefinition,
@@ -39,7 +43,9 @@ export const STEP_CATALOGUE: StepDefinition[] = [
   codeRunDefinition,
   randomNumberDefinition,
   iterationDefinition,
-  generateDocumentDefinition,
+  documentFromTemplateDefinition,
+  documentFromXmlDefinition,
   actionDefinition,
+  webhookCallDefinition,
   endDefinition,
 ]

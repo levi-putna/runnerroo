@@ -1,11 +1,23 @@
+/** Stable formatter so SSR and the browser produce identical strings (avoids hydration mismatches). */
+const runLocalDateFormatter = new Intl.DateTimeFormat("en-AU", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+})
+
 /**
  * Formats an ISO timestamp for display in run history UIs.
+ * Uses fixed `en-AU` and 24-hour time so Node SSR and the browser agree (hydration-safe).
  */
 export function formatRunLocalDate(iso: string) {
   try {
     const d = new Date(iso)
     if (Number.isNaN(d.valueOf())) return iso
-    return d.toLocaleString()
+    return runLocalDateFormatter.format(d)
   } catch {
     return iso
   }
@@ -25,6 +37,7 @@ type WorkflowRunPersistedStatus =
   | "success"
   | "failed"
   | "cancelled"
+  | "waiting_approval"
 
 /**
  * Dense table / header copy for persisted workflow runs (deployment-style readability).
@@ -33,5 +46,6 @@ export function runPersistedLifecycleLabel(status: WorkflowRunPersistedStatus) {
   if (status === "success") return "Completed"
   if (status === "failed") return "Failed"
   if (status === "cancelled") return "Cancelled"
+  if (status === "waiting_approval") return "Awaiting approval"
   return "Running"
 }

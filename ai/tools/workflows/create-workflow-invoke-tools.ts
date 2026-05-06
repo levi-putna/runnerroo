@@ -64,7 +64,7 @@ function buildWorkflowInvokeToolDescription({
   const headline = `Run the user's workflow "${descriptor.name}" (id ${descriptor.workflowId}).`;
   const tail =
     descriptor.description?.trim() ??
-    "Provide parameters that match the invoke entry input schema. Each result includes __assistantWorkflowName (the workflow title). Other fields are the published End step output.";
+    "Provide parameters that match the invoke entry input schema. Each result includes __assistantWorkflowName (the workflow title). Other fields are the published End step output. When approvals are required, the chat card can approve/reject inline and may loop through multiple approval steps before completion.";
   return `${headline} ${tail}`;
 }
 
@@ -94,12 +94,37 @@ function buildWorkflowAssistantInvokeToolOutput({
   persisted,
   endStepOutputs,
   descriptor,
+  pendingApproval,
 }: {
   persisted: PersistWorkflowGraphRunResult;
   endStepOutputs: EndStepOutputRow[];
   descriptor: WorkflowAssistantInvokeDescriptor;
+  pendingApproval: {
+    id: string;
+    node_id: string;
+    title: string | null;
+    description: string | null;
+    reviewer_instructions: string | null;
+  } | null;
 }): Record<string, unknown> {
   const workflowLabel = descriptor.name.trim() || descriptor.workflowId;
+
+  if (persisted.status === "waiting_approval") {
+    return withWorkflowInvokeDisplayName({
+      workflowLabel,
+      payload: {
+        success: false,
+        awaiting_approval: true,
+        run_id: persisted.runId,
+        approval_id: pendingApproval?.id ?? null,
+        approval_node_id: pendingApproval?.node_id ?? null,
+        approval_title: pendingApproval?.title ?? "Approval required",
+        approval_description: pendingApproval?.description ?? null,
+        approval_reviewer_instructions: pendingApproval?.reviewer_instructions ?? null,
+        error: "Workflow paused — review and approve in chat (or Inbox).",
+      },
+    });
+  }
 
   if (persisted.status !== "success") {
     return withWorkflowInvokeDisplayName({
@@ -207,7 +232,40 @@ async function runWorkflowAssistantInvokeExecution({
     node_results: persisted.node_results,
   });
 
-  return buildWorkflowAssistantInvokeToolOutput({ persisted, endStepOutputs, descriptor });
+  let pendingApproval: {
+    id: string;
+    node_id: string;
+    title: string | null;
+    description: string | null;
+    reviewer_instructions: string | null;
+  } | null = null;
+  if (persisted.status === "waiting_approval") {
+    const approvalLookup = await supabase
+      .from("workflow_approvals")
+      .select("id, node_id, title, description, reviewer_instructions")
+      .eq("workflow_run_id", persisted.runId)
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!approvalLookup.error && approvalLookup.data?.id) {
+      pendingApproval = {
+        id: approvalLookup.data.id,
+        node_id: approvalLookup.data.node_id,
+        title: approvalLookup.data.title,
+        description: approvalLookup.data.description,
+        reviewer_instructions: approvalLookup.data.reviewer_instructions,
+      };
+    }
+  }
+
+  return buildWorkflowAssistantInvokeToolOutput({
+    persisted,
+    endStepOutputs,
+    descriptor,
+    pendingApproval,
+  });
 }
 
 /**

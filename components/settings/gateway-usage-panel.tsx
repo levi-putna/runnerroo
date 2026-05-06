@@ -15,6 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
 import type { GatewayUsageCategoryFilter } from "@/lib/ai-gateway/gateway-usage-category";
 import {
@@ -24,7 +25,15 @@ import {
   GATEWAY_USAGE_TAG_PREFIX_WORKFLOW_RUN,
 } from "@/lib/ai-gateway/runner-gateway-tracking";
 import { cn } from "@/lib/utils";
-import { endOfMonth, format, parse as parseIsoDate, startOfDay, startOfMonth } from "date-fns";
+import {
+  endOfMonth,
+  format,
+  parse as parseIsoDate,
+  startOfDay,
+  startOfMonth,
+  subDays,
+  subMonths,
+} from "date-fns";
 import type { DateRange } from "react-day-picker";
 import {
   BoxIcon,
@@ -37,7 +46,34 @@ import {
   SearchIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * Normalises two calendar dates to inclusive `YYYY-MM-DD` strings with the earlier day as start.
+ *
+ * @param startDay - One end of the span.
+ * @param endDay - The other end of the span.
+ */
+function normaliseRangeToIsoStrings({
+  startDay,
+  endDay,
+}: {
+  startDay: Date;
+  endDay: Date;
+}): { startStr: string; endStr: string } {
+  const left = startOfDay(startDay);
+  const right = startOfDay(endDay);
+  if (left <= right) {
+    return {
+      startStr: format(left, "yyyy-MM-dd"),
+      endStr: format(right, "yyyy-MM-dd"),
+    };
+  }
+  return {
+    startStr: format(right, "yyyy-MM-dd"),
+    endStr: format(left, "yyyy-MM-dd"),
+  };
+}
 
 type SpendReportRow = {
   user?: string;
@@ -67,7 +103,55 @@ type SpendReportPagedResponse = {
 
 /** Shared styling for compact filter triggers in the toolbar (Vercel-style pill controls). */
 const FILTER_TRIGGER_CLASS =
-  "inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm text-foreground shadow-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  "inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
+/** Row count for the usage table skeleton while awaiting the first rows (or empty) response. */
+const USAGE_TABLE_SKELETON_ROW_COUNT = 8;
+
+/**
+ * Shimmer placeholders for Gateway usage rows (matches seven-column layout).
+ *
+ * @param rowCount - Number of faux rows rendered (overall skeleton height).
+ */
+function GatewayUsageTableSkeletonRows({ rowCount }: { rowCount: number }) {
+  const keys = Array.from({ length: rowCount }, (_, index) => `usage-skel-${index}`);
+
+  return (
+    <>
+      {keys.map((rowKey) => (
+        <tr key={rowKey} className="border-b border-border/80 last:border-0">
+          {/* Type */}
+          <td className="px-4 py-3">
+            <div className="flex max-w-[14rem] items-center gap-2">
+              <Skeleton className="size-4 shrink-0 rounded-sm" aria-hidden />
+              <Skeleton className="h-5 w-24 shrink-0" />
+            </div>
+          </td>
+          {/* Source */}
+          <td className="px-4 py-3">
+            <Skeleton className="h-4 w-40 max-w-[16rem]" />
+          </td>
+          {/* Numeric columns */}
+          <td className="px-4 py-3 text-right">
+            <Skeleton className="ml-auto h-5 w-20" />
+          </td>
+          <td className="px-4 py-3 text-right">
+            <Skeleton className="ml-auto h-5 w-14" />
+          </td>
+          <td className="px-4 py-3 text-right">
+            <Skeleton className="ml-auto h-5 w-14" />
+          </td>
+          <td className="px-4 py-3 text-right">
+            <Skeleton className="ml-auto h-5 w-14" />
+          </td>
+          <td className="px-4 py-3 text-right">
+            <Skeleton className="ml-auto h-5 w-10" />
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+}
 
 /**
  * Extracts a conversation id from a spend-report tag, if present.
@@ -205,6 +289,13 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
 
+  /** Visible month for the range calendar (dropdown captions jump years without fighting `defaultMonth`). */
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
+
+  /** Keeps the latest range day-clicks in sync for commit-on-dismiss (avoids stale state if the popover closes in the same event turn as the last click). */
+  const dateRangeDraftRef = useRef<DateRange | undefined>(undefined);
+  const [dateRangeDraft, setDateRangeDraft] = useState<DateRange | undefined>(undefined);
+
   const [data, setData] = useState<SpendReportPagedResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -217,6 +308,17 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
     }
     return { from, to };
   }, [appliedStartDate, appliedEndDate]);
+
+  /* When the picker opens, anchor the calendar on the applied range start so future months are reachable in one flow. */
+  useEffect(() => {
+    if (!datePickerOpen) {
+      return;
+    }
+    const anchor = parseIsoDate(appliedStartDate, "yyyy-MM-dd", new Date());
+    if (!Number.isNaN(anchor.getTime())) {
+      setCalendarMonth(anchor);
+    }
+  }, [datePickerOpen, appliedStartDate]);
 
   const dateToolbarLabel = useMemo(() => {
     if (!calendarRange?.from || !calendarRange.to) {
@@ -328,6 +430,93 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
   const providerTriggerLabel =
     providerFilter.length === 0 ? "All providers…" : providerFilter;
 
+  /**
+   * Persists a span to filter state and keeps the draft range aligned (used by presets and full range picks).
+   */
+  const syncDraftAndCommitRange = useCallback(({ from, to }: { from: Date; to: Date }) => {
+    const { startStr, endStr } = normaliseRangeToIsoStrings({ startDay: from, endDay: to });
+    const nextFrom = parseIsoDate(startStr, "yyyy-MM-dd", new Date());
+    const nextTo = parseIsoDate(endStr, "yyyy-MM-dd", new Date());
+    const nextRange: DateRange = { from: nextFrom, to: nextTo };
+    dateRangeDraftRef.current = nextRange;
+    setDateRangeDraft(nextRange);
+    setAppliedStartDate(startStr);
+    setAppliedEndDate(endStr);
+    setPage(1);
+  }, []);
+
+  const applyPresetThisMonth = useCallback(() => {
+    const from = startOfMonth(today);
+    const to = endOfMonth(today);
+    syncDraftAndCommitRange({ from, to });
+    setDatePickerOpen(false);
+  }, [today, syncDraftAndCommitRange]);
+
+  const applyPresetLast30Days = useCallback(() => {
+    const from = startOfDay(subDays(today, 29));
+    const to = startOfDay(today);
+    syncDraftAndCommitRange({ from, to });
+    setDatePickerOpen(false);
+  }, [today, syncDraftAndCommitRange]);
+
+  const applyPresetLastCalendarMonth = useCallback(() => {
+    const centre = subMonths(today, 1);
+    const from = startOfMonth(centre);
+    const to = endOfMonth(centre);
+    syncDraftAndCommitRange({ from, to });
+    setDatePickerOpen(false);
+  }, [today, syncDraftAndCommitRange]);
+
+  /**
+   * Range edits stay in draft while the popover is open. If only the start day is chosen, closing applies
+   * the previous end when it is still on/after the new start; otherwise the range collapses to a single day
+   * until a new end is chosen. Choosing both dates applies immediately and closes.
+   */
+  const handleDatePopoverOpenChange = useCallback(
+    ({ open }: { open: boolean }) => {
+      if (open) {
+        dateRangeDraftRef.current = calendarRange;
+        setDateRangeDraft(calendarRange);
+        setDatePickerOpen(true);
+        return;
+      }
+
+      setDatePickerOpen(false);
+
+      const next = dateRangeDraftRef.current;
+      if (next?.from === undefined) {
+        return;
+      }
+
+      let endDate = next.to;
+
+      if (endDate === undefined) {
+        const previousEnd = parseIsoDate(appliedEndDate, "yyyy-MM-dd", new Date());
+        const startOnly = startOfDay(next.from);
+        if (!Number.isNaN(previousEnd.getTime()) && startOnly <= startOfDay(previousEnd)) {
+          endDate = previousEnd;
+        } else {
+          endDate = startOnly;
+        }
+      }
+
+      const { startStr, endStr } = normaliseRangeToIsoStrings({
+        startDay: next.from,
+        endDay: endDate,
+      });
+
+      if (startStr === appliedStartDate && endStr === appliedEndDate) {
+        return;
+      }
+
+      syncDraftAndCommitRange({
+        from: parseIsoDate(startStr, "yyyy-MM-dd", new Date()),
+        to: parseIsoDate(endStr, "yyyy-MM-dd", new Date()),
+      });
+    },
+    [calendarRange, appliedStartDate, appliedEndDate, syncDraftAndCommitRange],
+  );
+
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
       {/* ── Page title (fixed header row) ── */}
@@ -338,25 +527,53 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
 
       <div className="flex flex-col gap-6 p-6">
         {/* ── Filter toolbar: horizontal pill controls ── */}
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-0.5">
-          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+        <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto pb-0.5">
+          <Popover open={datePickerOpen} onOpenChange={(open) => handleDatePopoverOpenChange({ open })}>
             <PopoverTrigger asChild>
               <button type="button" className={cn(FILTER_TRIGGER_CLASS, "max-w-[min(100%,20rem)]")}>
                 <CalendarIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                 <span className="truncate">{dateToolbarLabel}</span>
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
+            <PopoverContent className="w-auto p-0" align="end">
+              {/* Presets + hint: two-click range is standard; dropdown months speed up far-future ranges. */}
+              <div className="flex flex-col gap-2 border-b border-border p-3">
+                <p className="text-xs text-muted-foreground">
+                  Choose a start date, then an end date. Presets apply straight away; you can also jump
+                  month and year from the dropdowns.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="secondary" size="sm" onClick={applyPresetThisMonth}>
+                    This month
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={applyPresetLast30Days}>
+                    Last 30 days
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={applyPresetLastCalendarMonth}
+                  >
+                    Last month
+                  </Button>
+                </div>
+              </div>
+
               <Calendar
                 mode="range"
+                resetOnSelect
+                required={false}
+                captionLayout="dropdown"
+                month={calendarMonth}
+                onMonthChange={setCalendarMonth}
                 numberOfMonths={2}
-                defaultMonth={calendarRange?.from}
-                selected={calendarRange}
+                selected={datePickerOpen ? dateRangeDraft : calendarRange}
                 onSelect={(range) => {
+                  dateRangeDraftRef.current = range;
+                  setDateRangeDraft(range);
                   if (range?.from !== undefined && range.to !== undefined) {
-                    setAppliedStartDate(format(range.from, "yyyy-MM-dd"));
-                    setAppliedEndDate(format(range.to, "yyyy-MM-dd"));
-                    setPage(1);
+                    syncDraftAndCommitRange({ from: range.from, to: range.to });
                     setDatePickerOpen(false);
                   }
                 }}
@@ -465,7 +682,7 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
         </div>
 
         {/* ── Summary totals ── */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4" aria-busy={loading}>
           <p className="text-sm font-medium text-foreground">Total usage (filtered)</p>
           <p className="text-xs text-muted-foreground">
             All costs are in US dollars; values use the currency prefix (including small fractions of a
@@ -477,45 +694,64 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Total cost
               </p>
-              <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
-                {usd.format(filteredTotalCostUsd)}
-              </p>
+              {loading ? (
+                <Skeleton className="mt-1 h-7 w-[8.5rem] max-w-full" />
+              ) : (
+                <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
+                  {usd.format(filteredTotalCostUsd)}
+                </p>
+              )}
             </div>
             <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Input tokens
               </p>
-              <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
-                {formatTokens({ value: filteredTotalInputTokens })}
-              </p>
+              {loading ? (
+                <Skeleton className="mt-1 h-7 w-24 max-w-full" />
+              ) : (
+                <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
+                  {formatTokens({ value: filteredTotalInputTokens })}
+                </p>
+              )}
             </div>
             <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Output tokens
               </p>
-              <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
-                {formatTokens({ value: filteredTotalOutputTokens })}
-              </p>
+              {loading ? (
+                <Skeleton className="mt-1 h-7 w-24 max-w-full" />
+              ) : (
+                <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
+                  {formatTokens({ value: filteredTotalOutputTokens })}
+                </p>
+              )}
             </div>
             <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Reasoning tokens
               </p>
-              <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
-                {formatTokens({ value: filteredTotalReasoningTokens })}
-              </p>
+              {loading ? (
+                <Skeleton className="mt-1 h-7 w-24 max-w-full" />
+              ) : (
+                <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
+                  {formatTokens({ value: filteredTotalReasoningTokens })}
+                </p>
+              )}
             </div>
             <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Requests
               </p>
-              <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
-                {formatTokens({ value: filteredTotalRequests })}
-              </p>
+              {loading ? (
+                <Skeleton className="mt-1 h-7 w-20 max-w-full" />
+              ) : (
+                <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
+                  {formatTokens({ value: filteredTotalRequests })}
+                </p>
+              )}
             </div>
           </div>
 
-          {loading ? <p className="mt-2 text-sm text-muted-foreground">Loading…</p> : null}
           {error ? (
             <p className="mt-2 text-sm text-destructive" role="alert">
               {error}
@@ -525,7 +761,10 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
 
         {/* ── Table ── */}
         <div className="min-w-0 overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[52rem] border-collapse text-sm">
+          <table
+            className="w-full min-w-[52rem] border-collapse text-sm"
+            aria-busy={loading && (!data || data.results.length === 0)}
+          >
             <thead>
               <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3">Type</th>
@@ -538,10 +777,12 @@ export function GatewayUsagePanel({ className }: GatewayUsagePanelProps) {
               </tr>
             </thead>
             <tbody>
-              {!data || data.results.length === 0 ? (
+              {loading && (!data || data.results.length === 0) ? (
+                <GatewayUsageTableSkeletonRows rowCount={USAGE_TABLE_SKELETON_ROW_COUNT} />
+              ) : !data || data.results.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    {loading ? "Loading…" : "No usage for this date range."}
+                    No usage for this date range.
                   </td>
                 </tr>
               ) : (

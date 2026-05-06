@@ -77,7 +77,7 @@ export interface Workflow {
 export interface WorkflowRun {
   id: string
   workflow_id: string
-  status: "running" | "success" | "failed" | "cancelled"
+  status: "running" | "success" | "failed" | "cancelled" | "waiting_approval"
   started_at: string
   completed_at?: string
   duration_ms?: number
@@ -89,7 +89,7 @@ export interface WorkflowRun {
 /** One persisted step observation inside `workflow_runs.node_results`. */
 export interface NodeResult {
   node_id: string
-  status: "pending" | "running" | "success" | "failed" | "skipped"
+  status: "pending" | "running" | "success" | "failed" | "skipped" | "awaiting_approval"
   started_at?: string
   completed_at?: string
   /** Payload entering this step from upstream (manual trigger snapshot for entry). */

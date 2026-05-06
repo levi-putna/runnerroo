@@ -11,22 +11,20 @@ import {
   Book,
   BrainIcon,
   ChevronRight,
-  Clock,
-  Command,
   Files,
   GitBranch,
   HelpCircle,
   History,
+  Inbox,
   MessageSquareIcon,
   Search,
   Settings,
-  Webhook,
   Workflow,
-  Zap,
 } from "lucide-react"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { DailifyMark, DailifyWordmark } from "@/components/brand/dailify-logos"
 import { NavUser } from "@/components/nav-user"
 import type { WorkflowListRow } from "@/lib/workflows/queries/queries"
 
@@ -89,27 +87,16 @@ const navItems: NavItem[] = [
     icon: <Activity className="size-4" />,
   },
   {
+    id: "inbox",
+    title: "Inbox",
+    url: "/app/inbox",
+    icon: <Inbox className="size-4" />,
+  },
+  {
     id: "artifacts",
     title: "Artefacts",
     url: "/app/artifacts",
     icon: <Files className="size-4" />,
-  },
-  {
-    id: "triggers",
-    title: "Triggers",
-    icon: <Zap className="size-4" />,
-    backLabel: "Navigation",
-    subItems: [
-      { id: "manual", title: "Manual triggers", url: "/app/triggers/manual", icon: <Command className="size-4" /> },
-      { id: "webhooks", title: "Webhooks", url: "/app/triggers/webhooks", icon: <Webhook className="size-4" /> },
-      { id: "schedules", title: "Schedules", url: "/app/triggers/schedules", icon: <Clock className="size-4" /> },
-    ],
-  },
-  {
-    id: "analytics",
-    title: "Analytics",
-    url: "/app/analytics",
-    icon: <BarChart3 className="size-4" />,
   },
   {
     id: "settings",
@@ -131,7 +118,7 @@ const navItems: NavItem[] = [
 const ASSISTANT_SECTION_NAV_IDS = new Set(["assistant", "history"])
 
 /** Nav item ids grouped under the Workflow heading. */
-const WORKFLOW_SECTION_NAV_IDS = new Set(["workflows", "runs", "artifacts"])
+const WORKFLOW_SECTION_NAV_IDS = new Set(["workflows", "runs", "inbox"])
 
 /** All ids rendered in structured Assistant / Workflow blocks (excluded from core nav). */
 const SIDEBAR_STRUCTURED_NAV_IDS = new Set<string>([
@@ -145,10 +132,22 @@ const SIDEBAR_STRUCTURED_NAV_IDS = new Set<string>([
 export function AppSidebar({
   user,
   recentWorkflows,
+  pendingApprovalCount = 0,
 }: {
   user: User
   recentWorkflows: WorkflowListRow[]
+  pendingApprovalCount?: number
 }) {
+  const navItemsEffective = React.useMemo(
+    () =>
+      navItems.map((item) =>
+        item.id === "inbox" && pendingApprovalCount > 0
+          ? { ...item, badge: pendingApprovalCount }
+          : item,
+      ),
+    [pendingApprovalCount],
+  )
+
   const [panelStack, setPanelStack] = React.useState<string[]>(["root"])
   const [direction, setDirection] = React.useState(1)
   const [isSearchOpen, setIsSearchOpen] = React.useState(false)
@@ -211,7 +210,7 @@ export function AppSidebar({
     }
   }, [isSearchOpen])
 
-  const activeNavItem = navItems.find((i) => i.id === activePanel)
+  const activeNavItem = navItemsEffective.find((i) => i.id === activePanel)
 
   /**
    * Sidebar row for root panel items — direct link or drill-down (e.g. History).
@@ -276,7 +275,7 @@ export function AppSidebar({
             Assistant
           </p>
           <div className="mb-1 flex flex-col gap-0.5">
-            {navItems
+            {navItemsEffective
               .filter((i) => ASSISTANT_SECTION_NAV_IDS.has(i.id))
               .map((item) => (
                 <div key={item.id}>{renderRootNavLinkOrDrilldown(item)}</div>
@@ -291,18 +290,18 @@ export function AppSidebar({
             Workflow
           </p>
           <div className="mb-1 flex flex-col gap-0.5">
-            {navItems
+            {navItemsEffective
               .filter((i) => WORKFLOW_SECTION_NAV_IDS.has(i.id))
               .map((item) => (
                 <div key={item.id}>{renderRootNavLinkOrDrilldown(item)}</div>
               ))}
           </div>
 
-          {/* Between Workflow block and triggers / analytics / settings */}
+          {/* Between Workflow block and artefacts / settings */}
           <SidebarSeparator className="my-2 bg-sidebar-border/45" />
 
           {/* Core navigation */}
-          {navItems.filter((i) => !SIDEBAR_STRUCTURED_NAV_IDS.has(i.id)).map((item) => (
+          {navItemsEffective.filter((i) => !SIDEBAR_STRUCTURED_NAV_IDS.has(i.id)).map((item) => (
             <div key={item.id}>{renderRootNavLinkOrDrilldown(item)}</div>
           ))}
 
@@ -412,16 +411,19 @@ export function AppSidebar({
 
   return (
     <Sidebar variant="inset" collapsible="offcanvas">
-      <SidebarHeader>
+      <SidebarHeader className="gap-0 p-0">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/app/workflows" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <Zap className="size-4" />
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">Runneroo</span>
-                <span className="truncate text-xs text-muted-foreground/70">Workflow automation</span>
+            {/* Brand — mark + wordmark */}
+            <SidebarMenuButton
+              size="lg"
+              tooltip="Dailify"
+              className="py-1.5"
+              render={<Link href="/app/workflows" />}
+            >
+              <DailifyMark className="!h-9 !w-auto shrink-0 text-sidebar-foreground" />
+              <div className="flex min-w-0 flex-1 items-center group-data-[collapsible=icon]:hidden">
+                <DailifyWordmark className="!h-6 !w-auto max-w-full text-sidebar-foreground" />
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

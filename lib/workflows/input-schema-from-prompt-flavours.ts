@@ -39,7 +39,7 @@ export const WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT = {
   flavourId: "workflow_step_input",
   dialogTitle: "Import output fields from prompt",
   dialogDescription:
-    "Describe each key this step should expose downstream (human labels, types, required flags, and any {{exe.*}} or {{prev.*}} mapping hints you want suggested). " +
+    "Describe each key this step should expose downstream (human labels, types, required flags, and any {{exe.*}}, {{input.*}}, or {{trigger_inputs.*}} mapping hints you want suggested). " +
     "We will propose matching output schema rows.",
 } as const satisfies { flavourId: WorkflowInputSchemaFromPromptFlavourId; dialogTitle: string; dialogDescription: string }
 

@@ -29,16 +29,19 @@ export function listInboundSourcesForNode({ edges, targetNodeId }: ListInboundSo
 }
 
 export interface TemplatePrevPathParams {
-  /** Dotted segments after `prev`, e.g. `text` for `prev.text`; omit for the entire upstream payload. */
+  /** Dotted segments after `input`, e.g. `text` for `input.text`; omit for the entire upstream payload. */
   path?: string
 }
 
 /**
- * Builds a `{{prev}}` or `{{prev.segment...}}` placeholder for input field mapping values.
- * The runner binds `prev` to the selected inbound edge’s predecessor output (never other steps by id).
+ * Builds an `{{input}}` or `{{input.segment...}}` placeholder for output / mapping cell values.
+ *
+ * Standard steps automatically receive the predecessor's emitted output as `{{input.*}}`, so
+ * import tooling now writes `input.*` placeholders instead of the legacy `prev.*` form (the
+ * runner still resolves persisted `{{prev.*}}` tags via a back-compat alias).
  */
 export function templatePrevPath({ path }: TemplatePrevPathParams): string {
-  const inner = path && path.trim() ? `prev.${path.trim()}` : "prev"
+  const inner = path && path.trim() ? `input.${path.trim()}` : "input"
   return `{{${inner}}}`
 }
 
@@ -56,20 +59,19 @@ export interface InferPreviousStepOutputFieldsParams {
 
 /**
  * Best-effort shape of a predecessor step's runtime output for wiring the next step's `inputSchema` values.
- * Entry nodes prefer a non-empty `outputSchema`, then fall back to `inputSchema`; AI steps prefer `outputSchema` keys when set, otherwise default to `prev.text`; other kinds default to the whole body.
+ * Entry nodes prefer `inputSchema` rows (same keys the trigger exposes downstream); legacy graphs may only have `outputSchema`. AI steps prefer `outputSchema` keys when set, otherwise default to `prev.text`; other kinds default to the whole body.
  */
 export function inferPreviousStepOutputFields({
   previousNode,
 }: InferPreviousStepOutputFieldsParams): InferredImportField[] {
   if (previousNode.type === "entry") {
     const data = previousNode.data as Record<string, unknown>
-    const fromOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
+    const fromInput = readInputSchemaFromNodeData({ value: data?.inputSchema })
+    const fromLegacyOutput = readInputSchemaFromNodeData({ value: data?.outputSchema })
     const declared =
-      fromOutput.length > 0
-        ? fromOutput
-        : readInputSchemaFromNodeData({
-            value: data?.inputSchema,
-          })
+      fromInput.length > 0
+        ? fromInput
+        : fromLegacyOutput
     if (declared.length === 0) {
       return [
         {

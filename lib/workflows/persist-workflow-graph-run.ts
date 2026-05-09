@@ -1,6 +1,6 @@
 /**
- * Persists and executes a workflow graph for an authenticated owner — shared by the SSE run route
- * and assistant invoke tools.
+ * Persists and executes a workflow graph for a runner identity — shared by the SSE run route, assistant invoke
+ * tools, and privileged dispatch routes (cron, etc.).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -20,7 +20,15 @@ import {
 import { createWorkflowStepExecutor } from "@/lib/workflows/engine/step-executor"
 import { buildApprovedApprovalStepOutput } from "@/lib/workflows/steps/human/approval/context"
 import type { RunnerGatewayExecutionContext } from "@/lib/ai-gateway/runner-gateway-tracking"
-import type { Json } from "@/types/database"
+import type { Database, Json } from "@/types/database"
+import { normaliseWorkflowConstantsJson } from "@/lib/workflows/workflow-constants"
+
+/**
+ * Persisted **`workflow_runs.trigger_type`** — how this invocation was dispatched (SSE test run, infra schedule,
+ * webhook, etc.), distinct from **`workflows.trigger_type`** automation configuration.
+ */
+export type PersistWorkflowRunTrigger =
+  Database["public"]["Tables"]["workflow_runs"]["Row"]["trigger_type"]
 
 /** Display name / email captured at run start for `{{user.name}}` and `{{user.email}}`. */
 export type RunnerWorkflowIdentity = {
@@ -34,6 +42,7 @@ export type PersistWorkflowGraphRunWorkflowRow = {
   run_count: number | null
   nodes: unknown
   edges: unknown
+  workflow_constants?: Json | null
 }
 
 export interface PersistWorkflowGraphRunParams {
@@ -42,6 +51,13 @@ export interface PersistWorkflowGraphRunParams {
   userId: string
   inputs: Record<string, unknown>
   workflow: PersistWorkflowGraphRunWorkflowRow
+  /** Stored as **`workflow_runs.trigger_type`** on the inserted run row. */
+  runTrigger: PersistWorkflowRunTrigger
+  /**
+   * Persisted **workflows.status** at dispatch time (cron routes pass `active` when eligible).
+   * Used only for infra logs when `inputs.source === "schedule"`.
+   */
+  workflowRowStatus?: string
   /** Attribution forwarded after the run row id is allocated (see {@link RunnerGatewayExecutionContext}). */
   gatewayUserAndWorkflow: Pick<RunnerGatewayExecutionContext, "supabaseUserId" | "workflowId">
   /** Signed-in runner display name / email surfaced as `{{user.*}}` templates (optional). */
@@ -80,6 +96,75 @@ export interface ResumeWorkflowGraphRunFastResult {
   /** Immediate state after the decision is stored. */
   status: "resuming" | "failed"
   error: string | null
+}
+
+/**
+ * True when this run was started by infrastructure cron / Postgres `net.http_post` (payload `source: "schedule"`).
+ */
+function isScheduleCronTriggerInput({ inputs }: { inputs: Record<string, unknown> }): boolean {
+  return inputs.source === "schedule"
+}
+
+/**
+ * One JSON line per phase so hosting log drains can filter on `workflow_schedule_trigger`.
+ */
+function logWorkflowScheduleTrigger({
+  phase,
+  workflowId,
+  workflowName,
+  workflowRowStatus,
+  runId,
+  runOutcomeStatus,
+  durationMs,
+  scheduleExpression,
+  timezone,
+  error,
+}: {
+  phase: "start" | "complete"
+  workflowId: string
+  workflowName: string | null | undefined
+  workflowRowStatus?: string
+  runId?: string
+  runOutcomeStatus?: PersistWorkflowGraphRunResult["status"]
+  durationMs?: number
+  scheduleExpression?: string | null
+  timezone?: string | null
+  error?: string | null
+}): void {
+  const base: Record<string, unknown> = {
+    kind: "workflow_schedule_trigger",
+    phase,
+    at: new Date().toISOString(),
+    workflow_id: workflowId,
+    workflow_name:
+      typeof workflowName === "string" && workflowName.trim() !== ""
+        ? workflowName.trim()
+        : typeof workflowName === "string"
+          ? workflowName
+          : null,
+  }
+  if (workflowRowStatus !== undefined) {
+    base.workflow_row_status = workflowRowStatus
+  }
+  if (runId !== undefined) {
+    base.run_id = runId
+  }
+  if (runOutcomeStatus !== undefined) {
+    base.run_outcome_status = runOutcomeStatus
+  }
+  if (durationMs !== undefined) {
+    base.duration_ms = durationMs
+  }
+  if (scheduleExpression !== undefined) {
+    base.schedule_expression = scheduleExpression
+  }
+  if (timezone !== undefined) {
+    base.timezone = timezone
+  }
+  if (error !== undefined) {
+    base.error = error
+  }
+  console.info(JSON.stringify(base))
 }
 
 /**
@@ -175,7 +260,8 @@ async function persistRunPausedForApprovalIfNeeded({
 }
 
 /**
- * Bumps parent workflow aggregates after a run reaches a terminal state (excluding pause).
+ * Bumps **`workflows.run_count`** and **`workflows.last_run_at`** once per new **`workflow_runs`** row —
+ * invoked right after insert so cron / scheduled runs and approval-paused runs still refresh the workflow row.
  */
 async function bumpWorkflowLastRunCounters(params: {
   supabase: SupabaseClient
@@ -195,7 +281,8 @@ async function bumpWorkflowLastRunCounters(params: {
 }
 
 /**
- * Creates a `workflow_runs` row, walks the graph with the real step executor, updates run + workflow counters.
+ * Creates a `workflow_runs` row (**and** bumps parent **`run_count`** / **`last_run_at`** immediately after insert),
+ * then walks the graph with the real step executor and persists terminal run state when applicable.
  */
 export async function persistWorkflowGraphRun({
   supabase,
@@ -203,6 +290,8 @@ export async function persistWorkflowGraphRun({
   userId,
   inputs,
   workflow,
+  runTrigger,
+  workflowRowStatus,
   gatewayUserAndWorkflow,
   runnerIdentity,
   onRunCreated,
@@ -210,18 +299,23 @@ export async function persistWorkflowGraphRun({
 }: PersistWorkflowGraphRunParams): Promise<PersistWorkflowGraphRunResult> {
   const nodes = parseWorkflowNodes(workflow.nodes as unknown)
   const edges = parseWorkflowEdges(workflow.edges as unknown)
+  const workflowConstants = normaliseWorkflowConstantsJson(workflow.workflow_constants)
 
   let aggregate: NodeResult[] = []
   const startedWall = Date.now()
   let finalStatus: "success" | "failed" = "success"
   let finalError: string | null = null
+  const scheduledRun = isScheduleCronTriggerInput({ inputs })
+  const scheduleExpressionForLog =
+    typeof inputs.schedule_expression === "string" ? inputs.schedule_expression : null
+  const timezoneForLog = typeof inputs.timezone === "string" ? inputs.timezone : null
 
   const insertRes = await supabase
     .from("workflow_runs")
     .insert({
       workflow_id: workflowId,
       status: "running",
-      trigger_type: workflow.trigger_type,
+      trigger_type: runTrigger,
       trigger_inputs: inputs as unknown as Json,
       node_results: [] as unknown as Json,
     })
@@ -233,6 +327,25 @@ export async function persistWorkflowGraphRun({
   }
 
   const runRowId = insertRes.data.id
+
+  await bumpWorkflowLastRunCounters({
+    supabase,
+    workflowId,
+    userId,
+    priorRunCount: workflow.run_count ?? 0,
+  })
+
+  if (scheduledRun) {
+    logWorkflowScheduleTrigger({
+      phase: "start",
+      workflowId,
+      workflowName: workflow.name,
+      workflowRowStatus,
+      runId: runRowId,
+      scheduleExpression: scheduleExpressionForLog,
+      timezone: timezoneForLog,
+    })
+  }
 
   onRunCreated?.({ runId: runRowId })
 
@@ -260,6 +373,7 @@ export async function persistWorkflowGraphRun({
       inputs,
       executeStep,
       gatewayExecutionContext,
+      workflowConstants,
     })) {
       aggregate = mergeNodeResultsIntoList({ list: aggregate, next: result })
       onNodeResult?.({ result })
@@ -272,7 +386,7 @@ export async function persistWorkflowGraphRun({
       }
     }
 
-    /** Paused on human approval — do not bump workflow counters until resume completes */
+    /** Paused on human approval — workflow row was already bumped at run insert */
     const pauseInitial = await persistRunPausedForApprovalIfNeeded({
       supabase,
       workflowId,
@@ -284,13 +398,28 @@ export async function persistWorkflowGraphRun({
     if (pauseInitial.paused) {
       aggregate = pauseInitial.aggregate
       const elapsed = Math.max(0, Date.now() - startedWall)
-      return {
+      const out: PersistWorkflowGraphRunResult = {
         runId: runRowId,
         status: "waiting_approval",
         duration_ms: elapsed,
         error: null,
         node_results: aggregate,
       }
+      if (scheduledRun) {
+        logWorkflowScheduleTrigger({
+          phase: "complete",
+          workflowId,
+          workflowName: workflow.name,
+          workflowRowStatus,
+          runId: runRowId,
+          runOutcomeStatus: out.status,
+          durationMs: out.duration_ms,
+          scheduleExpression: scheduleExpressionForLog,
+          timezone: timezoneForLog,
+          error: out.error,
+        })
+      }
+      return out
     }
     aggregate = pauseInitial.aggregate
 
@@ -306,20 +435,28 @@ export async function persistWorkflowGraphRun({
       })
       .eq("id", runRowId)
 
-    await bumpWorkflowLastRunCounters({
-      supabase,
-      workflowId,
-      userId,
-      priorRunCount: workflow.run_count ?? 0,
-    })
-
-    return {
+    const out: PersistWorkflowGraphRunResult = {
       runId: runRowId,
       status: finalStatus,
       duration_ms,
       error: finalError,
       node_results: aggregate,
     }
+    if (scheduledRun) {
+      logWorkflowScheduleTrigger({
+        phase: "complete",
+        workflowId,
+        workflowName: workflow.name,
+        workflowRowStatus,
+        runId: runRowId,
+        runOutcomeStatus: out.status,
+        durationMs: out.duration_ms,
+        scheduleExpression: scheduleExpressionForLog,
+        timezone: timezoneForLog,
+        error: out.error,
+      })
+    }
+    return out
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected run error"
     finalStatus = "failed"
@@ -335,20 +472,29 @@ export async function persistWorkflowGraphRun({
         node_results: aggregate as unknown as Json,
       })
       .eq("id", runRowId)
-    await bumpWorkflowLastRunCounters({
-      supabase,
-      workflowId,
-      userId,
-      priorRunCount: workflow.run_count ?? 0,
-    })
 
-    return {
+    const out: PersistWorkflowGraphRunResult = {
       runId: runRowId,
       status: "failed",
       duration_ms,
       error: finalError,
       node_results: aggregate,
     }
+    if (scheduledRun) {
+      logWorkflowScheduleTrigger({
+        phase: "complete",
+        workflowId,
+        workflowName: workflow.name,
+        workflowRowStatus,
+        runId: runRowId,
+        runOutcomeStatus: out.status,
+        durationMs: out.duration_ms,
+        scheduleExpression: scheduleExpressionForLog,
+        timezone: timezoneForLog,
+        error: out.error,
+      })
+    }
+    return out
   }
 }
 
@@ -449,13 +595,6 @@ export async function resumeWorkflowGraphRun({
       })
       .eq("id", run.id)
 
-    await bumpWorkflowLastRunCounters({
-      supabase,
-      workflowId: wf.id,
-      userId,
-      priorRunCount: wf.run_count ?? 0,
-    })
-
     return {
       runId: run.id,
       status: "failed",
@@ -479,13 +618,6 @@ export async function resumeWorkflowGraphRun({
         node_results: aggregate as unknown as Json,
       })
       .eq("id", run.id)
-
-    await bumpWorkflowLastRunCounters({
-      supabase,
-      workflowId: wf.id,
-      userId,
-      priorRunCount: wf.run_count ?? 0,
-    })
 
     return {
       runId: run.id,
@@ -580,13 +712,6 @@ export async function resumeWorkflowGraphRun({
     })
     .eq("id", run.id)
 
-  await bumpWorkflowLastRunCounters({
-    supabase,
-    workflowId: wf.id,
-    userId,
-    priorRunCount: wf.run_count ?? 0,
-  })
-
   return {
     runId: run.id,
     status: traverseStatus,
@@ -599,7 +724,7 @@ export async function resumeWorkflowGraphRun({
 /**
  * Applies an inbox decision and returns immediately for approvals.
  *
- * - **Decline**: run is marked failed synchronously (terminal), counters updated, response returns `failed`.
+ * - **Decline**: run is marked failed synchronously (terminal). Parent workflow counters were already updated when the run was created.
  * - **Approve**: approval is stored + run is marked `running`, then traversal continues in the background and will
  *   eventually update the run row to `success`/`failed`, or `waiting_approval` when another approval step is reached.
  *
@@ -697,12 +822,6 @@ export async function resumeWorkflowGraphRunFast({
             node_results: aggregate as unknown as Json,
           })
           .eq("id", run.id)
-        await bumpWorkflowLastRunCounters({
-          supabase,
-          workflowId: wf.id,
-          userId,
-          priorRunCount: wf.run_count ?? 0,
-        })
         return
       }
 
@@ -794,13 +913,6 @@ export async function resumeWorkflowGraphRunFast({
           node_results: aggregate as unknown as Json,
         })
         .eq("id", run.id)
-
-      await bumpWorkflowLastRunCounters({
-        supabase,
-        workflowId: wf.id,
-        userId,
-        priorRunCount: wf.run_count ?? 0,
-      })
     } catch (err) {
       console.error("resumeWorkflowGraphRunFast(background)", err)
     }

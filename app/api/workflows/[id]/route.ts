@@ -6,6 +6,17 @@ import {
   toPersistableEdges,
   toPersistableNodes,
 } from "@/lib/workflows/engine/persist"
+import {
+  removeDailifyPgCronJobForWorkflowId,
+  syncDailifyPgCronJobForWorkflowRow,
+  WORKFLOW_CLIENT_SAFE_COLUMNS,
+} from "@/lib/workflows/sync-dailify-pg-cron"
+import { emitWorkflowSaveDbAuditLine } from "@/lib/workflows/workflow-save-debug-log"
+import { deriveWorkflowTriggerFromRfNodes } from "@/lib/workflows/trigger/derive-workflow-trigger-from-graph"
+import {
+  normaliseWorkflowConstantsJson,
+  workflowConstantsToJson,
+} from "@/lib/workflows/workflow-constants"
 import type { Json } from "@/types/database"
 
 type PatchBody = {
@@ -16,6 +27,7 @@ type PatchBody = {
   nodes?: unknown[]
   edges?: unknown[]
   status?: "active" | "inactive" | "draft"
+  workflow_constants?: Record<string, unknown> | null
 }
 
 /**
@@ -33,7 +45,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const { data: row, error } = await supabase
     .from("workflows")
-    .select("*")
+    .select(WORKFLOW_CLIENT_SAFE_COLUMNS)
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle()
@@ -76,10 +88,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body.trigger_config !== undefined) patch.trigger_config = body.trigger_config as Json
   if (body.status !== undefined) patch.status = body.status
   if (body.nodes !== undefined) {
-    patch.nodes = toPersistableNodes(parseWorkflowNodes(body.nodes)) as unknown as Json
+    const parsedRfNodes = parseWorkflowNodes(body.nodes)
+    patch.nodes = toPersistableNodes(parsedRfNodes) as unknown as Json
+    const derived = deriveWorkflowTriggerFromRfNodes({ nodes: parsedRfNodes })
+    patch.trigger_type = derived.trigger_type
+    patch.trigger_config = derived.trigger_config as Json
   }
   if (body.edges !== undefined) {
     patch.edges = toPersistableEdges(parseWorkflowEdges(body.edges)) as unknown as Json
+  }
+  if (body.workflow_constants !== undefined) {
+    patch.workflow_constants = workflowConstantsToJson({
+      record: normaliseWorkflowConstantsJson(body.workflow_constants),
+    })
   }
 
   if (Object.keys(patch).length === 0) {
@@ -91,14 +112,37 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .update(patch)
     .eq("id", id)
     .eq("user_id", user.id)
-    .select()
+    .select(WORKFLOW_CLIENT_SAFE_COLUMNS)
     .single()
 
   if (error) {
+    emitWorkflowSaveDbAuditLine({
+      saveSource: "workflow_patch_api",
+      phase: "update",
+      workflowId: id,
+      message: error.message,
+    })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
   if (!row) {
+    emitWorkflowSaveDbAuditLine({
+      saveSource: "workflow_patch_api",
+      phase: "update",
+      workflowId: id,
+      message: "update returned row not found after filter",
+    })
     return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const syncCron = await syncDailifyPgCronJobForWorkflowRow({
+    workflow: row,
+    saveDebugSource: "workflow_patch_api",
+  })
+  if (!syncCron.ok) {
+    return NextResponse.json({
+      workflow: row,
+      cron_sync_warning: syncCron.message,
+    })
   }
 
   return NextResponse.json({ workflow: row })
@@ -117,11 +161,16 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
   }
 
+  const cronDrop = await removeDailifyPgCronJobForWorkflowId({ workflowId: id })
+
   const { error } = await supabase.from("workflows").delete().eq("id", id).eq("user_id", user.id)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({
+    ok: true,
+    ...(cronDrop.ok ? {} : { cron_removal_warning: cronDrop.message }),
+  })
 }

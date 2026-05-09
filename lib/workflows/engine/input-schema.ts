@@ -19,8 +19,8 @@ export interface NodeInputField {
   required: boolean
   description?: string
   /**
-   * Literal or tag expression (`{{now.iso}}`, `{{input.other_key}}`, `{{prev.text}}`, booleans as `true`/`false` strings).
-   * For `type: "json"`, use a JSON array/object literal or a tag such as `{{prev.items}}` that resolves to JSON for docxtemplater loops.
+   * Literal or tag expression (`{{now.iso}}`, `{{input.other_key}}`, `{{trigger_inputs.email}}`, booleans as `true`/`false` strings).
+   * For `type: "json"`, use a JSON array/object literal or a tag such as `{{input.items}}` that resolves to JSON for docxtemplater loops.
    * Serialised as JSON `value`; legacy `defaultValue` is still read when migrating.
    */
   value?: string
@@ -234,33 +234,6 @@ export function buildDefaultClassifyOutputSchemaFields(): NodeInputField[] {
 }
 
 /**
- * Default declared inputs for **Classify** AI steps — map into `{{input.*}}` for the classifier payload.
- */
-export function buildDefaultClassifyInputSchemaFields(): NodeInputField[] {
-  return [
-    createEmptyNodeInputField({
-      partial: {
-        key: "content",
-        label: "Content",
-        type: "text",
-        required: false,
-        description:
-          "Primary payload to classify. Map from literals, {{prev.*}} references, workflow {{global.*}} helpers, etc.",
-        value: "",
-      },
-    }),
-  ]
-}
-
-/**
- * Default declared inputs for a **Random number** step.
- * Bounds are configured on the Execution tab, so this starts empty by default.
- */
-export function buildDefaultRandomNumberInputSchemaFields(): NodeInputField[] {
-  return []
-}
-
-/**
  * Default outbound mapping for **Random number** steps: one field bound to the generated value via `{{exe.number}}`.
  */
 export function buildDefaultRandomNumberOutputSchemaFields(): NodeInputField[] {
@@ -273,24 +246,6 @@ export function buildDefaultRandomNumberOutputSchemaFields(): NodeInputField[] {
         required: false,
         description: "Uniform draw between min and max when both resolve to integers; otherwise a fractional value in the continuous range.",
         value: "{{exe.number}}",
-      },
-    }),
-  ]
-}
-
-/**
- * Default declared inputs for an **Iteration** step: the value advanced by the configured increment.
- */
-export function buildDefaultIterationInputSchemaFields(): NodeInputField[] {
-  return [
-    createEmptyNodeInputField({
-      partial: {
-        key: "starting_number",
-        label: "Starting number",
-        type: "number",
-        required: true,
-        description: "Base value before adding the increment. May be a literal or a tagged expression.",
-        value: "",
       },
     }),
   ]
@@ -344,7 +299,7 @@ export function buildDefaultGenerateDocumentOutputSchemaFields(): NodeInputField
         type: "string",
         required: false,
         description:
-          "Filename of the generated .docx after resolving the execution file name (literal or tags such as `{{prev.*}}`, `{{input.*}}`, `{{global.*}}`).",
+          "Filename of the generated .docx after resolving the execution file name (literal or tags such as `{{input.*}}`, `{{trigger_inputs.*}}`, `{{global.*}}`).",
         value: "{{exe.outputFileName}}",
       },
     }),

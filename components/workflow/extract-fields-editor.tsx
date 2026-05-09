@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { AlignLeft, GripVertical, Hash, Plus, ScanSearch, ToggleLeft, Trash2, Type } from "lucide-react"
+import { AlignLeft, Hash, Plus, ScanSearch, ToggleLeft, Trash2, Type } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -25,9 +25,10 @@ import {
   createEmptyExtractFieldRow,
   readExtractFieldRowsFromNodeData,
 } from "@/lib/workflows/steps/ai/extract/defaults"
-
-/** MIME type for HTML5 drag payloads between extract field rows. */
-const EXTRACT_FIELD_DRAG_MIME = "application/x-runnerroo-extract-field-id"
+import {
+  WorkflowSchemaRowsSortableList,
+  WorkflowSchemaSortableGrip,
+} from "@/components/workflow/workflow-schema-rows-sortable-list"
 
 const EXTRACT_TYPE_META: Record<ExtractFieldType, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
   string: { label: "String", Icon: Type },
@@ -66,60 +67,6 @@ function draftFromRow({ row }: { row: ExtractFieldRow }): DraftRow {
   }
 }
 
-interface ExtractFieldDragHandleProps {
-  rowId: string
-  onDragStartRow: ({ id }: { id: string }) => void
-  onDragEndRow: () => void
-}
-
-/**
- * Grip control for reordering extract field rows.
- */
-function ExtractFieldDragHandle({ rowId, onDragStartRow, onDragEndRow }: ExtractFieldDragHandleProps) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "flex w-8 shrink-0 cursor-default touch-none items-center justify-center self-stretch border-0 bg-transparent p-0",
-        "text-muted-foreground hover:cursor-ns-resize hover:text-foreground",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-      )}
-      draggable
-      aria-label="Drag to reorder field"
-      onDragStart={(e) => {
-        e.dataTransfer.setData(EXTRACT_FIELD_DRAG_MIME, rowId)
-        e.dataTransfer.effectAllowed = "move"
-        onDragStartRow({ id: rowId })
-      }}
-      onDragEnd={onDragEndRow}
-    >
-      <GripVertical className="pointer-events-none size-4 shrink-0" aria-hidden />
-    </button>
-  )
-}
-
-function reorderExtractFieldRows({
-  rows,
-  activeId,
-  overId,
-}: {
-  rows: ExtractFieldRow[]
-  activeId: string
-  overId: string
-}): ExtractFieldRow[] {
-  if (activeId === overId) return rows
-  const fromIdx = rows.findIndex((r) => r.id === activeId)
-  const toIdx = rows.findIndex((r) => r.id === overId)
-  if (fromIdx === -1 || toIdx === -1) return rows
-  const next = [...rows]
-  const [moved] = next.splice(fromIdx, 1)
-  if (!moved) return rows
-  let insertAt = toIdx
-  if (fromIdx < toIdx) insertAt = toIdx - 1
-  next.splice(insertAt, 0, moved)
-  return next
-}
-
 /**
  * Visual field list editor for Extract steps — same card shell and row UX as the schema builder.
  * Each row defines one value the model must find and return in the structured output.
@@ -132,41 +79,8 @@ export function ExtractFieldsEditor({ data, set, nodeId }: ExtractFieldsEditorPr
   const [showAddForm, setShowAddForm] = React.useState(false)
   const [addDraft, setAddDraft] = React.useState<DraftRow>(() => emptyDraft())
 
-  const [draggingId, setDraggingId] = React.useState<string | null>(null)
-  const [dragOverId, setDragOverId] = React.useState<string | null>(null)
-  const draggingIdRef = React.useRef<string | null>(null)
-
   function replaceRows(next: ExtractFieldRow[]) {
     set("extractFields", next)
-  }
-
-  function handleFieldDragStart({ id }: { id: string }) {
-    draggingIdRef.current = id
-    setDraggingId(id)
-  }
-
-  function handleFieldDragEnd() {
-    draggingIdRef.current = null
-    setDraggingId(null)
-    setDragOverId(null)
-  }
-
-  function handleRowDragOver({ e, targetRowId }: { e: React.DragEvent; targetRowId: string }) {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = "move"
-    const fromId = draggingIdRef.current ?? draggingId
-    if (fromId && fromId !== targetRowId) setDragOverId(targetRowId)
-  }
-
-  function handleRowDrop({ e, targetRowId }: { e: React.DragEvent; targetRowId: string }) {
-    e.preventDefault()
-    const fromId = e.dataTransfer.getData(EXTRACT_FIELD_DRAG_MIME) || draggingIdRef.current || draggingId || ""
-    if (!fromId || fromId === targetRowId) {
-      handleFieldDragEnd()
-      return
-    }
-    replaceRows(reorderExtractFieldRows({ rows, activeId: fromId, overId: targetRowId }))
-    handleFieldDragEnd()
   }
 
   function openEdit({ row }: { row: ExtractFieldRow }) {
@@ -245,30 +159,61 @@ export function ExtractFieldsEditor({ data, set, nodeId }: ExtractFieldsEditorPr
         ) : null}
 
         {/* Field list */}
-        {rows.map((row) => {
-          const meta = EXTRACT_TYPE_META[row.type]
-          const Icon = meta.Icon
-          const isEditing = editingId === row.id
+        {rows.length > 0 ? (
+          <WorkflowSchemaRowsSortableList
+            items={rows}
+            onReorder={({ next }) => replaceRows(next)}
+            renderDragOverlay={({ item }) => {
+              const overlayMeta = EXTRACT_TYPE_META[item.type]
+              const OverlayIcon = overlayMeta.Icon
+              return (
+                <div className="pointer-events-none flex min-w-[240px] items-center gap-3 rounded-lg border border-border/70 bg-background px-3 py-2.5 shadow-lg">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
+                    <OverlayIcon className="size-4" aria-hidden />
+                  </span>
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate font-mono text-sm font-medium">{item.key || "—"}</span>
+                      <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
+                        {overlayMeta.label}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              )
+            }}
+            renderRow={({
+              item: row,
+              spacingBelow,
+              isDragging,
+              sortableStyle,
+              mergedSortableRef,
+              setActivatorNodeRef,
+              dragAttributes,
+              dragListeners,
+            }) => {
+              const meta = EXTRACT_TYPE_META[row.type]
+              const Icon = meta.Icon
+              const isEditing = editingId === row.id
 
-          if (isEditing && editDraft) {
-            return (
-              <div
-                key={row.id}
-                className={cn(
-                  "min-w-0 rounded-lg transition-opacity",
-                  draggingId === row.id && "opacity-55",
-                  dragOverId === row.id && draggingId != null && draggingId !== row.id &&
-                    "ring-2 ring-primary/45 ring-offset-2 ring-offset-background",
-                )}
-                onDragOver={(e) => handleRowDragOver({ e, targetRowId: row.id })}
-                onDrop={(e) => handleRowDrop({ e, targetRowId: row.id })}
-              >
+              if (isEditing && editDraft) {
+                return (
+                  <div
+                    ref={mergedSortableRef}
+                    style={sortableStyle}
+                    className={cn(
+                      "min-w-0 rounded-lg",
+                      isDragging && "relative z-[1] opacity-[0.35]",
+                      spacingBelow && "mb-2",
+                    )}
+                  >
                 <div className="rounded-lg border border-border bg-muted/15 p-3" role="group" aria-label="Edit field">
                   <div className="flex items-stretch gap-2">
-                    <ExtractFieldDragHandle
-                      rowId={row.id}
-                      onDragStartRow={handleFieldDragStart}
-                      onDragEndRow={handleFieldDragEnd}
+                    <WorkflowSchemaSortableGrip
+                      setActivatorNodeRef={setActivatorNodeRef}
+                      attributes={dragAttributes}
+                      listeners={dragListeners}
+                      ariaLabel="Drag to reorder field"
                     />
                     <div className="min-w-0 flex-1 space-y-3">
                       <div className="grid min-w-0 w-full grid-cols-1 gap-3 sm:grid-cols-2">
@@ -377,79 +322,90 @@ export function ExtractFieldsEditor({ data, set, nodeId }: ExtractFieldsEditorPr
                     </div>
                   </div>
                 </div>
-              </div>
-            )
-          }
+                </div>
+                )
+              }
 
-          return (
-            <div
-              key={row.id}
-              className={cn(
-                "min-w-0 rounded-lg transition-opacity",
-                draggingId === row.id && "opacity-55",
-                dragOverId === row.id && draggingId != null && draggingId !== row.id &&
-                  "ring-2 ring-primary/45 ring-offset-2 ring-offset-background",
-              )}
-              onDragOver={(e) => handleRowDragOver({ e, targetRowId: row.id })}
-              onDrop={(e) => handleRowDrop({ e, targetRowId: row.id })}
-            >
-              <div className="group flex min-w-0 w-full items-stretch gap-1 rounded-lg border border-border/70 bg-background focus-within:ring-2 focus-within:ring-ring">
-                <ExtractFieldDragHandle
-                  rowId={row.id}
-                  onDragStartRow={handleFieldDragStart}
-                  onDragEndRow={handleFieldDragEnd}
-                />
-                <button
-                  type="button"
-                  onClick={() => openEdit({ row })}
+              return (
+                <div
+                  ref={mergedSortableRef}
+                  style={sortableStyle}
                   className={cn(
-                    "flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                    "hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    "min-w-0 rounded-lg",
+                    isDragging && "relative z-[1] opacity-[0.35]",
+                    spacingBelow && "mb-2",
                   )}
                 >
-                  {/* Type icon */}
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
-                    <Icon className="size-4" aria-hidden />
-                  </span>
-                  {/* Key + label + badges */}
-                  <div className="min-w-0 flex-1 space-y-0.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate font-mono text-sm font-medium">{row.key || "—"}</span>
-                      <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
-                        {meta.label}
-                      </Badge>
-                      {row.required ? (
-                        <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
-                          Required
+                  <div className="group flex min-w-0 w-full items-stretch gap-1 rounded-lg border border-border/70 bg-background focus-within:ring-2 focus-within:ring-ring">
+                    <WorkflowSchemaSortableGrip
+                      setActivatorNodeRef={setActivatorNodeRef}
+                      attributes={dragAttributes}
+                      listeners={dragListeners}
+                      ariaLabel="Drag to reorder field"
+                    />
+                <div className="flex min-w-0 flex-1 items-stretch transition-colors hover:bg-muted/30">
+                  <button
+                    type="button"
+                    onClick={() => openEdit({ row })}
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center gap-3 bg-transparent px-3 py-2.5 text-left transition-colors hover:bg-transparent",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    )}
+                  >
+                    {/* Type icon */}
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
+                      <Icon className="size-4" aria-hidden />
+                    </span>
+                    {/* Key + label + badges */}
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate font-mono text-sm font-medium">{row.key || "—"}</span>
+                        <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
+                          {meta.label}
                         </Badge>
+                        {row.required ? (
+                          <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                            Required
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {row.label !== row.key ? (
+                        <p className="truncate text-xs text-muted-foreground">{row.label}</p>
+                      ) : null}
+                      {row.description ? (
+                        <p className="truncate text-[11px] text-muted-foreground">{row.description}</p>
                       ) : null}
                     </div>
-                    {row.label !== row.key ? (
-                      <p className="truncate text-xs text-muted-foreground">{row.label}</p>
-                    ) : null}
-                    {row.description ? (
-                      <p className="truncate text-[11px] text-muted-foreground">{row.description}</p>
-                    ) : null}
+                  </button>
+                  {/* Delete — only on row hover / focus-within */}
+                  <div
+                    className={cn(
+                      "flex shrink-0 items-center pr-2 opacity-0 pointer-events-none transition-opacity duration-150",
+                      "group-hover:pointer-events-auto group-hover:opacity-100",
+                      "group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+                    )}
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        removeRow({ id: row.id })
+                      }}
+                      aria-label={`Remove field ${row.key || row.id}`}
+                    >
+                      <Trash2 className="size-4" aria-hidden />
+                    </Button>
                   </div>
-                </button>
-                {/* Delete */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-auto min-h-0 w-8 shrink-0 self-stretch text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    removeRow({ id: row.id })
-                  }}
-                  aria-label={`Remove field ${row.key || row.id}`}
-                >
-                  <Trash2 className="size-4" aria-hidden />
-                </Button>
+                </div>
               </div>
-            </div>
-          )
-        })}
+              </div>
+              )
+            }}
+          />
+        ) : null}
 
         {/* Add field toggle / form */}
         {!showAddForm ? (

@@ -134,13 +134,6 @@ export async function executeDocumentFromXmlStep({
     throw new Error("Generated document was uploaded, but artefact metadata could not be saved.")
   }
 
-  const inputSchema = readInputSchemaFromNodeData({ value: nodeData?.inputSchema })
-  const resolvedInputs: Record<string, unknown> = {}
-  for (const field of inputSchema) {
-    if (!field.value) continue
-    resolvedInputs[field.key] = resolveTemplate(field.value, context)
-  }
-
   const exeContext: Record<string, unknown> = {
     templateFileId: "",
     templateName: "",
@@ -176,7 +169,6 @@ export async function executeDocumentFromXmlStep({
     document_url: signedUrlData.signedUrl,
     outputs: resolvedOutputs,
     exe: exeContext,
-    inputs: resolvedInputs,
     text: gen.text,
   }
 

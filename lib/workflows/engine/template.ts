@@ -5,7 +5,7 @@
 
 import { readRunnerGatewayExecutionContextFromStepInput } from "@/lib/ai-gateway/runner-gateway-tracking"
 import type { NodeInputField, NodeInputFieldType } from "@/lib/workflows/engine/input-schema"
-import { readGlobalsFromExecutionStepInput } from "@/lib/workflows/engine/runner"
+import { readGlobalsFromExecutionStepInput, readWorkflowConstantsFromExecutionStepInput } from "@/lib/workflows/engine/runner"
 
 /** Flat dot-path accessor: `get(obj, "a.b.c")` → `obj?.a?.b?.c`. */
 export function getByPath(obj: unknown, path: string): unknown {
@@ -110,6 +110,17 @@ export function stringify(value: unknown): string {
   }
 }
 
+/**
+ * Resolution role for the executing step.
+ *
+ *  - `"entry"`    — trigger nodes; the workflow's invoke payload is the **initial value**, so
+ *                   `{{input.*}}` resolves to that payload (same as `{{trigger_inputs.*}}`).
+ *  - `"standard"` — every other step; the immediate predecessor's emitted output **is** the
+ *                   step's input, so `{{input.*}}` resolves to that object. The original
+ *                   workflow invoke payload remains accessible as `{{trigger_inputs.*}}`.
+ */
+export type ResolutionRole = "entry" | "standard"
+
 export interface BuildResolutionContextParams {
   /** Runner execution envelope (trigger payload, predecessor, globals, gateway context). */
   stepInput: unknown
@@ -118,22 +129,30 @@ export interface BuildResolutionContextParams {
    * Omit or pass an empty string when resolving without graph context (for example previews).
    */
   stepId?: string
+  /**
+   * Determines what `{{input.*}}` binds to. Defaults to `"standard"` so non-trigger steps
+   * automatically inherit the previous step's output as their input. Pass `"entry"` from the
+   * trigger executor so the workflow's invoke payload remains the initial value of `{{input.*}}`.
+   */
+  role?: ResolutionRole
 }
 
 /**
  * Builds the template resolution context from the step input envelope.
  *
  * Exposes:
- *  - `trigger_inputs.*`  — original manual trigger fields
- *  - `prev.*`            — predecessor step's evaluated output
- *  - `input.*`           — alias for trigger_inputs (entry-node convention)
+ *  - `trigger_inputs.*`  — original workflow invoke payload (every hop)
+ *  - `input.*`           — entry: same as `trigger_inputs`; standard: predecessor step's emitted output
+ *  - `prev.*`            — legacy alias of `input.*` for back-compat with persisted templates
  *  - `global.*`          — accumulated workflow globals from prior steps (`{{global.key}}`)
+ *  - `const.*`           — workflow constants from Settings (`{{const.key}}`, persisted on `workflows.workflow_constants`)
  *  - `run.*`, `workflow.*`, `step.*`, `user.*` — ids and signed-in author fields from the gateway envelope when present
  *  - `now.*`             — current UTC helpers (see {@link buildUtcNowPromptFields})
  */
 export function buildResolutionContext({
   stepInput,
   stepId = "",
+  role = "standard",
 }: BuildResolutionContextParams): Record<string, unknown> {
   const envelope =
     stepInput && typeof stepInput === "object" ? (stepInput as Record<string, unknown>) : {}
@@ -143,17 +162,17 @@ export function buildResolutionContext({
       ? (envelope.trigger_inputs as Record<string, unknown>)
       : {}
 
-  const predecessorOutput = (() => {
-    const pred = envelope.predecessor
-    if (!pred || typeof pred !== "object") return {}
-    const p = pred as Record<string, unknown>
-    if (p.step_output_emitted && typeof p.step_output_emitted === "object") {
-      return p.step_output_emitted as Record<string, unknown>
-    }
-    return {}
-  })()
+  const predecessorOutput = readPredecessorOutputFromEnvelope({ envelope })
+
+  /**
+   * Standard steps now treat the predecessor's emitted output as their input automatically.
+   * Trigger nodes keep the invoke payload as `input.*` since they are the entry point.
+   */
+  const inputForRole = role === "entry" ? triggerInputs : predecessorOutput
 
   const globalMap = readGlobalsFromExecutionStepInput({ stepInput })
+
+  const constMap = readWorkflowConstantsFromExecutionStepInput({ stepInput })
 
   const nowUtc = buildUtcNowPromptFields({ now: new Date() })
 
@@ -168,17 +187,37 @@ export function buildResolutionContext({
 
   return {
     trigger_inputs: triggerInputs,
-    // `input.*` is the entry-node alias for trigger_inputs
-    input: triggerInputs,
-    // `prev.*` resolves against the predecessor's evaluated output
-    prev: predecessorOutput,
+    // `input.*` resolves against the predecessor's emitted output for standard steps,
+    // or the workflow invoke payload for the entry trigger.
+    input: inputForRole,
+    // `prev.*` is kept as a legacy alias of `input.*` so persisted workflows continue to resolve.
+    prev: inputForRole,
     global: globalMap,
+    ["const"]: constMap,
     run,
     workflow,
     step,
     user,
     now: nowUtc,
   }
+}
+
+/**
+ * Reads the immediate predecessor's emitted output from a runner execution envelope.
+ * Returns an empty record for the entry node (no predecessor) or for malformed envelopes.
+ */
+export function readPredecessorOutputFromEnvelope({
+  envelope,
+}: {
+  envelope: Record<string, unknown>
+}): Record<string, unknown> {
+  const pred = envelope.predecessor
+  if (!pred || typeof pred !== "object") return {}
+  const p = pred as Record<string, unknown>
+  if (p.step_output_emitted && typeof p.step_output_emitted === "object") {
+    return p.step_output_emitted as Record<string, unknown>
+  }
+  return {}
 }
 
 /**
@@ -315,7 +354,7 @@ export function drawUniformInclusiveBetween({ min, max }: { min: number; max: nu
 }
 
 /**
- * Resolves declared `inputSchema` cells against the inbound envelope (`{{prev.*}}`, `{{input.*}}`, etc.).
+ * Resolves declared `inputSchema` cells against the inbound envelope (`{{input.*}}`, `{{trigger_inputs.*}}`, etc.).
  */
 export function resolveDeclaredInputsMap({
   inputSchema,

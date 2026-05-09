@@ -105,15 +105,18 @@ export function BaseNode({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <p className="min-w-0 flex-1 truncate text-[13px] font-semibold uppercase leading-tight tracking-wide text-foreground">
-              {label}
-            </p>
+            {/* Title + type label stacked so the type always sits directly under the title */}
+            <div className="min-w-0 flex-1">
+              <p className="min-w-0 truncate text-[13px] font-semibold uppercase leading-tight tracking-wide text-foreground">
+                {label}
+              </p>
+              {/* Step kind label */}
+              <span className="mt-1 block truncate text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
+                {typeBadge}
+              </span>
+            </div>
             {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
           </div>
-          {/* Step kind pill */}
-          <span className="mt-1 inline-flex max-w-full items-center rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground truncate">
-            {typeBadge}
-          </span>
         </div>
       </div>
 

@@ -28,11 +28,8 @@ import { WorkflowNodeContextMenu } from "./workflow-node-context-menu"
 import { Button } from "@/components/ui/button"
 import {
   buildDefaultGenerateTextOutputSchemaFields,
-  buildDefaultClassifyInputSchemaFields,
   buildDefaultClassifyOutputSchemaFields,
-  buildDefaultRandomNumberInputSchemaFields,
   buildDefaultRandomNumberOutputSchemaFields,
-  buildDefaultIterationInputSchemaFields,
   buildDefaultIterationOutputSchemaFields,
   buildDefaultGenerateDocumentOutputSchemaFields,
 } from "@/lib/workflows/engine/input-schema"
@@ -118,6 +115,8 @@ interface WorkflowCanvasProps {
   runState?: Map<string, NodeResult>
   /** Latest persisted run id from the current editor execution stream (optional). */
   liveRunId?: string | null
+  /** Workflow Settings constants for `{{const.*}}` tags in the node sheet */
+  workflowConstants?: Record<string, string>
 }
 
 /**
@@ -132,6 +131,7 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
       onGraphChange,
       runState,
       liveRunId,
+      workflowConstants = {},
     },
     ref
   ) {
@@ -316,7 +316,6 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
     if (def.type === "ai" && def.subtype === "classify") {
       nodeData = {
         ...nodeData,
-        inputSchema: buildDefaultClassifyInputSchemaFields(),
         outputSchema: buildDefaultClassifyOutputSchemaFields(),
       }
     }
@@ -331,7 +330,6 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
     if (def.type === "random") {
       nodeData = {
         ...nodeData,
-        inputSchema: buildDefaultRandomNumberInputSchemaFields(),
         outputSchema: buildDefaultRandomNumberOutputSchemaFields(),
         randomMinExpression: typeof nodeData.randomMinExpression === "string" ? nodeData.randomMinExpression : "0",
         randomMaxExpression: typeof nodeData.randomMaxExpression === "string" ? nodeData.randomMaxExpression : "100",
@@ -341,8 +339,11 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
     if (def.type === "iteration") {
       nodeData = {
         ...nodeData,
-        inputSchema: buildDefaultIterationInputSchemaFields(),
         outputSchema: buildDefaultIterationOutputSchemaFields(),
+        iterationStartingNumberExpression:
+          typeof nodeData.iterationStartingNumberExpression === "string"
+            ? nodeData.iterationStartingNumberExpression
+            : "{{input.starting_number}}",
         iterationIncrement: typeof nodeData.iterationIncrement === "string" ? nodeData.iterationIncrement : "1",
       }
     }
@@ -452,7 +453,7 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
         fitViewOptions={{ padding: 0.4 }}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode="Backspace"
-        className="runnerroo-workflow-flow"
+        className="dailify-workflow-flow"
       >
         {/* Controls — bottom left */}
         <Controls
@@ -499,6 +500,7 @@ export const WorkflowCanvas = React.forwardRef<WorkflowCanvasHandle, WorkflowCan
         graphNodes={nodes}
         graphEdges={edges}
         liveRunId={liveRunId}
+        workflowConstants={workflowConstants}
       />
 
       {/* Add step sheet */}

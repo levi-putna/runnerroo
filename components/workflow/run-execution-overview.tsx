@@ -1,12 +1,18 @@
 "use client"
 
+import type { CSSProperties } from "react"
 import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { displayRunDuration } from "@/lib/workflows/engine/run-formatting"
 import type { ParsedRunTimelineStep } from "@/lib/workflows/engine/run-timeline"
-import { buildRunTimelineDisplayLayout, shortRunIdForDisplay } from "@/lib/workflows/engine/run-timeline"
+import {
+  buildRunTimelineDisplayLayout,
+  buildRunTimelineTickMarks,
+  shortRunIdForDisplay,
+} from "@/lib/workflows/engine/run-timeline"
+import { FormattedDurationSeconds } from "@/components/formatted-duration-seconds"
 import { RunStatusGlyph } from "@/components/workflow/run-status-glyph"
 import type { Database } from "@/types/database"
 
@@ -51,11 +57,27 @@ export function RunExecutionOverview({
       }),
     [compressLongSteps, timelineTotalMs, steps]
   )
+  const timelineTickMarks = useMemo(
+    () =>
+      buildRunTimelineTickMarks({
+        timelineTotalMs,
+        steps,
+        compressLongSteps,
+      }),
+    [compressLongSteps, timelineTotalMs, steps]
+  )
   const runIdLine = (wdkRunId && wdkRunId.trim()) || shortRunIdForDisplay(runId)
-  const durationLabel =
-    status === "waiting_approval"
-      ? "Paused for approval…"
-      : displayRunDuration(durationMs ?? (status === "running" ? null : safeTotal))
+  const durationHeadline = useMemo(() => {
+    if (status === "waiting_approval") {
+      return "Paused for approval…" as const
+    }
+
+    const ms = durationMs ?? (status === "running" ? null : safeTotal)
+    if (ms == null) {
+      return "Running…" as const
+    }
+    return ms / 1000
+  }, [durationMs, safeTotal, status])
 
   return (
     <div className="rounded-xl border border-border/80 bg-card shadow-sm overflow-hidden">
@@ -74,7 +96,13 @@ export function RunExecutionOverview({
         </div>
         <div className="space-y-1 sm:text-right">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Duration</p>
-          <p className="font-mono text-sm font-semibold tabular-nums">{durationLabel}</p>
+          <p className="font-mono text-sm font-semibold tabular-nums">
+            {typeof durationHeadline === "number" ? (
+              <FormattedDurationSeconds seconds={durationHeadline} />
+            ) : (
+              durationHeadline
+            )}
+          </p>
         </div>
       </div>
 
@@ -98,23 +126,45 @@ export function RunExecutionOverview({
           </div>
         </div>
 
-        <div className="relative rounded-lg border border-border/50 bg-muted/20 px-2 py-3">
-          {/* Faint vertical time grid */}
+        <div className="relative min-w-0 overflow-hidden rounded-lg border border-border/50 bg-muted/20 px-2 pb-3 pt-2">
+          {/* Time ruler — wall times placed with the same scaled axis as bars (middles of long steps are visually shortened when compression is on) */}
           <div
+            className="relative z-[1] mb-1 h-7 min-w-0"
             aria-hidden
-            className="pointer-events-none absolute inset-y-3 inset-x-2 flex"
+            title={
+              compressRegionsDisplay.length > 0
+                ? "Ruler uses the same shortened scale as the bars: middles of long steps are visually compressed."
+                : undefined
+            }
           >
-            {Array.from({ length: 9 }, (_, i) => (
+            {timelineTickMarks.map((tick, tickIdx) => (
+              <span
+                key={`tick-${tickIdx}`}
+                className={cn(
+                  "absolute top-0 max-w-[min(7.5rem,22%)] truncate font-mono text-[10px] tabular-nums text-muted-foreground",
+                  timelineTickLabelAlignClass(tickIdx, timelineTickMarks.length)
+                )}
+                style={timelineTickLabelPositionStyle(tickIdx, timelineTickMarks.length, tick.pctAlongDisplay)}
+              >
+                {tick.wallMs <= 0 ? "0" : displayRunDuration(tick.wallMs)}
+              </span>
+            ))}
+          </div>
+
+          {/* Vertical grid — aligned to tick positions, spans step rows only */}
+          <div aria-hidden className="pointer-events-none absolute inset-x-2 bottom-2 top-9">
+            {timelineTickMarks.map((tick, tickIdx) => (
               <div
-                key={i}
-                className="flex-1 border-l border-border/40 first:border-l-0"
+                key={`line-${tickIdx}`}
+                className="pointer-events-none absolute bottom-0 top-0 w-px bg-border/45"
+                style={timelineTickLinePositionStyle(tickIdx, timelineTickMarks.length, tick.pctAlongDisplay)}
               />
             ))}
           </div>
 
-          <div className="relative space-y-2">
+          <div className="relative z-[1] min-w-0 space-y-2">
             {/* Parent workflow span — same display axis as steps; cuts align with truncated step interiors */}
-            <div className="relative h-9 w-full">
+            <div className="relative h-9 w-full min-w-0">
               <div
                 className={cn(
                   "absolute inset-0 flex items-center rounded-md border px-2.5 font-mono text-[11px] sm:text-xs",
@@ -145,8 +195,12 @@ export function RunExecutionOverview({
               })}
               <div className="relative z-[2] flex h-9 w-full min-w-0 items-center justify-between px-2.5 font-mono text-[11px] sm:text-xs text-sky-900 dark:text-sky-100">
                 <span className="truncate pr-2">workflow()</span>
-                <span className="shrink-0 tabular-nums text-sky-800/90 dark:text-sky-100/90">
-                  {durationLabel}
+                <span className="min-w-0 shrink truncate text-right tabular-nums text-sky-800/90 dark:text-sky-100/90">
+                  {typeof durationHeadline === "number" ? (
+                    <FormattedDurationSeconds seconds={durationHeadline} />
+                  ) : (
+                    durationHeadline
+                  )}
                 </span>
               </div>
             </div>
@@ -161,7 +215,7 @@ export function RunExecutionOverview({
                 const { step, pctStart, pctWidth, compression } = row
 
                 return (
-                  <div key={step.reactKey} className="relative h-8 w-full">
+                  <div key={step.reactKey} className="relative h-8 w-full min-w-0">
                     {step.hasTimelineBar ? (
                       <button
                         type="button"
@@ -253,6 +307,41 @@ export function RunExecutionOverview({
       </div>
     </div>
   )
+}
+
+/**
+ * Text alignment for tick captions so truncation favours readability at the extremes of the ruler.
+ */
+function timelineTickLabelAlignClass(index: number, total: number): string {
+  if (total <= 1) return "text-left"
+  if (index === 0) return "text-left"
+  if (index === total - 1) return "text-right"
+  return "text-center"
+}
+
+/**
+ * Places ruler labels flush at the edges and centred elsewhere to avoid clipping outside the padded card.
+ */
+function timelineTickLabelPositionStyle(
+  index: number,
+  total: number,
+  pctAlongDisplay: number
+): CSSProperties {
+  if (total <= 1) return { left: "0%" }
+  if (index === 0) return { left: "0%" }
+  if (index === total - 1) return { left: "100%", transform: "translateX(-100%)" }
+  return { left: `${pctAlongDisplay}%`, transform: "translateX(-50%)" }
+}
+
+/**
+ * Positions faint vertical markers on the same percentage axis as labels and step bars.
+ */
+function timelineTickLinePositionStyle(
+  index: number,
+  total: number,
+  pctAlongDisplay: number
+): CSSProperties {
+  return timelineTickLabelPositionStyle(index, total, pctAlongDisplay)
 }
 
 /** Matches the workflow summary bar border tint so cuts read as part of the same rail. */

@@ -9,7 +9,12 @@ export const scheduleTriggerDefinition: StepDefinition = {
   group: "triggers",
   label: "Schedule",
   description: "Trigger on a cron schedule",
-  defaultData: { label: "Schedule", entryType: "schedule" },
+  defaultData: {
+    label: "Schedule",
+    entryType: "schedule",
+    schedule: "0 9 * * *",
+    timezone: "UTC",
+  },
   Icon: meta.Icon,
   accentBg: meta.accentBg,
   accentHex: meta.accentHex,

@@ -72,7 +72,7 @@ export const GATE_OPERATORS_ORDERED: GateOperator[] = [
 export interface GateRule {
   /** Stable id for React list keys. */
   id: string
-  /** Tag path, e.g. `input.status`, `prev.score`, `global.count`. */
+  /** Tag path, e.g. `input.status`, `global.count`, `const.base_url`, `trigger_inputs.email`. */
   field: string
   operator: GateOperator
   /**
@@ -91,9 +91,19 @@ export interface GateGroup {
 
 // ─── Factory helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Returns an id suitable for React list keys.
+ * Uses Web Crypto when present; otherwise falls back for hosts where `crypto.randomUUID` is unavailable (non-HTTPS, older browsers).
+ */
+function newGateRuleId(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `gate-rule-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
 /** Creates a blank rule row with a stable random id. */
 export function createEmptyGateRule(): GateRule {
-  return { id: crypto.randomUUID(), field: "", operator: "equals", value: "" }
+  return { id: newGateRuleId(), field: "", operator: "equals", value: "" }
 }
 
 /** Creates a new gate group with one blank rule. */
@@ -214,7 +224,7 @@ export function readGateGroupFromNodeData({ value }: { value: unknown }): GateGr
   for (const r of raw.rules as unknown[]) {
     if (!r || typeof r !== "object") continue
     const row = r as Record<string, unknown>
-    const id = typeof row.id === "string" && row.id.trim() ? row.id.trim() : crypto.randomUUID()
+    const id = typeof row.id === "string" && row.id.trim() ? row.id.trim() : newGateRuleId()
     const field = typeof row.field === "string" ? row.field : ""
     const operator = (GATE_OPERATORS_ORDERED as string[]).includes(String(row.operator))
       ? (row.operator as GateOperator)

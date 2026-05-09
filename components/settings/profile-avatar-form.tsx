@@ -19,7 +19,7 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { UserAvatar } from "@/components/user-avatar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { SettingsSectionPanel } from "@/components/settings/settings-section-panel"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ColorPicker } from "@/components/ui/color-picker"
 import { Label } from "@/components/ui/label"
@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Loader2 } from "lucide-react"
+import { Loader2, ImageIcon } from "lucide-react"
 
 const AUTO_VALUE = "__auto__"
 
@@ -275,247 +275,250 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
   }
 
   return (
-    <Card id="avatar">
-      <CardHeader>
-        <CardTitle>Avatar</CardTitle>
-        <CardDescription>
-          Here is an avatar we created just for you. If you would prefer, build your own.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Avatar preview and customise switch only */}
-        <div className="flex w-full flex-wrap items-center justify-between gap-4">
-          <UserAvatar
-            src={displayAvatarUrl}
-            alt="Avatar preview"
-            fallback={initials}
-            className="h-24 w-24"
-            fallbackClassName="text-lg"
+    <SettingsSectionPanel
+      id="avatar"
+      icon={ImageIcon}
+      title="Avatar"
+      subtitle="Here is an avatar we created just for you. If you would prefer, build your own."
+      footerHint={
+        customiseEnabled
+          ? "Save to store this look on your account. Until then, preview changes are local only."
+          : "We generate a default from your email. Turn on customisation to design your own, then save."
+      }
+      footerActions={
+        customiseEnabled ? (
+          <Button type="button" onClick={() => void handleSave()} disabled={pending}>
+            {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            Save avatar
+          </Button>
+        ) : null
+      }
+    >
+      {/* Avatar preview and customise switch */}
+      <div className="flex w-full flex-wrap items-center justify-between gap-4">
+        <UserAvatar
+          src={displayAvatarUrl}
+          alt="Avatar preview"
+          fallback={initials}
+          className="h-24 w-24"
+          fallbackClassName="text-lg"
+        />
+        <div className="flex shrink-0 items-center gap-3">
+          <Label htmlFor="avatar-customise" className="font-normal whitespace-nowrap">
+            Customise avatar
+          </Label>
+          <Switch
+            id="avatar-customise"
+            checked={customiseEnabled}
+            disabled={pending}
+            onCheckedChange={(c) => void handleCustomiseSwitch({ checked: c })}
           />
-          <div className="flex shrink-0 items-center gap-3">
-            <Label htmlFor="avatar-customise" className="font-normal whitespace-nowrap">
-              Customise avatar
-            </Label>
-            <Switch
-              id="avatar-customise"
-              checked={customiseEnabled}
-              disabled={pending}
-              onCheckedChange={(c) => void handleCustomiseSwitch({ checked: c })}
-            />
-          </div>
         </div>
+      </div>
 
-        {customiseEnabled ? (
-          <>
-            <p className="text-sm text-muted-foreground">
-              Adjust your choices below, then save to keep this avatar on your account.
-            </p>
-            {/* Style */}
+      {customiseEnabled ? (
+        <>
+          <p className="text-sm text-muted-foreground">
+            Adjust your choices below, then save to keep this avatar on your account.
+          </p>
+          {/* Style */}
+          <div className="space-y-1.5">
+            <Label htmlFor="avatar-style">Style</Label>
+            <Select
+              value={style}
+              onValueChange={(v) => {
+                const next = v as DicebearStyle
+                setStyle(next)
+                setEyes(AUTO_VALUE)
+                setMouth(AUTO_VALUE)
+                setEyebrows(AUTO_VALUE)
+              }}
+            >
+              <SelectTrigger id="avatar-style" className="w-full min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bottts-neutral">Bottts neutral</SelectItem>
+                <SelectItem value="fun-emoji">Fun emoji</SelectItem>
+                <SelectItem value="avataaars-neutral">Avataaars neutral</SelectItem>
+                <SelectItem value="initials">Initials</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Character features (not for initials style) */}
+          {showFaceEyesMouth ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {showAvataaarsEyebrows ? (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="avatar-eyebrows">Eyebrows</Label>
+                  <Select value={eyebrows} onValueChange={(v) => setEyebrows(v ?? AUTO_VALUE)}>
+                    <SelectTrigger id="avatar-eyebrows" className="w-full min-w-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={AUTO_VALUE}>Automatic</SelectItem>
+                      {AVATAAARS_NEUTRAL_EYEBROWS.map((o) => (
+                        <SelectItem key={o} value={o}>
+                          {o}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="avatar-eyes">Eyes</Label>
+                <Select value={eyes} onValueChange={(v) => setEyes(v ?? AUTO_VALUE)}>
+                  <SelectTrigger id="avatar-eyes" className="w-full min-w-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AUTO_VALUE}>Automatic</SelectItem>
+                    {eyesOptions.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {o}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="avatar-mouth">Mouth</Label>
+                <Select value={mouth} onValueChange={(v) => setMouth(v ?? AUTO_VALUE)}>
+                  <SelectTrigger id="avatar-mouth" className="w-full min-w-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AUTO_VALUE}>Automatic</SelectItem>
+                    {mouthOptions.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {o}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : null}
+
+          {showInitialsTextColour ? (
             <div className="space-y-1.5">
-              <Label htmlFor="avatar-style">Style</Label>
-              <Select
-                value={style}
-                onValueChange={(v) => {
-                  const next = v as DicebearStyle
-                  setStyle(next)
-                  setEyes(AUTO_VALUE)
-                  setMouth(AUTO_VALUE)
-                  setEyebrows(AUTO_VALUE)
-                }}
+              <Label htmlFor="avatar-text-colour-trigger">Letter colour</Label>
+              <ColorPicker
+                value={toHexForPicker({ hex: textColor, fallback: "#ffffff" })}
+                onValueChange={({ hex }) => setTextColor(hex.toLowerCase())}
+                hideContrastRatio
               >
-                <SelectTrigger id="avatar-style" className="w-full min-w-0">
+                <Button
+                  type="button"
+                  id="avatar-text-colour-trigger"
+                  variant="outline"
+                  className="h-9 w-full max-w-xs justify-start gap-2 font-mono text-xs sm:w-auto"
+                >
+                  {/* Swatch */}
+                  <span
+                    className="size-4 shrink-0 rounded border border-border"
+                    style={{ backgroundColor: textColor }}
+                    aria-hidden
+                  />
+                  {textColor}
+                </Button>
+              </ColorPicker>
+              <p className="text-xs text-muted-foreground">
+                Colour for the initials. See the{" "}
+                <a
+                  className="underline underline-offset-2"
+                  href="https://www.dicebear.com/styles/initials/"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  DiceBear initials
+                </a>{" "}
+                style.
+              </p>
+            </div>
+          ) : null}
+
+          {/* Background and transform */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="avatar-bg-type">Background</Label>
+              <Select
+                value={backgroundType}
+                onValueChange={(v) => setBackgroundType(v as "gradientLinear" | "solid")}
+              >
+                <SelectTrigger id="avatar-bg-type" className="w-full min-w-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="bottts-neutral">Bottts neutral</SelectItem>
-                  <SelectItem value="fun-emoji">Fun emoji</SelectItem>
-                  <SelectItem value="avataaars-neutral">Avataaars neutral</SelectItem>
-                  <SelectItem value="initials">Initials</SelectItem>
+                  <SelectItem value="gradientLinear">Gradient</SelectItem>
+                  <SelectItem value="solid">Solid</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Character features (not for initials style) */}
-            {showFaceEyesMouth ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {showAvataaarsEyebrows ? (
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="avatar-eyebrows">Eyebrows</Label>
-                    <Select value={eyebrows} onValueChange={(v) => setEyebrows(v ?? AUTO_VALUE)}>
-                      <SelectTrigger id="avatar-eyebrows" className="w-full min-w-0">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={AUTO_VALUE}>Automatic</SelectItem>
-                        {AVATAAARS_NEUTRAL_EYEBROWS.map((o) => (
-                          <SelectItem key={o} value={o}>
-                            {o}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="avatar-eyes">Eyes</Label>
-                  <Select value={eyes} onValueChange={(v) => setEyes(v ?? AUTO_VALUE)}>
-                    <SelectTrigger id="avatar-eyes" className="w-full min-w-0">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={AUTO_VALUE}>Automatic</SelectItem>
-                      {eyesOptions.map((o) => (
-                        <SelectItem key={o} value={o}>
-                          {o}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="avatar-mouth">Mouth</Label>
-                  <Select value={mouth} onValueChange={(v) => setMouth(v ?? AUTO_VALUE)}>
-                    <SelectTrigger id="avatar-mouth" className="w-full min-w-0">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={AUTO_VALUE}>Automatic</SelectItem>
-                      {mouthOptions.map((o) => (
-                        <SelectItem key={o} value={o}>
-                          {o}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            ) : null}
-
-            {showInitialsTextColour ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="avatar-text-colour-trigger">Letter colour</Label>
-                <ColorPicker
-                  value={toHexForPicker({ hex: textColor, fallback: "#ffffff" })}
-                  onValueChange={({ hex }) => setTextColor(hex.toLowerCase())}
-                  hideContrastRatio
+            <div className="space-y-1.5">
+              <Label htmlFor="avatar-bg-colour-trigger">Background colour</Label>
+              <ColorPicker
+                value={toHexForPicker({ hex: backgroundColor, fallback: "#b6e3f4" })}
+                onValueChange={({ hex }) => setBackgroundColor(hex.toLowerCase())}
+                hideContrastRatio
+              >
+                <Button
+                  type="button"
+                  id="avatar-bg-colour-trigger"
+                  variant="outline"
+                  className="h-9 w-full min-w-0 justify-start gap-2 font-mono text-xs"
                 >
-                  <Button
-                    type="button"
-                    id="avatar-text-colour-trigger"
-                    variant="outline"
-                    className="h-9 w-full max-w-xs justify-start gap-2 font-mono text-xs sm:w-auto"
-                  >
-                    {/* Swatch */}
-                    <span
-                      className="size-4 shrink-0 rounded border border-border"
-                      style={{ backgroundColor: textColor }}
-                      aria-hidden
-                    />
-                    {textColor}
-                  </Button>
-                </ColorPicker>
-                <p className="text-xs text-muted-foreground">
-                  Colour for the initials. See the{" "}
-                  <a
-                    className="underline underline-offset-2"
-                    href="https://www.dicebear.com/styles/initials/"
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    DiceBear initials
-                  </a>{" "}
-                  style.
-                </p>
-              </div>
-            ) : null}
-
-            {/* Background and transform */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="avatar-bg-type">Background</Label>
-                <Select
-                  value={backgroundType}
-                  onValueChange={(v) => setBackgroundType(v as "gradientLinear" | "solid")}
-                >
-                  <SelectTrigger id="avatar-bg-type" className="w-full min-w-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gradientLinear">Gradient</SelectItem>
-                    <SelectItem value="solid">Solid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="avatar-bg-colour-trigger">Background colour</Label>
-                <ColorPicker
-                  value={toHexForPicker({ hex: backgroundColor, fallback: "#b6e3f4" })}
-                  onValueChange={({ hex }) => setBackgroundColor(hex.toLowerCase())}
-                  hideContrastRatio
-                >
-                  <Button
-                    type="button"
-                    id="avatar-bg-colour-trigger"
-                    variant="outline"
-                    className="h-9 w-full min-w-0 justify-start gap-2 font-mono text-xs"
-                  >
-                    {/* Swatch */}
-                    <span
-                      className="size-4 shrink-0 rounded border border-border"
-                      style={{ backgroundColor: backgroundColor }}
-                      aria-hidden
-                    />
-                    {backgroundColor}
-                  </Button>
-                </ColorPicker>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="avatar-rotate">Rotation</Label>
-                <Select value={String(rotate)} onValueChange={(v) => setRotate(Number(v))}>
-                  <SelectTrigger id="avatar-rotate" className="w-full min-w-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">0°</SelectItem>
-                    <SelectItem value="90">90°</SelectItem>
-                    <SelectItem value="180">180°</SelectItem>
-                    <SelectItem value="270">270°</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-end gap-2 pb-1">
-                <Checkbox
-                  id="avatar-flip"
-                  checked={flip}
-                  onCheckedChange={(c) => setFlip(c === true)}
-                />
-                <Label htmlFor="avatar-flip" className="font-normal">
-                  Flip horizontally
-                </Label>
-              </div>
+                  {/* Swatch */}
+                  <span
+                    className="size-4 shrink-0 rounded border border-border"
+                    style={{ backgroundColor: backgroundColor }}
+                    aria-hidden
+                  />
+                  {backgroundColor}
+                </Button>
+              </ColorPicker>
             </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={() => void handleSave()} disabled={pending}>
-                {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                Save avatar
-              </Button>
+            <div className="space-y-1.5">
+              <Label htmlFor="avatar-rotate">Rotation</Label>
+              <Select value={String(rotate)} onValueChange={(v) => setRotate(Number(v))}>
+                <SelectTrigger id="avatar-rotate" className="w-full min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">0°</SelectItem>
+                  <SelectItem value="90">90°</SelectItem>
+                  <SelectItem value="180">180°</SelectItem>
+                  <SelectItem value="270">270°</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </>
-        ) : null}
+            <div className="flex items-end gap-2 pb-1">
+              <Checkbox
+                id="avatar-flip"
+                checked={flip}
+                onCheckedChange={(c) => setFlip(c === true)}
+              />
+              <Label htmlFor="avatar-flip" className="font-normal">
+                Flip horizontally
+              </Label>
+            </div>
+          </div>
+        </>
+      ) : null}
 
-        {message ? (
-          <p
-            className={
-              message.tone === "success" ? "text-sm text-green-600 dark:text-green-400" : "text-sm text-destructive"
-            }
-            role="status"
-          >
-            {message.text}
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
+      {message ? (
+        <p
+          className={
+            message.tone === "success" ? "text-sm text-green-600 dark:text-green-400" : "text-sm text-destructive"
+          }
+          role="status"
+        >
+          {message.text}
+        </p>
+      ) : null}
+    </SettingsSectionPanel>
   )
 }

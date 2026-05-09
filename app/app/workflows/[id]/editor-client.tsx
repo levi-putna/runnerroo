@@ -33,6 +33,7 @@ import {
   MoreHorizontal,
   AlignVerticalJustifyStart,
   ImageDown,
+  Settings,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { WorkflowApprovalDialog } from "@/components/workflow/workflow-approval-dialog"
@@ -52,6 +53,11 @@ import type { NodeResult } from "@/lib/workflows/engine/types"
 import {
   WorkflowEditorActionsContext,
 } from "@/lib/workflows/engine/run-context"
+import {
+  WORKFLOW_OPEN_RUN_INTENT_VALUE,
+  workflowOpenRunIntentStorageKey,
+} from "@/lib/workflows/workflow-open-run-intent-storage"
+import { normaliseWorkflowConstantsJson } from "@/lib/workflows/workflow-constants"
 import { buildWorkflowImageDownloadFileName } from "@/lib/workflows/engine/download-workflow-flow-image"
 import {
   Select,
@@ -146,6 +152,14 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
   const [baselineName, setBaselineName] = React.useState(initialName.trim())
   const [baselineGraph, setBaselineGraph] = React.useState(graphStr)
   const [baselineStatus, setBaselineStatus] = React.useState<WorkflowLifecycleStatus>(initialStatus)
+
+  const [workflowConstants, setWorkflowConstants] = React.useState<Record<string, string>>(() =>
+    normaliseWorkflowConstantsJson(initialWorkflow?.workflow_constants),
+  )
+
+  React.useEffect(() => {
+    setWorkflowConstants(normaliseWorkflowConstantsJson(initialWorkflow?.workflow_constants))
+  }, [initialWorkflow?.id])
 
   const [leaveDialogOpen, setLeaveDialogOpen] = React.useState(false)
   const [pendingHref, setPendingHref] = React.useState<string | null>(null)
@@ -392,6 +406,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
         setBaselineName(workflowName.trim())
         setBaselineGraph(workflowGraphBaseline({ nodes: graph.nodes, edges: graph.edges }))
         setBaselineStatus(status)
+        setWorkflowConstants(normaliseWorkflowConstantsJson(json.workflow.workflow_constants))
         router.replace(`/app/workflows/${json.workflow.id}`)
         router.refresh()
         return true
@@ -415,6 +430,9 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
       setBaselineName(workflowName.trim())
       setBaselineGraph(workflowGraphBaseline({ nodes: graph.nodes, edges: graph.edges }))
       setBaselineStatus(status)
+      if (json.workflow) {
+        setWorkflowConstants(normaliseWorkflowConstantsJson(json.workflow.workflow_constants))
+      }
       router.refresh()
       return true
     } finally {
@@ -470,6 +488,26 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
     }
     openManualRunForm()
   }, [isDirty, isInvokeEntryGraph, isNew, openManualRunForm])
+
+  /**
+   * When the workflows index sets a session flag before routing here, reopen the manual run modal once using the same rules as the toolbar.
+   */
+  React.useEffect(() => {
+    if (isNew) return
+
+    const key = workflowOpenRunIntentStorageKey({ workflowId })
+    try {
+      if (typeof window.sessionStorage?.getItem !== "function") return
+      if (sessionStorage.getItem(key) !== WORKFLOW_OPEN_RUN_INTENT_VALUE) return
+      sessionStorage.removeItem(key)
+    } catch {
+      return
+    }
+
+    queueMicrotask(() => {
+      openManualRunDialog()
+    })
+  }, [isNew, workflowId, openManualRunDialog])
 
   /**
    * Streams a simulated execution from the server and mirrors node status on the canvas.
@@ -577,7 +615,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
       runWorkflow,
       isRunning: manualRunSubmitting,
       stopRun,
-      openPendingApprovalDialog: ({ nodeId } = {}) => {
+      openPendingApprovalDialog: ({ nodeId }: { nodeId?: string } = {}) => {
         if (!canReviewInlineApproval) return
         setApprovalDialogNodeId(typeof nodeId === "string" && nodeId.trim() !== "" ? nodeId : null)
         setApprovalDialogOpen(true)
@@ -841,6 +879,20 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
 
         <div className="flex-1" />
 
+        {/* Toolbar — workflow settings */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground hover:text-foreground"
+          title="Workflow settings"
+          aria-label="Workflow settings"
+          disabled={isNew}
+          onClick={() => router.push(`/app/workflows/${workflowId}/settings`)}
+        >
+          <Settings className="size-4" />
+        </Button>
+
         {/* Toolbar — run history */}
         <Button
           type="button"
@@ -932,6 +984,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           onGraphChange={onGraphChange}
           runState={runStateMap}
           liveRunId={liveRunId}
+          workflowConstants={workflowConstants}
         />
       </div>
 

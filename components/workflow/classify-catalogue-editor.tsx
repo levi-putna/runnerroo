@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Braces, GripVertical, LayoutList, Plus, Tag, Trash2 } from "lucide-react"
+import { Braces, LayoutList, Plus, Tag, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -17,70 +17,16 @@ import {
   readClassifyLabelRowsFromNodeData,
   type ClassifyLabelRowPersisted,
 } from "@/lib/workflows/steps/ai/classify/defaults"
-
-/** MIME type for HTML5 drag payloads between catalogue rows. */
-const CLASSIFY_LABEL_DRAG_MIME = "application/x-runnerroo-classify-label-id"
+import {
+  WorkflowSchemaRowsSortableList,
+  WorkflowSchemaSortableGrip,
+} from "@/components/workflow/workflow-schema-rows-sortable-list"
 
 export interface ClassifyCatalogueEditorProps {
   data: Record<string, unknown>
   set: (key: string, value: unknown) => void
   nodeId: string
   promptTags: PromptTagDefinition[]
-}
-
-interface ClassifyLabelDragHandleProps {
-  rowId: string
-  onDragStartRow: ({ id }: { id: string }) => void
-  onDragEndRow: () => void
-}
-
-/**
- * Grip control for reordering classifier catalogue rows (same interaction model as the input schema editor).
- */
-function ClassifyLabelDragHandle({ rowId, onDragStartRow, onDragEndRow }: ClassifyLabelDragHandleProps) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "flex w-8 shrink-0 cursor-default touch-none items-center justify-center self-stretch border-0 bg-transparent p-0",
-        "text-muted-foreground hover:cursor-ns-resize hover:text-foreground",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-      )}
-      draggable
-      aria-label="Drag to reorder category"
-      onDragStart={(e) => {
-        e.dataTransfer.setData(CLASSIFY_LABEL_DRAG_MIME, rowId)
-        e.dataTransfer.effectAllowed = "move"
-        onDragStartRow({ id: rowId })
-      }}
-      onDragEnd={onDragEndRow}
-    >
-      <GripVertical className="pointer-events-none size-4 shrink-0" aria-hidden />
-    </button>
-  )
-}
-
-interface ReorderClassifyLabelRowsParams {
-  rows: ClassifyLabelRowPersisted[]
-  activeId: string
-  overId: string
-}
-
-/**
- * Moves the row identified by `activeId` to the index of `overId`.
- */
-function reorderClassifyLabelRows({ rows, activeId, overId }: ReorderClassifyLabelRowsParams): ClassifyLabelRowPersisted[] {
-  if (activeId === overId) return rows
-  const fromIdx = rows.findIndex((r) => r.id === activeId)
-  const toIdx = rows.findIndex((r) => r.id === overId)
-  if (fromIdx === -1 || toIdx === -1) return rows
-  const next = [...rows]
-  const [moved] = next.splice(fromIdx, 1)
-  if (!moved) return rows
-  let insertAt = toIdx
-  if (fromIdx < toIdx) insertAt = toIdx - 1
-  next.splice(insertAt, 0, moved)
-  return next
 }
 
 function emptyAddDraft(): { label: string; description: string } {
@@ -100,10 +46,6 @@ export function ClassifyCatalogueEditor({ data, set, nodeId, promptTags }: Class
   const [showAddForm, setShowAddForm] = React.useState(false)
   const [addDraft, setAddDraft] = React.useState(() => emptyAddDraft())
 
-  const [draggingId, setDraggingId] = React.useState<string | null>(null)
-  const [dragOverId, setDragOverId] = React.useState<string | null>(null)
-  const draggingIdRef = React.useRef<string | null>(null)
-
   function replaceRows(next: ClassifyLabelRowPersisted[]) {
     set("classifyLabels", next)
   }
@@ -116,48 +58,6 @@ export function ClassifyCatalogueEditor({ data, set, nodeId, promptTags }: Class
       setEditingId(null)
       setEditDraft(null)
     }
-  }
-
-  function handleFieldDragStart({ id }: { id: string }) {
-    draggingIdRef.current = id
-    setDraggingId(id)
-  }
-
-  function handleFieldDragEnd() {
-    draggingIdRef.current = null
-    setDraggingId(null)
-    setDragOverId(null)
-  }
-
-  function handleRowDragOver({
-    e,
-    targetRowId,
-  }: {
-    e: React.DragEvent
-    targetRowId: string
-  }) {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = "move"
-    const fromId = draggingIdRef.current ?? draggingId
-    if (fromId && fromId !== targetRowId) setDragOverId(targetRowId)
-  }
-
-  function handleRowDrop({
-    e,
-    targetRowId,
-  }: {
-    e: React.DragEvent
-    targetRowId: string
-  }) {
-    e.preventDefault()
-    const fromId =
-      e.dataTransfer.getData(CLASSIFY_LABEL_DRAG_MIME) || draggingIdRef.current || draggingId || ""
-    if (!fromId || fromId === targetRowId) {
-      handleFieldDragEnd()
-      return
-    }
-    replaceRows(reorderClassifyLabelRows({ rows, activeId: fromId, overId: targetRowId }))
-    handleFieldDragEnd()
   }
 
   function openEdit({ row }: { row: ClassifyLabelRowPersisted }) {
@@ -257,143 +157,175 @@ export function ClassifyCatalogueEditor({ data, set, nodeId, promptTags }: Class
                 </p>
               ) : null}
 
-              {rows.map((row) => {
-                const isEditing = editingId === row.id
+              {rows.length > 0 ? (
+                <WorkflowSchemaRowsSortableList
+                  items={rows}
+                  onReorder={({ next }) => replaceRows(next)}
+                  renderDragOverlay={({ item }) => (
+                    <div className="pointer-events-none flex min-w-[240px] items-center gap-3 rounded-lg border border-border/70 bg-background px-3 py-2.5 shadow-lg">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
+                        <Tag className="size-4" aria-hidden />
+                      </span>
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <span className="block truncate font-mono text-sm font-medium text-foreground">
+                          {item.label.trim() ? item.label : "Untitled label"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  renderRow={({
+                    item: row,
+                    spacingBelow,
+                    isDragging,
+                    sortableStyle,
+                    mergedSortableRef,
+                    setActivatorNodeRef,
+                    dragAttributes,
+                    dragListeners,
+                  }) => {
+                    const isEditing = editingId === row.id
 
-                if (isEditing && editDraft) {
-                  return (
-                    <div
-                      key={row.id}
-                      className={cn(
-                        "min-w-0 rounded-lg transition-opacity",
-                        draggingId === row.id && "opacity-55",
-                        dragOverId === row.id &&
-                          draggingId != null &&
-                          draggingId !== row.id &&
-                          "ring-2 ring-primary/45 ring-offset-2 ring-offset-background",
-                      )}
-                      onDragOver={(e) => handleRowDragOver({ e, targetRowId: row.id })}
-                      onDrop={(e) => handleRowDrop({ e, targetRowId: row.id })}
-                    >
-                      <div className="rounded-lg border border-border bg-muted/15 p-3" role="group" aria-label="Edit category">
-                        <div className="flex items-stretch gap-2">
-                          <ClassifyLabelDragHandle
-                            rowId={row.id}
-                            onDragStartRow={handleFieldDragStart}
-                            onDragEndRow={handleFieldDragEnd}
-                          />
-                          <div className="min-w-0 flex-1 space-y-3">
-                            <div className="grid min-w-0 w-full grid-cols-1 gap-3">
-                              <div className="min-w-0 w-full space-y-1.5">
-                                <Label htmlFor={`${row.id}-label-edit`}>Label</Label>
-                                <Input
-                                  id={`${row.id}-label-edit`}
-                                  value={editDraft.label}
-                                  onChange={(e) =>
-                                    setEditDraft((d) =>
-                                      d
-                                        ? {
-                                            ...d,
-                                            label: clipWorkflowFieldKeyInput({ value: e.target.value }),
-                                          }
-                                        : d,
-                                    )
-                                  }
-                                  placeholder="billing_enquiry"
-                                  className="w-full min-w-0 font-mono text-sm"
-                                />
-                              </div>
-                              <div className="min-w-0 w-full space-y-1.5">
-                                <Label htmlFor={`${row.id}-desc-edit`}>Description</Label>
-                                <Textarea
-                                  id={`${row.id}-desc-edit`}
-                                  value={editDraft.description}
-                                  onChange={(e) =>
-                                    setEditDraft((d) => (d ? { ...d, description: e.target.value } : d))
-                                  }
-                                  placeholder="When this category should be chosen…"
-                                  rows={3}
-                                  className="resize-none text-sm leading-relaxed"
-                                />
+                    if (isEditing && editDraft) {
+                      return (
+                        <div
+                          ref={mergedSortableRef}
+                          style={sortableStyle}
+                          className={cn(
+                            "min-w-0 rounded-lg",
+                            isDragging && "relative z-[1] opacity-[0.35]",
+                            spacingBelow && "mb-2",
+                          )}
+                        >
+                          <div className="rounded-lg border border-border bg-muted/15 p-3" role="group" aria-label="Edit category">
+                            <div className="flex items-stretch gap-2">
+                              <WorkflowSchemaSortableGrip
+                                setActivatorNodeRef={setActivatorNodeRef}
+                                attributes={dragAttributes}
+                                listeners={dragListeners}
+                                ariaLabel="Drag to reorder category"
+                              />
+                              <div className="min-w-0 flex-1 space-y-3">
+                                <div className="grid min-w-0 w-full grid-cols-1 gap-3">
+                                  <div className="min-w-0 w-full space-y-1.5">
+                                    <Label htmlFor={`${row.id}-label-edit`}>Label</Label>
+                                    <Input
+                                      id={`${row.id}-label-edit`}
+                                      value={editDraft.label}
+                                      onChange={(e) =>
+                                        setEditDraft((d) =>
+                                          d
+                                            ? {
+                                                ...d,
+                                                label: clipWorkflowFieldKeyInput({ value: e.target.value }),
+                                              }
+                                            : d,
+                                        )
+                                      }
+                                      placeholder="billing_enquiry"
+                                      className="w-full min-w-0 font-mono text-sm"
+                                    />
+                                  </div>
+                                  <div className="min-w-0 w-full space-y-1.5">
+                                    <Label htmlFor={`${row.id}-desc-edit`}>Description</Label>
+                                    <Textarea
+                                      id={`${row.id}-desc-edit`}
+                                      value={editDraft.description}
+                                      onChange={(e) =>
+                                        setEditDraft((d) => (d ? { ...d, description: e.target.value } : d))
+                                      }
+                                      placeholder="When this category should be chosen…"
+                                      rows={3}
+                                      className="resize-none text-sm leading-relaxed"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                  <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={closeEdit}>
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="w-full sm:w-auto"
+                                    onClick={() => saveEdit({ id: row.id })}
+                                  >
+                                    Save category
+                                  </Button>
+                                </div>
                               </div>
                             </div>
-                            <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                              <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={closeEdit}>
-                                Cancel
-                              </Button>
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div
+                        ref={mergedSortableRef}
+                        style={sortableStyle}
+                        className={cn(
+                          "min-w-0 rounded-lg",
+                          isDragging && "relative z-[1] opacity-[0.35]",
+                          spacingBelow && "mb-2",
+                        )}
+                      >
+                        <div className="group flex min-w-0 w-full items-stretch gap-1 rounded-lg border border-border/70 bg-background focus-within:ring-2 focus-within:ring-ring">
+                          <WorkflowSchemaSortableGrip
+                            setActivatorNodeRef={setActivatorNodeRef}
+                            attributes={dragAttributes}
+                            listeners={dragListeners}
+                            ariaLabel="Drag to reorder category"
+                          />
+                          <div className="flex min-w-0 flex-1 items-stretch transition-colors hover:bg-muted/30">
+                            <button
+                              type="button"
+                              onClick={() => openEdit({ row })}
+                              className={cn(
+                                "flex min-w-0 flex-1 items-center gap-3 bg-transparent px-3 py-2.5 text-left transition-colors hover:bg-transparent",
+                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                              )}
+                            >
+                              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
+                                <Tag className="size-4" aria-hidden />
+                              </span>
+                              <div className="min-w-0 flex-1 space-y-0.5">
+                                <span className="block truncate font-mono text-sm font-medium">
+                                  {row.label.trim() ? row.label : "Untitled label"}
+                                </span>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {row.description.trim() ? row.description : "No description"}
+                                </p>
+                              </div>
+                            </button>
+                            {/* Delete — only on row hover / focus-within */}
+                            <div
+                              className={cn(
+                                "flex shrink-0 items-center pr-2 opacity-0 pointer-events-none transition-opacity duration-150",
+                                "group-hover:pointer-events-auto group-hover:opacity-100",
+                                "group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+                              )}
+                            >
                               <Button
                                 type="button"
-                                size="sm"
-                                className="w-full sm:w-auto"
-                                onClick={() => saveEdit({ id: row.id })}
+                                variant="ghost"
+                                size="icon"
+                                className="size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  removeRow({ id: row.id })
+                                }}
+                                aria-label={`Remove category ${row.label || row.id}`}
                               >
-                                Save category
+                                <Trash2 className="size-4" aria-hidden />
                               </Button>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                }
-
-                return (
-                  <div
-                    key={row.id}
-                    className={cn(
-                      "min-w-0 rounded-lg transition-opacity",
-                      draggingId === row.id && "opacity-55",
-                      dragOverId === row.id &&
-                        draggingId != null &&
-                        draggingId !== row.id &&
-                        "ring-2 ring-primary/45 ring-offset-2 ring-offset-background",
-                    )}
-                    onDragOver={(e) => handleRowDragOver({ e, targetRowId: row.id })}
-                    onDrop={(e) => handleRowDrop({ e, targetRowId: row.id })}
-                  >
-                    <div className="group flex min-w-0 w-full items-stretch gap-1 rounded-lg border border-border/70 bg-background focus-within:ring-2 focus-within:ring-ring">
-                      <ClassifyLabelDragHandle
-                        rowId={row.id}
-                        onDragStartRow={handleFieldDragStart}
-                        onDragEndRow={handleFieldDragEnd}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => openEdit({ row })}
-                        className={cn(
-                          "flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                          "hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                        )}
-                      >
-                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
-                          <Tag className="size-4" aria-hidden />
-                        </span>
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <span className="block truncate font-mono text-sm font-medium">
-                            {row.label.trim() ? row.label : "Untitled label"}
-                          </span>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {row.description.trim() ? row.description : "No description"}
-                          </p>
-                        </div>
-                      </button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-auto min-h-0 w-8 shrink-0 self-stretch text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          removeRow({ id: row.id })
-                        }}
-                        aria-label={`Remove category ${row.label || row.id}`}
-                      >
-                        <Trash2 className="size-4" aria-hidden />
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
+                    )
+                  }}
+                />
+              ) : null}
 
               {/* Add category */}
               {!showAddForm ? (
@@ -479,8 +411,10 @@ export function ClassifyCatalogueEditor({ data, set, nodeId, promptTags }: Class
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">value</code>) plus{" "}
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">description</code>, or an object
                   mapping each label to a description string. Combine literals with{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{prev.*}}"}</code>,{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{input.*}}"}</code>, and{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{input.*}}"}</code> from
+                  the previous step,{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{trigger_inputs.*}}"}</code>{" "}
+                  for the original invoke payload, and{" "}
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{"{{global.*}}"}</code>.
                 </>
               }

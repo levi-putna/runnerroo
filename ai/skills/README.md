@@ -18,7 +18,7 @@ The planning agent (`runPlanningAgent`) loads summaries from all valid skill fil
 
 Small strings composed in `index.ts`:
 
-- `runneroo-domain.ts` — product framing.
+- `dailify-domain.ts` — product framing.
 - `tone.ts` — voice and clarity.
 - `tool-behaviour.ts` — how to use the current tool pack safely.
 

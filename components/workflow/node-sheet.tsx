@@ -25,7 +25,23 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowDownFromLine, ArrowDownToLine, ArrowLeft, ChevronRight, Plus, Trash2 } from "lucide-react"
+import {
+  ArrowDownFromLine,
+  ArrowDownToLine,
+  ArrowLeft,
+  GitBranch,
+  Plus,
+  Trash2,
+} from "lucide-react"
+import { SwitchCasesSortableList } from "@/components/workflow/switch-cases-sortable-list"
+import { WorkflowNavigationResetProvider } from "@/components/workflow/workflow-navigation-reset-context"
+import {
+  WorkflowOutputStackProvider,
+  type SchemaEditorStackPanel,
+  type WorkflowOutputStackContextValue,
+  type WorkflowOutputStackSubHeaderActions,
+} from "@/components/workflow/workflow-output-stack-context"
+import { workflowStackSlideVariants } from "@/components/workflow/workflow-stack-motion"
 import {
   getWorkflowSheetTypeLabel,
   normaliseAiSubtype,
@@ -63,6 +79,7 @@ import {
   nodeInputFieldsToPromptTags,
   prevPromptTagsFromPredecessorNode,
   workflowGlobalsPromptTagsFromNodes,
+  workflowConstantsPromptTags,
   type PromptTagDefinition,
 } from "@/lib/workflows/engine/prompt-tags"
 import { ClassifyCatalogueEditor } from "@/components/workflow/classify-catalogue-editor"
@@ -90,6 +107,10 @@ import {
 } from "@/lib/workflows/engine/schema-mapping-merge"
 import { FunctionInput } from "@/components/workflow/function-input"
 import { WorkflowRunContext } from "@/lib/workflows/engine/run-context"
+import {
+  CronExpressionBuilder,
+  CronTimezoneField,
+} from "@/components/workflow/cron-expression-builder"
 import { RunStepDetailSheetBody } from "@/components/workflow/run-step-detail-sheet-body"
 import { resolveRunStepTimelineLabel } from "@/lib/workflows/engine/run-timeline"
 import { DocumentTemplateUploadField } from "@/components/workflow/document-template-upload-field"
@@ -100,6 +121,15 @@ const GENERATE_TEXT_STEP_EXECUTION_IMPORT_SPECS = buildGenerateTextExecutionImpo
 
 /** Classifier execution field rows for classify output imports. */
 const CLASSIFY_STEP_EXECUTION_IMPORT_SPECS = buildClassifyExecutionImportSpecs()
+
+/**
+ * Eight-character suffix for Split/Switch branch ids; falls back when `crypto.randomUUID` is unavailable.
+ */
+function randomBranchIdSuffix(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID().slice(0, 8)
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 8)
+}
 
 interface NodeSheetProps {
   node: Node | null
@@ -117,7 +147,16 @@ interface NodeSheetProps {
    * Together with {@link WorkflowRunContext}, enables the Run tab for step I/O.
    */
   liveRunId?: string | null
+  /** Workflow Settings constants — merged into prompt tag suggestions as `{{const.*}}`. */
+  workflowConstants?: Record<string, string>
 }
+
+/**
+ * Switch **Conditions** pane stack — mirrored at the sheet tab strip when drilling into one case.
+ */
+type SwitchConditionsPanel =
+  | { view: "list" }
+  | { view: "case-detail"; branchId: string }
 
 /**
  * Resolves the inbound predecessor list and an optional user pick when multiple edges target the same step.
@@ -189,31 +228,21 @@ function getNodeSheetTabVisibility({
   nodeType?: string | null
   aiSubtype?: string | null
 }) {
-  const entryShowsInputTab = nodeType === "entry"
+  /**
+   * The Input tab is now exclusive to **trigger** (entry) nodes. Every other step automatically
+   * receives the previous step's output as `{{input.*}}`, so per-step Input mapping rows are
+   * no longer needed in the editor.
+   */
+  const showInput = nodeType === "entry"
 
-  const showInput =
-    entryShowsInputTab ||
-    nodeType === "ai" ||
-    nodeType === "code" ||
-    nodeType === "random" ||
-    nodeType === "iteration" ||
-    nodeType === "document" ||
-    nodeType === "decision" ||
-    nodeType === "switch" ||
-    nodeType === "split" ||
-    nodeType === "webhookCall" ||
-    nodeType === "approval"
-
-  // Step behaviour distinct from inbound payload shaping (instructions, runnable code, numeric increment, etc.).
+  // Step behaviour distinct from inbound payload shaping (instructions, runnable code, numeric increment, HTTP request line, etc.).
   const showExecution =
     nodeType === "ai" ||
     nodeType === "code" ||
     nodeType === "random" ||
     nodeType === "iteration" ||
-    nodeType === "document"
-
-  /** Invoke, webhook, and schedule triggers all evaluate `outputSchema` / `globalsSchema` via the same entry executor. */
-  const entryShowsOutputMapping = nodeType === "entry"
+    nodeType === "document" ||
+    nodeType === "webhookCall"
 
   const aiSubtypeNormalised = nodeType === "ai" ? normaliseAiSubtype({ value: aiSubtype }) : null
 
@@ -234,12 +263,16 @@ function getNodeSheetTabVisibility({
   /** Split-only: parallel outbound handles (no conditions). */
   const showBranchTab = nodeType === "split"
 
+  /**
+   * Entry nodes intentionally exclude the Output tab — invoke field declarations and
+   * downstream output mapping live together inside the combined Input tab. Every other step
+   * keeps an Output tab when it has output/globals mapping or branch configuration.
+   */
   const showOutput =
     nodeType === "decision" ||
     nodeType === "switch" ||
     nodeType === "split" ||
     nodeType === "document" ||
-    entryShowsOutputMapping ||
     showAiGenerateOutput ||
     showAiTransformOutput ||
     showAiSummarizeOutput ||
@@ -284,7 +317,7 @@ function SplitBranchConfig({
 
   /** Adds another parallel branch with a fresh stable id for edges. */
   function addBranch() {
-    const id = `sp-${crypto.randomUUID().slice(0, 8)}`
+    const id = `sp-${randomBranchIdSuffix()}`
     commitPaths({
       next: [...paths, { id, label: `Path ${paths.length + 1}` }],
     })
@@ -369,13 +402,98 @@ export function NodeSheet({
   graphNodes = [],
   graphEdges = [],
   liveRunId,
+  workflowConstants = {},
 }: NodeSheetProps) {
   const [localData, setLocalData] = React.useState<Record<string, unknown>>({})
   const runMap = React.useContext(WorkflowRunContext)
   /** Active primary tab in the node sheet (includes Run when execution data exists for this node). */
   const [activeSheetTab, setActiveSheetTab] = React.useState<
-    "general" | "input" | "branch" | "gate" | "execution" | "output" | "run"
+    "general" | "input" | "schedule" | "branch" | "gate" | "execution" | "output" | "run"
   >("general")
+
+  /** Switch Conditions drill-down — lifted so the top tabs can hide while editing one case. */
+  const [switchConditionsPanel, setSwitchConditionsPanel] = React.useState<SwitchConditionsPanel>({
+    view: "list",
+  })
+
+  /** Output tab — Output schema vs Workflow globals drill-down (sheet chrome replaces tab strip). */
+  const [outputSchemaStackPanel, setOutputSchemaStackPanel] = React.useState<SchemaEditorStackPanel>({
+    view: "list",
+  })
+  const [globalsStackPanel, setGlobalsStackPanel] = React.useState<SchemaEditorStackPanel>({
+    view: "list",
+  })
+
+  /** Output-tab drill sub-header actions — populated by {@link InputSchemaEditor} while editing a field or add row. */
+  const [outputStackSubHeaderActions, setOutputStackSubHeaderActions] =
+    React.useState<WorkflowOutputStackSubHeaderActions | null>(null)
+
+  const registerOutputStackSubHeaderActions = React.useCallback((actions: WorkflowOutputStackSubHeaderActions | null) => {
+    setOutputStackSubHeaderActions(actions)
+  }, [])
+
+  const setOutputSchemaPanelExclusive = React.useCallback(
+    (action: React.SetStateAction<SchemaEditorStackPanel>) => {
+      setOutputSchemaStackPanel((prev) => {
+        const next = typeof action === "function" ? action(prev) : action
+        if (next.view !== "list") setGlobalsStackPanel({ view: "list" })
+        return next
+      })
+    },
+    [],
+  )
+
+  const setGlobalsPanelExclusive = React.useCallback(
+    (action: React.SetStateAction<SchemaEditorStackPanel>) => {
+      setGlobalsStackPanel((prev) => {
+        const next = typeof action === "function" ? action(prev) : action
+        if (next.view !== "list") setOutputSchemaStackPanel({ view: "list" })
+        return next
+      })
+    },
+    [],
+  )
+
+  const resetOutputGlobalsPanels = React.useCallback(() => {
+    setOutputSchemaStackPanel({ view: "list" })
+    setGlobalsStackPanel({ view: "list" })
+  }, [])
+
+  const workflowOutputStackActiveScope = React.useMemo(() => {
+    if (outputSchemaStackPanel.view !== "list") return "outputSchema" as const
+    if (globalsStackPanel.view !== "list") return "globals" as const
+    return null
+  }, [outputSchemaStackPanel.view, globalsStackPanel.view])
+
+  const workflowOutputStackCtxValue = React.useMemo((): WorkflowOutputStackContextValue => {
+    return {
+      enabled: activeSheetTab === "output",
+      outputSchemaPanel: outputSchemaStackPanel,
+      setOutputSchemaPanelExclusive,
+      globalsPanel: globalsStackPanel,
+      setGlobalsPanelExclusive,
+      resetBothPanels: resetOutputGlobalsPanels,
+      activeScope: workflowOutputStackActiveScope,
+      registerOutputStackSubHeaderActions,
+    }
+  }, [
+    activeSheetTab,
+    outputSchemaStackPanel,
+    globalsStackPanel,
+    resetOutputGlobalsPanels,
+    setOutputSchemaPanelExclusive,
+    setGlobalsPanelExclusive,
+    workflowOutputStackActiveScope,
+    registerOutputStackSubHeaderActions,
+  ])
+
+  /** Schedule tab sits after Input for entry nodes — hide it when routing away from Cron triggers. */
+  React.useEffect(() => {
+    if (localData.entryType !== "schedule" && activeSheetTab === "schedule") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- discard orphan tab selection on trigger kind change
+      setActiveSheetTab("input")
+    }
+  }, [activeSheetTab, localData.entryType])
 
   // Sync local state when the selected node changes
   React.useEffect(() => {
@@ -388,7 +506,17 @@ export function NodeSheet({
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tab strip should reset with selected node id
     setActiveSheetTab("general")
-  }, [node?.id])
+    setSwitchConditionsPanel({ view: "list" })
+    resetOutputGlobalsPanels()
+    setOutputStackSubHeaderActions(null)
+  }, [node?.id, resetOutputGlobalsPanels])
+
+  React.useEffect(() => {
+    if (activeSheetTab === "output") return
+    /* eslint-disable react-hooks/set-state-in-effect -- drill-down state applies only on the Output tab */
+    resetOutputGlobalsPanels()
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [activeSheetTab, resetOutputGlobalsPanels])
 
   const inboundPick = useInboundPredecessorSelection({
     targetNodeId: node?.id ?? "",
@@ -406,8 +534,11 @@ export function NodeSheet({
   )
 
   const workflowGlobalPromptTags = React.useMemo(
-    () => workflowGlobalsPromptTagsFromNodes({ nodes: graphNodes }),
-    [graphNodes],
+    () => [
+      ...workflowConstantsPromptTags({ constants: workflowConstants }),
+      ...workflowGlobalsPromptTagsFromNodes({ nodes: graphNodes }),
+    ],
+    [graphNodes, workflowConstants],
   )
 
   const entryNodeForTags = React.useMemo(
@@ -428,16 +559,10 @@ export function NodeSheet({
     [entryNodeForTags],
   )
 
-  /** Resolved Input tab keys surface as `{{input.<key>}}` in the Approval message. */
-  const approvalInputFieldsForMessageTags = React.useMemo(
-    () =>
-      nodeInputFieldsToPromptTags({
-        fields: readInputSchemaFromNodeData({ value: localData.inputSchema }),
-      }),
-    [localData.inputSchema],
-  )
-
-  /** Tag palette for the Approval step’s inbox message (matches downstream step conventions). */
+  /**
+   * Tag palette for the Approval step's inbox message: predecessor output as `{{input.*}}`,
+   * the original workflow invoke payload as `{{trigger_inputs.*}}`, plus globals and built-ins.
+   */
   const approvalMessagePromptTags = React.useMemo(
     () =>
       mergePromptTagDefinitions({
@@ -445,15 +570,9 @@ export function NodeSheet({
           ...workflowGlobalPromptTags,
           ...upstreamPromptTags,
           ...entryInvokeInputFieldTags,
-          ...approvalInputFieldsForMessageTags,
         ],
       }),
-    [
-      workflowGlobalPromptTags,
-      upstreamPromptTags,
-      entryInvokeInputFieldTags,
-      approvalInputFieldsForMessageTags,
-    ],
+    [workflowGlobalPromptTags, upstreamPromptTags, entryInvokeInputFieldTags],
   )
 
   /** Fall back to General when this node no longer has run snapshots (e.g. run map cleared). */
@@ -465,6 +584,81 @@ export function NodeSheet({
     }
   }, [showRunTabForEffect, activeSheetTab])
 
+  /** Title row when editing one Switch case — drives the sheet-level tab strip replacement (must run before any early return). */
+  const switchCaseDetailBranchMeta = React.useMemo(() => {
+    if (node == null || node.type !== "switch" || switchConditionsPanel.view !== "case-detail") return null
+    const branches = readSwitchBranches({ data: localData })
+    const idx = branches.findIndex((b) => b.id === switchConditionsPanel.branchId)
+    if (idx < 0) return null
+    const b = branches[idx]!
+    const displayName = b.label?.trim() ? b.label : "Unnamed case"
+    return { caseOrdinal: idx + 1, displayName }
+  }, [node, switchConditionsPanel, localData])
+
+  /** While drilling into a Switch case, lock the stored tab to Conditions so it matches the forced strip (must run before any early return). */
+  React.useEffect(() => {
+    if (node == null || node.type !== "switch" || switchConditionsPanel.view !== "case-detail") return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- keep stored tab aligned with forced Conditions view
+    setActiveSheetTab("gate")
+  }, [node?.id, node?.type, switchConditionsPanel.view])
+
+  const showOutputForSheetChrome =
+    node != null &&
+    getNodeSheetTabVisibility({
+      nodeType: node.type,
+      aiSubtype: node.type === "ai" ? (localData.subtype as string | undefined) : undefined,
+    }).showOutput
+
+  /** Output tab drill-down replaces the sheet tab strip — computed before any early return (same rule as Switch chrome). */
+  const outputGlobalsSheetDrilling =
+    showOutputForSheetChrome &&
+    activeSheetTab === "output" &&
+    (outputSchemaStackPanel.view !== "list" || globalsStackPanel.view !== "list")
+
+  const sheetTabsControlledValue =
+    node?.type === "switch" && switchConditionsPanel.view === "case-detail"
+      ? "gate"
+      : outputGlobalsSheetDrilling
+        ? "output"
+        : activeSheetTab
+
+  const isOutputGlobalsSheetDetailNav = outputGlobalsSheetDrilling
+
+  const outputGlobalsTabBarMeta = React.useMemo(() => {
+    if (!outputGlobalsSheetDrilling) return null
+    const scope =
+      outputSchemaStackPanel.view !== "list" ? ("outputSchema" as const) : ("globals" as const)
+    const panel = scope === "outputSchema" ? outputSchemaStackPanel : globalsStackPanel
+    const sectionTitle = scope === "outputSchema" ? "Output schema" : "Workflow globals"
+    if (panel.view === "add") {
+      return {
+        sectionTitle,
+        kindTitle: "New field",
+      }
+    }
+    if (panel.view === "field") {
+      return {
+        sectionTitle,
+        kindTitle: scope === "outputSchema" ? "Output field" : "Global field",
+      }
+    }
+    return null
+  }, [
+    outputGlobalsSheetDrilling,
+    outputSchemaStackPanel,
+    globalsStackPanel,
+  ])
+
+  React.useEffect(() => {
+    if (!outputGlobalsSheetDrilling) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- align stored tab with forced Output chrome
+    setActiveSheetTab("output")
+  }, [outputGlobalsSheetDrilling])
+
+  /** Ignore stale registrations whenever drill chrome is not active — avoids an extra sync effect on drill exit. */
+  const resolvedOutputStackSubHeaderActions =
+    outputGlobalsSheetDrilling ? outputStackSubHeaderActions : null
+
   if (!node) return null
 
   const sheetNode = node
@@ -474,19 +668,27 @@ export function NodeSheet({
     nodeType: sheetNode.type,
     aiSubtype: sheetNode.type === "ai" ? (localData.subtype as string | undefined) : undefined,
   })
+  const showScheduleTab = sheetNode.type === "entry" && localData.entryType === "schedule"
   const useTabs =
-    showInput || showBranchTab || showGate || showExecution || showOutput
+    showInput || showScheduleTab || showBranchTab || showGate || showExecution || showOutput
   const stepRunResult = runMap.get(sheetNode.id)
   const showRunTab = stepRunResult !== undefined
   const useTabStrip = useTabs || showRunTab
   const tabCount =
     1 +
     (showInput ? 1 : 0) +
+    (showScheduleTab ? 1 : 0) +
     (showBranchTab ? 1 : 0) +
     (showGate ? 1 : 0) +
     (showExecution ? 1 : 0) +
     (showOutput ? 1 : 0) +
     (showRunTab ? 1 : 0)
+
+  const isSwitchCaseDetailNav =
+    sheetNode.type === "switch" && switchConditionsPanel.view === "case-detail"
+
+  /** Hide Save/Cancel/delete footer while drilling nested editors — only the sheet title row stays fixed. */
+  const hideSheetPersistFooter = isOutputGlobalsSheetDetailNav || isSwitchCaseDetailNav
 
   function set(key: string, value: unknown) {
     setLocalData((prev) => ({ ...prev, [key]: value }))
@@ -499,9 +701,16 @@ export function NodeSheet({
 
   /** Applies only recognised sheet tab values from Radix. */
   function handleSheetTabChange(value: string) {
+    if (sheetNode.type === "switch" && switchConditionsPanel.view === "case-detail") {
+      return
+    }
+    if (outputGlobalsSheetDrilling) {
+      return
+    }
     if (
       value === "general" ||
       value === "input" ||
+      value === "schedule" ||
       value === "branch" ||
       value === "gate" ||
       value === "execution" ||
@@ -544,61 +753,149 @@ export function NodeSheet({
           <SheetDescription className="sr-only">Configure node settings</SheetDescription>
         </SheetHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <WorkflowNavigationResetProvider nodeId={sheetNode.id}>
+          <WorkflowOutputStackProvider value={workflowOutputStackCtxValue}>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             {useTabStrip ? (
               <Tabs
-                value={activeSheetTab}
+                value={sheetTabsControlledValue}
                 onValueChange={handleSheetTabChange}
                 className="w-full gap-0"
               >
                 {/* Primary tabs — Run appears only when this step has execution data */}
-                <TabsList
-                  className={cn(
-                    "grid h-auto min-h-9 w-full shrink-0 gap-1",
-                    tabCount === 1 && "grid-cols-1",
-                    tabCount === 2 && "grid-cols-2",
-                    tabCount === 3 && "grid-cols-3",
-                    tabCount === 4 && "grid-cols-4",
-                    tabCount === 5 && "grid-cols-5",
-                    tabCount === 6 && "grid-cols-6",
-                    tabCount >= 7 && "grid-cols-7",
-                  )}
-                >
-                  <TabsTrigger value="general" className="w-full min-h-8 shrink-0">
-                    General
-                  </TabsTrigger>
-                  {showInput ? (
-                    <TabsTrigger value="input" className="w-full min-h-8 shrink-0">
-                      Input
+                {isSwitchCaseDetailNav ? (
+                  /* Conditions drill-down — aligned with Output/globals sub-header chrome */
+                  <div className="mb-1 flex min-h-9 w-full shrink-0 flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/25 px-2 py-2">
+                    {/* Back to case list */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 shrink-0 gap-1.5 font-normal"
+                      onClick={() => setSwitchConditionsPanel({ view: "list" })}
+                    >
+                      <ArrowLeft className="size-4 shrink-0" aria-hidden />
+                      All cases
+                    </Button>
+                    {/* Section / case titles */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Conditions
+                      </span>
+                      <span className="truncate text-sm font-medium leading-tight text-foreground">
+                        Case {switchCaseDetailBranchMeta?.caseOrdinal ?? "—"}
+                        {switchCaseDetailBranchMeta
+                          ? ` · ${switchCaseDetailBranchMeta.displayName}`
+                          : ""}
+                      </span>
+                    </div>
+                    {/* Leave detail — same navigation as primary (no separate draft layer on Switch) */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 shrink-0 font-normal"
+                      onClick={() => setSwitchConditionsPanel({ view: "list" })}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : isOutputGlobalsSheetDetailNav && outputGlobalsTabBarMeta ? (
+                  /* Output schema / globals drill-down — titles centred; Save / Add primary left; Cancel right */
+                  <div className="mb-1 flex min-h-9 w-full shrink-0 flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/25 px-2 py-2">
+                    {/* Primary commit */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 shrink-0 gap-1.5 font-normal"
+                      disabled={
+                        resolvedOutputStackSubHeaderActions == null ||
+                        resolvedOutputStackSubHeaderActions.primaryDisabled === true
+                      }
+                      onClick={() => resolvedOutputStackSubHeaderActions?.onPrimary()}
+                    >
+                      <ArrowLeft className="size-4 shrink-0" aria-hidden />
+                      {resolvedOutputStackSubHeaderActions?.primaryLabel ?? "Save field"}
+                    </Button>
+                    {/* Section / kind titles */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {outputGlobalsTabBarMeta.sectionTitle}
+                      </span>
+                      <span className="truncate text-sm font-medium leading-tight text-foreground">
+                        {outputGlobalsTabBarMeta.kindTitle}
+                      </span>
+                    </div>
+                    {/* Discard */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 shrink-0 font-normal"
+                      disabled={
+                        resolvedOutputStackSubHeaderActions == null ||
+                        resolvedOutputStackSubHeaderActions.cancelDisabled === true
+                      }
+                      onClick={() => resolvedOutputStackSubHeaderActions?.onCancel()}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <TabsList
+                    className={cn(
+                      "grid h-auto min-h-9 w-full shrink-0 gap-1",
+                      tabCount === 1 && "grid-cols-1",
+                      tabCount === 2 && "grid-cols-2",
+                      tabCount === 3 && "grid-cols-3",
+                      tabCount === 4 && "grid-cols-4",
+                      tabCount === 5 && "grid-cols-5",
+                      tabCount === 6 && "grid-cols-6",
+                      tabCount === 7 && "grid-cols-7",
+                      tabCount === 8 && "grid-cols-8",
+                      tabCount >= 9 && "grid-cols-9",
+                    )}
+                  >
+                    <TabsTrigger value="general" className="w-full min-h-8 shrink-0">
+                      General
                     </TabsTrigger>
-                  ) : null}
-                  {showBranchTab ? (
-                    <TabsTrigger value="branch" className="w-full min-h-8 shrink-0">
-                      Branch
-                    </TabsTrigger>
-                  ) : null}
-                  {showGate ? (
-                    <TabsTrigger value="gate" className="w-full min-h-8 shrink-0">
-                      Conditions
-                    </TabsTrigger>
-                  ) : null}
-                  {showExecution ? (
-                    <TabsTrigger value="execution" className="w-full min-h-8 shrink-0">
-                      Execution
-                    </TabsTrigger>
-                  ) : null}
-                  {showOutput ? (
-                    <TabsTrigger value="output" className="w-full min-h-8 shrink-0">
-                      Output
-                    </TabsTrigger>
-                  ) : null}
-                  {showRunTab ? (
-                    <TabsTrigger value="run" className="w-full min-h-8 shrink-0">
-                      Run
-                    </TabsTrigger>
-                  ) : null}
-                </TabsList>
+                    {showInput ? (
+                      <TabsTrigger value="input" className="w-full min-h-8 shrink-0">
+                        Input
+                      </TabsTrigger>
+                    ) : null}
+                    {showScheduleTab ? (
+                      <TabsTrigger value="schedule" className="w-full min-h-8 shrink-0">
+                        Schedule
+                      </TabsTrigger>
+                    ) : null}
+                    {showBranchTab ? (
+                      <TabsTrigger value="branch" className="w-full min-h-8 shrink-0">
+                        Branch
+                      </TabsTrigger>
+                    ) : null}
+                    {showGate ? (
+                      <TabsTrigger value="gate" className="w-full min-h-8 shrink-0">
+                        Conditions
+                      </TabsTrigger>
+                    ) : null}
+                    {showExecution ? (
+                      <TabsTrigger value="execution" className="w-full min-h-8 shrink-0">
+                        Execution
+                      </TabsTrigger>
+                    ) : null}
+                    {showOutput ? (
+                      <TabsTrigger value="output" className="w-full min-h-8 shrink-0">
+                        Output
+                      </TabsTrigger>
+                    ) : null}
+                    {showRunTab ? (
+                      <TabsTrigger value="run" className="w-full min-h-8 shrink-0">
+                        Run
+                      </TabsTrigger>
+                    ) : null}
+                  </TabsList>
+                )}
 
                 {/* General: label & description */}
                 <TabsContent value="general" className="mt-4 space-y-3 outline-none">
@@ -648,14 +945,15 @@ export function NodeSheet({
                         expressionDialogTitle="Approval message"
                         expressionDialogDescription={
                           <>
-                            Mix copy with workflow tags — for example {"{{prev.*}}"} from the inbound step and fields from
-                            the <span className="font-medium text-foreground">Input</span> tab as{" "}
-                            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>
-                            {" "}(merged on top of trigger payload), plus {"{{global.*}}"} and {"{{now.*}}"}. Reviewers see
-                            the resolved text when the run pauses.
+                            Mix copy with workflow tags — for example{" "}
+                            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>{" "}
+                            from the previous step,{" "}
+                            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{trigger_inputs.*}}"}</code>{" "}
+                            for the original workflow invoke payload, plus {"{{global.*}}"} and {"{{now.*}}"}. Reviewers
+                            see the resolved text when the run pauses.
                           </>
                         }
-                        placeholder="Explain what reviewers should check. Insert tags from the picker — e.g. {{prev.summary}}."
+                        placeholder="Explain what reviewers should check. Insert tags from the picker — e.g. {{input.summary}}."
                         className="bg-background"
                       />
                       <p className="text-[11px] text-muted-foreground leading-snug">
@@ -675,74 +973,25 @@ export function NodeSheet({
                   ) : null}
                 </TabsContent>
 
-                {/* Input: upstream / payload shaping */}
-                {showInput ? (
-                  <TabsContent value="input" className="mt-4 space-y-4 outline-none">
-                    {sheetNode.type === "entry" ? <EntryInputConfig data={localData} set={set} /> : null}
-                    {sheetNode.type === "ai" ? (
-                      <AiInputConfig
-                        data={localData}
-                        set={set}
-                        inboundPick={inboundPick}
-                        upstreamPromptTags={upstreamPromptTags}
-                        workflowGlobalPromptTags={workflowGlobalPromptTags}
-                      />
-                    ) : null}
-                    {sheetNode.type === "code" ||
-                    sheetNode.type === "random" ||
-                    sheetNode.type === "iteration" ||
-                    sheetNode.type === "document" ? (
-                      <CodeInputConfig
-                        data={localData}
-                        set={set}
-                        upstreamPromptTags={upstreamPromptTags}
-                        workflowGlobalPromptTags={workflowGlobalPromptTags}
-                        inboundPick={inboundPick}
-                      />
-                    ) : null}
-                    {sheetNode.type === "decision" ? (
-                      <DecisionInputConfig
-                        data={localData}
-                        set={set}
-                        upstreamPromptTags={upstreamPromptTags}
-                        inboundPick={inboundPick}
-                      />
-                    ) : null}
-                    {sheetNode.type === "switch" ? (
-                      <SwitchInputConfig
-                        data={localData}
-                        set={set}
-                        upstreamPromptTags={upstreamPromptTags}
-                        inboundPick={inboundPick}
-                      />
-                    ) : null}
-                    {sheetNode.type === "split" ? (
-                      <SplitInputConfig
-                        data={localData}
-                        set={set}
-                        upstreamPromptTags={upstreamPromptTags}
-                        inboundPick={inboundPick}
-                      />
-                    ) : null}
-                    {sheetNode.type === "webhookCall" ? (
-                      <WebhookCallInputConfig
-                        data={localData}
-                        set={set}
-                        nodeId={sheetNode.id}
-                        upstreamPromptTags={upstreamPromptTags}
-                        workflowGlobalPromptTags={workflowGlobalPromptTags}
-                        inboundPick={inboundPick}
-                      />
-                    ) : null}
-                    {sheetNode.type === "approval" ? (
-                      <CodeInputConfig
-                        data={localData}
-                        set={set}
-                        upstreamPromptTags={upstreamPromptTags}
-                        workflowGlobalPromptTags={workflowGlobalPromptTags}
-                        inboundPick={inboundPick}
-                      />
-                    ) : null}
+                {/* Input: trigger-only — declare the workflow invoke payload and shape what the next step receives */}
+                {showInput && sheetNode.type === "entry" ? (
+                  <TabsContent value="input" className="mt-4 space-y-6 outline-none">
+                    {/* Invoke fields define the initial values supplied when the workflow runs */}
+                    <EntryInputConfig data={localData} set={set} />
+
+                    {/* Optional workflow globals — payload keys come from the Input tab (`inputSchema`); executor mirrors those rows as outbound output */}
+                    <EntryTriggerGlobalsConfig
+                      data={localData}
+                      set={set}
+                      workflowGlobalPromptTags={workflowGlobalPromptTags}
+                    />
+                  </TabsContent>
+                ) : null}
+
+                {showScheduleTab ? (
+                  <TabsContent value="schedule" className="mt-4 space-y-4 outline-none">
+                    {/* Schedule trigger — Cron builder sits after payload declaration on Input */}
+                    <EntryScheduleConfig data={localData} set={set} />
                   </TabsContent>
                 ) : null}
 
@@ -771,6 +1020,8 @@ export function NodeSheet({
                         nodeId={sheetNode.id}
                         upstreamPromptTags={upstreamPromptTags}
                         workflowGlobalPromptTags={workflowGlobalPromptTags}
+                        conditionsPanel={switchConditionsPanel}
+                        onConditionsPanelChange={setSwitchConditionsPanel}
                       />
                     ) : null}
                   </TabsContent>
@@ -817,19 +1068,21 @@ export function NodeSheet({
                         nodeId={sheetNode.id}
                       />
                     ) : null}
+                    {sheetNode.type === "webhookCall" ? (
+                      <WebhookCallExecutionConfig
+                        data={localData}
+                        set={set}
+                        nodeId={sheetNode.id}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
                   </TabsContent>
                 ) : null}
 
                 {/* Output: branching */}
                 {showOutput ? (
                   <TabsContent value="output" className="mt-4 space-y-4 outline-none">
-                    {sheetNode.type === "entry" ? (
-                      <EntryTriggerOutputConfig
-                        data={localData}
-                        set={set}
-                        workflowGlobalPromptTags={workflowGlobalPromptTags}
-                      />
-                    ) : null}
                     {sheetNode.type === "ai" &&
                     (normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "generate" ||
                       normaliseAiSubtype({ value: localData.subtype as string | undefined }) === "transform" ||
@@ -968,7 +1221,7 @@ export function NodeSheet({
             )}
           </div>
 
-          {/* Footer */}
+          {hideSheetPersistFooter ? null : (
           <div className="flex shrink-0 items-center gap-2 border-t px-5 py-4">
             <Button
               variant="ghost"
@@ -987,7 +1240,10 @@ export function NodeSheet({
             </Button>
             <Button onClick={handleSave}>Save</Button>
           </div>
-        </div>
+          )}
+          </div>
+          </WorkflowOutputStackProvider>
+        </WorkflowNavigationResetProvider>
       </SheetContent>
     </Sheet>
   )
@@ -1401,7 +1657,7 @@ function EndOutputConfig({
       {/* How this node relates to assistant tools and filtered payloads */}
       <p className="text-xs text-muted-foreground leading-relaxed">
         Each row becomes a key on the published result object. Use{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{prev.*}}"}</code>,{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>,{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>, and{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{global.*}}"}</code>{" "}
         references to include only the fields downstream callers should see. The{" "}
@@ -1409,7 +1665,7 @@ function EndOutputConfig({
         always set when this End step runs — you do not need a row for it.
       </p>
 
-      {/* Upstream shape → output rows with {{prev.*}} placeholders */}
+      {/* Upstream shape → output rows with {{input.*}} placeholders */}
       {hasUpstream ? (
         <div className="space-y-3">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upstream mapping</p>
@@ -1464,7 +1720,7 @@ function EndOutputConfig({
                   disabled: !canImport,
                   alertTitle: "Import output fields from the upstream step?",
                   alertDescription:
-                    "New rows and matching keys get {{prev.*}} placeholders from the selected predecessor's published output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
+                    "New rows and matching keys get {{input.*}} placeholders from the selected predecessor's published output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
                   confirmLabel: "Import fields",
                   offerApplyModeChoice: true,
                   onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => applyPreviousOutputImport(params),
@@ -1578,7 +1834,7 @@ function NumericComputationOutputConfig({
 
   return (
     <div className="space-y-6">
-      {/* Step outputs keyed for {{prev.*}} on downstream inbound mapping */}
+      {/* Step outputs keyed for {{input.*}} on downstream inbound mapping */}
       <InputSchemaBuilder
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}
@@ -1608,52 +1864,33 @@ const WEBHOOK_BODY_METHODS = new Set(["POST", "PUT", "PATCH"])
 const WEBHOOK_HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const
 
 /**
- * Input configuration for a Webhook step — method selector, URL function input, and optional body template.
+ * Execution configuration for a Webhook step — method selector, URL function input, and
+ * optional JSON body template. The previous step's output is automatically available as
+ * `{{input.*}}` inside the URL and body, so no separate input mapping rows are required.
  */
-function WebhookCallInputConfig({
+function WebhookCallExecutionConfig({
   data,
   set,
   nodeId,
   upstreamPromptTags,
   workflowGlobalPromptTags,
-  inboundPick,
 }: {
   data: Record<string, unknown>
   set: (k: string, v: unknown) => void
   nodeId: string
   upstreamPromptTags: PromptTagDefinition[]
   workflowGlobalPromptTags: PromptTagDefinition[]
-  inboundPick: ReturnType<typeof useInboundPredecessorSelection>
 }) {
-  const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
   const method = typeof data.method === "string" ? data.method.toUpperCase() : "POST"
   const showBody = WEBHOOK_BODY_METHODS.has(method)
 
-  const { predecessorNodes, setPickedSourceId, selectedPredecessor } = inboundPick
-  const hasUpstream = predecessorNodes.length > 0
-  const canImport = hasUpstream && selectedPredecessor != null
-
-  function applyPreviousStepMappings(params?: { applyMode: WorkflowSchemaImportApplyMode }) {
-    if (!selectedPredecessor) return
-    const inferred = inferPreviousStepOutputFields({ previousNode: selectedPredecessor })
-    const existing = readInputSchemaFromNodeData({ value: data.inputSchema })
-    const next =
-      params?.applyMode === "replace"
-        ? replaceInputSchemaWithPreviousStepImport({ inferred })
-        : mergeInputSchemaWithPreviousStepImport({ existingFields: existing, inferred })
-    set("inputSchema", next)
-  }
-
+  // Request line tags: previous step output (`{{input.*}}`), workflow globals, and built-ins
   const promptTags = React.useMemo(
     () =>
       mergePromptTagDefinitions({
-        contextual: [
-          ...workflowGlobalPromptTags,
-          ...upstreamPromptTags,
-          ...nodeInputFieldsToPromptTags({ fields: inputSchemaFields }),
-        ],
+        contextual: [...workflowGlobalPromptTags, ...upstreamPromptTags],
       }),
-    [workflowGlobalPromptTags, upstreamPromptTags, inputSchemaFields],
+    [workflowGlobalPromptTags, upstreamPromptTags],
   )
 
   return (
@@ -1692,9 +1929,12 @@ function WebhookCallInputConfig({
             expressionDialogDescription={
               <>
                 The destination URL for this request. Use{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{`{{prev.*}}`}</code>,{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{`{{input.*}}`}</code>, and other
-                tags to build the URL dynamically.
+                <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code> for
+                values from the previous step,{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{trigger_inputs.*}}"}</code>{" "}
+                for the original workflow invoke payload, and{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{global.*}}"}</code> for
+                workflow globals.
               </>
             }
           />
@@ -1713,11 +1953,12 @@ function WebhookCallInputConfig({
               expressionDialogTitle="Request body"
               expressionDialogDescription={
                 <>
-                  JSON body sent with the request. Use tag variables such as{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{`{{prev.*}}`}</code> to
-                  inject dynamic values. The body is sent with{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">Content-Type: application/json</code>
-                  .
+                  JSON body sent with the request. Use{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code> to
+                  pull fields from the previous step, alongside{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{trigger_inputs.*}}"}</code>,{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{global.*}}"}</code>, and{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{now.*}}"}</code>.
                 </>
               }
             />
@@ -1728,61 +1969,6 @@ function WebhookCallInputConfig({
           </div>
         ) : null}
       </div>
-
-      {hasUpstream ? (
-        <div className="space-y-3">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upstream mapping</p>
-          {predecessorNodes.length > 1 ? (
-            <div className="space-y-1.5">
-              <Label>Use output from</Label>
-              <Select value={inboundPick.resolvedSourceId ?? ""} onValueChange={(v) => setPickedSourceId(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select upstream step" />
-                </SelectTrigger>
-                <SelectContent>
-                  {predecessorNodes.map((n) => {
-                    const label = String((n.data as Record<string, unknown>)?.label ?? n.id)
-                    return (
-                      <SelectItem key={n.id} value={n.id}>
-                        {label}
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <Separator />
-
-      {/* Standard input field mapping */}
-      <InputSchemaBuilder
-        fields={inputSchemaFields}
-        onChange={({ fields }) => set("inputSchema", fields)}
-        usageContext="code"
-        upstreamPromptTags={upstreamPromptTags}
-        confirmableImports={
-          hasUpstream
-            ? [
-                {
-                  id: "previous_step",
-                  label: "Import from previous step",
-                  TriggerIcon: ArrowDownToLine,
-                  disabled: !canImport,
-                  alertTitle: "Import mappings from the upstream step?",
-                  alertDescription:
-                    "New rows and matching keys get {{prev.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
-                  confirmLabel: "Import mappings",
-                  offerApplyModeChoice: true,
-                  onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => applyPreviousStepMappings(params),
-                },
-              ]
-            : undefined
-        }
-        promptImport={hasUpstream ? WORKFLOW_STEP_INPUT_PROMPT_IMPORT : null}
-      />
     </div>
   )
 }
@@ -1891,7 +2077,7 @@ function WebhookCallOutputConfig({
         </p>
       </div>
 
-      {/* Step outputs keyed for {{prev.*}} on downstream inbound mapping */}
+      {/* Step outputs keyed for {{input.*}} on downstream inbound mapping */}
       <InputSchemaBuilder
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}
@@ -2014,7 +2200,7 @@ function ApprovalOutputConfig({
         <span className="font-medium text-foreground">{"{{input.*}}"}</span> for fields from the Input tab,
         {" "}
         <span className="font-medium text-foreground">{"{{exe.*}}"}</span> for reviewer timestamps and decision strings,
-        and the usual {"{{prev.*}}"} / {"{{global.*}}"} references.
+        and the usual {"{{input.*}}"} / {"{{global.*}}"} references.
       </p>
 
       <InputSchemaBuilder
@@ -2041,7 +2227,9 @@ function ApprovalOutputConfig({
 }
 
 /**
- * Execution controls for an Iteration step — the increment resolves after `input.*` and other envelope tags.
+ * Execution controls for an Iteration step — both the starting number and the increment are
+ * tag-aware expressions evaluated against the upstream payload (`{{input.*}}`), workflow
+ * globals (`{{global.*}}`), the original invoke payload (`{{trigger_inputs.*}}`), and `{{now.*}}`.
  */
 function IterationIncrementExecutionConfig({
   data,
@@ -2056,40 +2244,58 @@ function IterationIncrementExecutionConfig({
   upstreamPromptTags: PromptTagDefinition[]
   workflowGlobalPromptTags: PromptTagDefinition[]
 }) {
-  const promptTags = React.useMemo(() => {
-    const fields = readInputSchemaFromNodeData({ value: data.inputSchema })
-    return mergePromptTagDefinitions({
-      contextual: [
-        ...workflowGlobalPromptTags,
-        ...upstreamPromptTags,
-        ...nodeInputFieldsToPromptTags({ fields }),
-      ],
-    })
-  }, [data.inputSchema, upstreamPromptTags, workflowGlobalPromptTags])
+  const promptTags = React.useMemo(
+    () =>
+      mergePromptTagDefinitions({
+        contextual: [...workflowGlobalPromptTags, ...upstreamPromptTags],
+      }),
+    [upstreamPromptTags, workflowGlobalPromptTags],
+  )
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Increment</p>
-      {/* Expression added to Starting number after tags resolve */}
-      <FunctionInput
-        tags={promptTags}
-        value={String(data.iterationIncrement ?? "1")}
-        onChange={({ value }) => set("iterationIncrement", value)}
-        fieldInstanceId={`${nodeId}-iteration-increment`}
-        rows={5}
-        expressionDialogTitle="Increment expression"
-        expressionDialogDescription={
-          <>
-            Resolve this to a number added to{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">starting_number</code> after the
-            Input tab resolves — use literals, {"{{prev.*}}"}, {"{{input.*}}"}, workflow {"{{global.*}}"}, and{" "}
-            {"{{now.*}}"}.
-          </>
-        }
-      />
-      <p className="text-xs text-muted-foreground leading-relaxed">
-        Blank drafts save as-is; omitted or non‑numeric resolves fall back to 1 at runtime.
-      </p>
+    <div className="space-y-5">
+      {/* Starting number — defaults to {{input.starting_number}} so the previous step feeds it directly */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Starting number</p>
+        <FunctionInput
+          tags={promptTags}
+          value={String(data.iterationStartingNumberExpression ?? "{{input.starting_number}}")}
+          onChange={({ value }) => set("iterationStartingNumberExpression", value)}
+          fieldInstanceId={`${nodeId}-iteration-start`}
+          rows={3}
+          expressionDialogTitle="Starting number expression"
+          expressionDialogDescription={
+            <>
+              Resolve this to a finite number used as the base value before adding the increment. Defaults to{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.starting_number}}"}</code>{" "}
+              so the previous step&apos;s output flows in automatically; replace with any literal or tag expression.
+            </>
+          }
+        />
+      </div>
+
+      {/* Increment — added to Starting number after tags resolve */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Increment</p>
+        <FunctionInput
+          tags={promptTags}
+          value={String(data.iterationIncrement ?? "1")}
+          onChange={({ value }) => set("iterationIncrement", value)}
+          fieldInstanceId={`${nodeId}-iteration-increment`}
+          rows={5}
+          expressionDialogTitle="Increment expression"
+          expressionDialogDescription={
+            <>
+              Resolve this to a number added to the starting number — use literals,{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code> for upstream
+              fields, workflow {"{{global.*}}"}, original {"{{trigger_inputs.*}}"}, and {"{{now.*}}"}.
+            </>
+          }
+        />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Blank drafts save as-is; omitted or non‑numeric resolves fall back to 1 at runtime.
+        </p>
+      </div>
     </div>
   )
 }
@@ -2152,7 +2358,7 @@ function RandomNumberBoundsExecutionConfig({
             </div>
           ) : null}
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Use <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{prev.*}}"}</code> tags for
+            Use <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code> tags for
             this selected predecessor when composing min/max expressions.
           </p>
         </div>
@@ -2170,8 +2376,9 @@ function RandomNumberBoundsExecutionConfig({
           expressionDialogTitle="Minimum bound expression"
           expressionDialogDescription={
             <>
-              Resolve this to a finite number for the inclusive lower bound. Use literals, {"{{prev.*}}"}, {"{{input.*}}"},
-              workflow {"{{global.*}}"}, and {"{{now.*}}"} tags as needed.
+              Resolve this to a finite number for the inclusive lower bound. Use literals, {"{{input.*}}"} from the
+              previous step, {"{{trigger_inputs.*}}"} for the original invoke payload, workflow {"{{global.*}}"}, and{" "}
+              {"{{now.*}}"} tags as needed.
             </>
           }
         />
@@ -2189,8 +2396,9 @@ function RandomNumberBoundsExecutionConfig({
           expressionDialogTitle="Maximum bound expression"
           expressionDialogDescription={
             <>
-              Resolve this to a finite number for the inclusive upper bound. Use literals, {"{{prev.*}}"}, {"{{input.*}}"},
-              workflow {"{{global.*}}"}, and {"{{now.*}}"} tags as needed.
+              Resolve this to a finite number for the inclusive upper bound. Use literals, {"{{input.*}}"} from the
+              previous step, {"{{trigger_inputs.*}}"} for the original invoke payload, workflow {"{{global.*}}"}, and{" "}
+              {"{{now.*}}"} tags as needed.
             </>
           }
         />
@@ -2205,9 +2413,36 @@ function RandomNumberBoundsExecutionConfig({
 }
 
 /**
- * Entry triggers (invoke, webhook, schedule): maps the trigger envelope into named outputs and optional workflow globals.
+ * Schedule-trigger cadence wiring (Cron presets + timezone) — split from payload declaration {@link EntryInputConfig}
+ * onto its own Schedule tab for clarity.
+ *
+ * Persisted schedules live on the **`workflows`** row (`trigger_config`). Server-side **`syncDailifyPgCronJobForWorkflowRow`**
+ * mirrors **active** schedule workflows onto **`cron.job`** (RPC `dailify_add_or_replace_cron_job`) and removes stale jobs via
+ **`dailify_remove_cron_job`.**
  */
-function EntryTriggerOutputConfig({
+function EntryScheduleConfig({ data, set }: { data: Record<string, unknown>; set: (k: string, v: unknown) => void }) {
+  const cron = String(data.schedule ?? "0 9 * * *")
+  const tz = String(data.timezone ?? "UTC")
+
+  return (
+    <div className="space-y-5">
+      {/* Schedule + timeline panels carry their own headers (workflow schema motif). */}
+      <CronExpressionBuilder
+        cronExpression={cron}
+        timezone={tz}
+        onCronExpressionChange={({ expression }) => set("schedule", expression)}
+      />
+
+      <CronTimezoneField timezone={tz} onTimezoneChange={({ timezone: nextTz }) => set("timezone", nextTz)} />
+    </div>
+  )
+}
+
+/**
+ * Optional workflow globals for entry triggers. Payload / outbound field rows are edited only on the
+ * **Input** tab (`inputSchema`); this section is `globalsSchema` only.
+ */
+function EntryTriggerGlobalsConfig({
   data,
   set,
   workflowGlobalPromptTags,
@@ -2216,74 +2451,21 @@ function EntryTriggerOutputConfig({
   set: (k: string, v: unknown) => void
   workflowGlobalPromptTags: PromptTagDefinition[]
 }) {
-  const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
   const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
   const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
 
-  /** Match the entry output row tag palette: Input tab, output keys, declared `global.*`, and `now.*` (via merge inside the editor). */
+  /** Globals row templates need trigger field tags as `{{input.*}}` for the entry step. */
   const globalsContextualTags = React.useMemo(
     () => [
       ...workflowGlobalPromptTags,
       ...nodeInputFieldsToPromptTags({ fields: inputSchemaFields }),
-      ...nodeInputFieldsToPromptTags({ fields: outputSchemaFields }),
     ],
-    [workflowGlobalPromptTags, inputSchemaFields, outputSchemaFields],
+    [workflowGlobalPromptTags, inputSchemaFields],
   )
-
-  const canSyncFromPayload = inputSchemaFields.length > 0
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Payload parity</p>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Keep outbound keys aligned with what you collect on the Input tab so later steps consume the same names.
-          Use <span className="font-medium text-foreground">Import from input schema</span> on the Output schema header
-          when you want to merge declaration rows. Clearing a mapped value beforehand lets another import hydrate it
-          again.
-        </p>
-        {!canSyncFromPayload ? (
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Add at least one field on the Input tab before importing from the Output schema header.
-          </p>
-        ) : null}
-      </div>
-
-      <InputSchemaBuilder
-        fields={outputSchemaFields}
-        onChange={({ fields }) => set("outputSchema", fields)}
-        usageContext="output"
-        confirmableImports={[
-          {
-            id: "sync_input",
-            label: "Import from input schema",
-            TriggerIcon: ArrowDownFromLine,
-            disabled: !canSyncFromPayload,
-            alertTitle: "Import output from input schema?",
-            alertDescription: (
-              <span className="text-pretty leading-relaxed">
-                This merges input rows into output: labels, types, and required flags follow your payload declaration.
-                Blank mapping values become{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>{" "}
-                placeholders. Rows that already have mapping or default text keep their contents when using append; extra
-                output-only rows stay at the end.
-              </span>
-            ),
-            confirmLabel: "Import fields",
-            offerApplyModeChoice: true,
-            onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => {
-              const base = params?.applyMode === "replace" ? [] : outputSchemaFields
-              const next = mergeEntryOutputSchemaFromInputFields({
-                existingOutputFields: base,
-                inputFields: inputSchemaFields,
-              })
-              set("outputSchema", next)
-            },
-          },
-        ]}
-        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
-      />
-      {/* Optional workflow globals — merged on the runner envelope for downstream {{global.*}} */}
+      {/* Workflow globals — merged on the runner envelope for downstream {{global.*}} */}
       <InputSchemaBuilder
         fields={globalsSchemaFields}
         onChange={({ fields }) => set("globalsSchema", fields)}
@@ -2299,46 +2481,36 @@ function EntryTriggerOutputConfig({
 function EntryInputConfig({ data, set }: { data: Record<string, unknown>; set: (k: string, v: unknown) => void }) {
   const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
 
-  const showRoutingFields =
-    data.entryType === "webhook" || data.entryType === "schedule"
+  const showWebhookRouting = data.entryType === "webhook"
 
   return (
     <div className="space-y-6">
-      {/* Routing — webhook URL fragment or cron */}
-      {showRoutingFields ? (
+      {/* Routing — webhook URL fragment */}
+      {showWebhookRouting ? (
         <div className="space-y-3">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Trigger routing</p>
-          {data.entryType === "webhook" ? (
-            <div className="space-y-1.5">
-              <Label>Webhook path</Label>
-              <Input
-                value={String(data.webhookPath ?? "")}
-                onChange={(e) => set("webhookPath", e.target.value)}
-                placeholder="/webhooks/my-trigger"
-                className="font-mono text-sm"
-              />
-            </div>
-          ) : null}
-          {data.entryType === "schedule" ? (
-            <div className="space-y-1.5">
-              <Label>Cron expression</Label>
-              <Input
-                value={String(data.schedule ?? "")}
-                onChange={(e) => set("schedule", e.target.value)}
-                placeholder="0 9 * * *"
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                For example{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">0 9 * * *</code> runs every
-                day at 9am.
-              </p>
-            </div>
-          ) : null}
+          {/* Webhook inbound path */}
+          <div className="space-y-1.5">
+            <Label>Webhook path</Label>
+            <Input
+              value={String(data.webhookPath ?? "")}
+              onChange={(e) => set("webhookPath", e.target.value)}
+              placeholder="/webhooks/my-trigger"
+              className="font-mono text-sm"
+            />
+          </div>
         </div>
       ) : null}
 
-      {showRoutingFields ? <Separator /> : null}
+      {showWebhookRouting ? <Separator /> : null}
+
+      {/* Schedule triggers move cadence tuning to {@link EntryScheduleConfig} */}
+      {data.entryType === "schedule" ? (
+        <div className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground leading-relaxed">
+          Cron timing and timezone now live on the <span className="font-medium text-foreground">Schedule</span> tab so
+          this tab stays focused on trigger payload declarations.
+        </div>
+      ) : null}
 
       {/* Payload schema — invoke runs, webhooks, and schedules (no inbound step — import toolbar hidden) */}
       <InputSchemaBuilder
@@ -2436,7 +2608,7 @@ function AiInputConfig({
                   disabled: !canImport,
                   alertTitle: "Import mappings from the upstream step?",
                   alertDescription:
-                    "New rows and matching keys get {{prev.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
+                    "New rows and matching keys get {{input.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
                   confirmLabel: "Import mappings",
                   offerApplyModeChoice: true,
                   onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => applyPreviousStepMappings(params),
@@ -2452,7 +2624,7 @@ function AiInputConfig({
 
 /**
  * Model and prompt / instruction body for an AI step.
- * Tag autocomplete lists `{{global.*}}` from any node globals schema, inbound `{{prev.*}}`, and `{{input.*}}`.
+ * Tag autocomplete lists `{{global.*}}` from any node globals schema, inbound `{{input.*}}`, and `{{input.*}}`.
  */
 function AiExecutionConfig({
   data,
@@ -2547,8 +2719,8 @@ function AiExecutionConfig({
           }
           helperText={
             subtype === "classify" || subtype === "extract" || subtype === "summarize"
-              ? "Optional. Type {{ to insert {{prev.*}} , {{input.*}} , {{global.*}} , and {{now.*}} ."
-              : "Type {{ to pick inbound {{prev.*}} from the wired predecessor, {{input.*}} from the Input tab, workflow {{global.*}} keys declared on any step, and {{now.*}}."
+              ? "Optional. Type {{ to insert {{input.*}} , {{trigger_inputs.*}} , {{global.*}} , and {{now.*}} ."
+              : "Type {{ to pick inbound {{input.*}} from the previous step, the original {{trigger_inputs.*}} payload, workflow {{global.*}} keys declared on any step, and {{now.*}}."
           }
           expressionDialogTitle={
             subtype === "classify" || subtype === "extract" || subtype === "summarize"
@@ -2562,7 +2734,7 @@ function AiExecutionConfig({
                 ? "Supplementary notes for the extractor. The runner supplies the primary task, field list, and output discipline in the system prompt."
                 : subtype === "summarize"
                   ? "Optional format, length, or focus hints. The runner supplies the primary summarisation task and output discipline in the system prompt."
-                  : "Insert {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} from Workflow globals on any step, and built-in {{now.*}} timestamps."
+                  : "Insert {{input.*}} from the previous step, {{trigger_inputs.*}} for the original workflow invoke payload, {{global.*}} from workflow globals declared on any step, and built-in {{now.*}} timestamps."
           }
         />
       </div>
@@ -2574,8 +2746,8 @@ function AiExecutionConfig({
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content to classify</p>
             <p className="text-xs text-muted-foreground leading-relaxed">
               When this field is non-empty, the resolved value is what the model categorises (valid JSON is
-              pretty-printed; otherwise it is sent as plain text). Leave blank to use the mapped object from the Input
-              tab as JSON.
+              pretty-printed; otherwise it is sent as plain text). Leave blank to send the previous step&apos;s
+              output as JSON.
             </p>
             <FunctionInput
               tags={promptTags}
@@ -2583,10 +2755,10 @@ function AiExecutionConfig({
               onChange={({ value }) => set("classifyContentExpression", value)}
               fieldInstanceId={`${nodeId}-classify-content`}
               rows={6}
-              placeholder="{{prev.text}} or literals — combine with {{input.*}} as needed"
+              placeholder="{{input.text}} or literals — combine with {{input.*}} as needed"
               expressionDialogTitle="Content to classify"
               expressionDialogDescription={
-                "Becomes the classifier user payload when the template is non-empty after tag resolution. Use {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} , and {{now.*}} . Leave blank to use the Input tab JSON object only."
+                "Becomes the classifier user payload when the template is non-empty after tag resolution. Use {{input.*}} from the previous step, {{trigger_inputs.*}} for the original invoke payload, {{global.*}} , and {{now.*}} . Leave blank to send the entire previous-step output as JSON."
               }
             />
           </div>
@@ -2602,8 +2774,8 @@ function AiExecutionConfig({
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content to extract from</p>
             <p className="text-xs text-muted-foreground leading-relaxed">
               When this field is non-empty, the resolved value is the text the model extracts from (valid JSON is
-              pretty-printed; otherwise it is sent as plain text). Leave blank to use the mapped object from the Input
-              tab as JSON.
+              pretty-printed; otherwise it is sent as plain text). Leave blank to send the previous step&apos;s
+              output as JSON.
             </p>
             <FunctionInput
               tags={promptTags}
@@ -2611,10 +2783,10 @@ function AiExecutionConfig({
               onChange={({ value }) => set("extractContentExpression", value)}
               fieldInstanceId={`${nodeId}-extract-content`}
               rows={6}
-              placeholder="{{prev.text}} or literals — combine with {{input.*}} as needed"
+              placeholder="{{input.text}} or literals — combine with {{input.*}} as needed"
               expressionDialogTitle="Content to extract from"
               expressionDialogDescription={
-                "Becomes the extractor user payload when the template is non-empty after tag resolution. Use {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} , and {{now.*}} . Leave blank to use the Input tab JSON object only."
+                "Becomes the extractor user payload when the template is non-empty after tag resolution. Use {{input.*}} from the previous step, {{trigger_inputs.*}} for the original invoke payload, {{global.*}} , and {{now.*}} . Leave blank to send the entire previous-step output as JSON."
               }
             />
           </div>
@@ -2629,8 +2801,8 @@ function AiExecutionConfig({
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content to transform</p>
           <p className="text-xs text-muted-foreground leading-relaxed">
             When this field is non-empty, the resolved value is what the model transforms (valid JSON is
-            pretty-printed; otherwise it is sent as plain text). Leave blank to use the mapped object from the Input
-            tab as JSON.
+            pretty-printed; otherwise it is sent as plain text). Leave blank to send the previous step&apos;s
+            output as JSON.
           </p>
           <FunctionInput
             tags={promptTags}
@@ -2638,9 +2810,9 @@ function AiExecutionConfig({
             onChange={({ value }) => set("transformContentExpression", value)}
             fieldInstanceId={`${nodeId}-transform-content`}
             rows={6}
-            placeholder="{{prev.text}} or literals — combine with {{input.*}} as needed"
+            placeholder="{{input.text}} or literals — combine with {{input.*}} as needed"
             expressionDialogTitle="Content to transform"
-            expressionDialogDescription="Becomes the transformation source payload when the template is non-empty after tag resolution. Use {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} , and {{now.*}} . Leave blank to use the Input tab JSON object only."
+            expressionDialogDescription="Becomes the transformation source payload when the template is non-empty after tag resolution. Use {{input.*}} from the previous step, {{trigger_inputs.*}} for the original invoke payload, {{global.*}} , and {{now.*}} . Leave blank to send the entire previous-step output as JSON."
           />
         </div>
       ) : null}
@@ -2650,8 +2822,8 @@ function AiExecutionConfig({
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Content to summarise</p>
           <p className="text-xs text-muted-foreground leading-relaxed">
             When this field is non-empty, the resolved value is what the model summarises (valid JSON is
-            pretty-printed; otherwise it is sent as plain text). Leave blank to use the mapped object from the Input
-            tab as JSON.
+            pretty-printed; otherwise it is sent as plain text). Leave blank to send the previous step&apos;s
+            output as JSON.
           </p>
           <FunctionInput
             tags={promptTags}
@@ -2659,9 +2831,9 @@ function AiExecutionConfig({
             onChange={({ value }) => set("summarizeContentExpression", value)}
             fieldInstanceId={`${nodeId}-summarize-content`}
             rows={6}
-            placeholder="{{prev.text}} or literals — combine with {{input.*}} as needed"
+            placeholder="{{input.text}} or literals — combine with {{input.*}} as needed"
             expressionDialogTitle="Content to summarise"
-            expressionDialogDescription="Becomes the summarisation source payload when the template is non-empty after tag resolution. Use {{prev.*}} from the inbound step, {{input.*}} from the Input tab, {{global.*}} , and {{now.*}} . Leave blank to use the Input tab JSON object only."
+            expressionDialogDescription="Becomes the summarisation source payload when the template is non-empty after tag resolution. Use {{input.*}} from the previous step, {{trigger_inputs.*}} for the original invoke payload, {{global.*}} , and {{now.*}} . Leave blank to send the entire previous-step output as JSON."
           />
         </div>
       ) : null}
@@ -2744,7 +2916,7 @@ function CodeInputConfig({
                   disabled: !canImport,
                   alertTitle: "Import mappings from the upstream step?",
                   alertDescription:
-                    "New rows and matching keys get {{prev.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
+                    "New rows and matching keys get {{input.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
                   confirmLabel: "Import mappings",
                   offerApplyModeChoice: true,
                   onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => applyPreviousStepMappings(params),
@@ -2900,7 +3072,7 @@ function DocumentXmlExecutionConfig({
           onChange={({ value }) => set("prompt", value)}
           fieldInstanceId={`${nodeId}-document-xml-prompt`}
           rows={14}
-          helperText="Type {{ to insert {{prev.*}} , {{input.*}} , {{global.*}} , and {{now.*}} . Ask the model for structured XML the runner can translate."
+          helperText="Type {{ to insert {{input.*}} , {{trigger_inputs.*}} , {{global.*}} , and {{now.*}} . Ask the model for structured XML the runner can translate."
           expressionDialogTitle="Document XML instructions"
           expressionDialogDescription="Sent as the user message after workflow tags are resolved; a fixed system prompt defines the XML vocabulary at runtime."
         />
@@ -3042,7 +3214,7 @@ function DocumentExecutionConfig({
             <>
               Build the output filename with literals and tags — type {"{{"} to pick or use the list.{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>,{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{prev.*}}"}</code>, workflow{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code>, workflow{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{global.*}}"}</code>, and{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{now.*}}"}</code> resolve at
               runtime. When the result has no{" "}
@@ -3342,7 +3514,7 @@ function SwitchInputConfig({
                   disabled: !canImport,
                   alertTitle: "Import mappings from the upstream step?",
                   alertDescription:
-                    "New rows and matching keys get {{prev.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
+                    "New rows and matching keys get {{input.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
                   confirmLabel: "Import mappings",
                   offerApplyModeChoice: true,
                   onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => applyPreviousStepMappings(params),
@@ -3435,7 +3607,7 @@ function SplitInputConfig({
                   disabled: !canImport,
                   alertTitle: "Import mappings from the upstream step?",
                   alertDescription:
-                    "New rows and matching keys get {{prev.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
+                    "New rows and matching keys get {{input.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
                   confirmLabel: "Import mappings",
                   offerApplyModeChoice: true,
                   onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => applyPreviousStepMappings(params),
@@ -3539,7 +3711,7 @@ function SplitOutputConfig({
 
   return (
     <div className="space-y-6">
-      {/* Step output — keyed for {{prev.*}} on downstream inbound mapping */}
+      {/* Step output — keyed for {{input.*}} on downstream inbound mapping */}
       <InputSchemaBuilder
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}
@@ -3682,10 +3854,10 @@ function SwitchOutputConfig({
       <p className="text-xs text-muted-foreground leading-relaxed rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
         Name cases, add branches, route conditions, and the Else label live on the{" "}
         <span className="font-medium text-foreground">Conditions</span> tab. Here you shape what flows out to{" "}
-        <code className="text-[10px]">{"{{prev.*}}"}</code> and optional workflow globals.
+        <code className="text-[10px]">{"{{input.*}}"}</code> and optional workflow globals.
       </p>
 
-      {/* Step output — keyed for {{prev.*}} on downstream inbound mapping */}
+      {/* Step output — keyed for {{input.*}} on downstream inbound mapping */}
       <InputSchemaBuilder
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}
@@ -3780,7 +3952,7 @@ function DecisionInputConfig({
                   disabled: !canImport,
                   alertTitle: "Import mappings from the upstream step?",
                   alertDescription:
-                    "New rows and matching keys get {{prev.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
+                    "New rows and matching keys get {{input.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
                   confirmLabel: "Import mappings",
                   offerApplyModeChoice: true,
                   onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => applyPreviousStepMappings(params),
@@ -3818,15 +3990,16 @@ function DecisionGateConfig({
   )
 
   /**
-   * Merges input.*, prev.*, and global.* tags for the gate field picker.
-   * Filters out trigger.* and now.* which are not usable as condition field paths.
+   * Merges input.* (predecessor output and any sibling rows) and global.* tags for the gate
+   * field picker. Filters out trigger_inputs.* and now.* which are not usable as condition
+   * field paths in the runner-evaluated boolean expression.
    */
   const gateTags = React.useMemo(() => {
     const inputTags = nodeInputFieldsToPromptTags({
       fields: readInputSchemaFromNodeData({ value: data.inputSchema }),
     })
     return [...inputTags, ...upstreamPromptTags, ...workflowGlobalPromptTags].filter((t) =>
-      ["input", "prev", "global"].some((ns) => t.id.startsWith(`${ns}.`)),
+      ["input", "global"].some((ns) => t.id.startsWith(`${ns}.`)),
     )
   }, [data.inputSchema, upstreamPromptTags, workflowGlobalPromptTags])
 
@@ -3884,17 +4057,6 @@ function DecisionGateConfig({
 }
 
 /** Slide stack inside switch Conditions — same mental model as the app sidebar tiered drill. */
-const switchConditionsSlideVariants = {
-  enter: (dir: number) => ({ x: dir > 0 ? "22%" : "-22%", opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir: number) => ({ x: dir > 0 ? "-16%" : "16%", opacity: 0 }),
-}
-
-type SwitchConditionsPanel =
-  /** Lists every case name; pick one to configure gate rules */
-  | { view: "list" }
-  /** Exactly one WorkflowGateRuleBuilder scoped to branchId */
-  | { view: "case-detail"; branchId: string }
 
 /**
  * Switch node — stacked navigation: browse cases by name, then push into a secondary pane for that
@@ -3906,29 +4068,36 @@ function SwitchGateConfig({
   nodeId,
   upstreamPromptTags,
   workflowGlobalPromptTags,
+  conditionsPanel,
+  onConditionsPanelChange,
 }: {
   data: Record<string, unknown>
   set: (k: string, v: unknown) => void
   nodeId: string
   upstreamPromptTags: PromptTagDefinition[]
   workflowGlobalPromptTags: PromptTagDefinition[]
+  /** Lifted panel stack — lets the sheet tab strip mirror case drill-down. */
+  conditionsPanel: SwitchConditionsPanel
+  /** Updates {@link conditionsPanel} from list ↔ case detail transitions. */
+  onConditionsPanelChange: React.Dispatch<React.SetStateAction<SwitchConditionsPanel>>
 }) {
   const branches = readSwitchBranches({ data })
 
   /** Which stack frame is visible: case index list or detail for one branch id */
-  const [panel, setPanel] = React.useState<SwitchConditionsPanel>({ view: "list" })
+  const panel = conditionsPanel
   /** +1 drills into a case; -1 pops back — drives motion direction like AppSidebar */
   const [navDirection, setNavDirection] = React.useState(1)
 
   /**
-   * Merges input.*, prev.*, and global.* tags for gate pickers — matches Decision parity.
+   * Merges input.* (predecessor output and any sibling rows) and global.* tags for gate
+   * pickers — matches Decision parity.
    */
   const gateTags = React.useMemo(() => {
     const inputTags = nodeInputFieldsToPromptTags({
       fields: readInputSchemaFromNodeData({ value: data.inputSchema }),
     })
     return [...inputTags, ...upstreamPromptTags, ...workflowGlobalPromptTags].filter((t) =>
-      ["input", "prev", "global"].some((ns) => t.id.startsWith(`${ns}.`)),
+      ["input", "global"].some((ns) => t.id.startsWith(`${ns}.`)),
     )
   }, [data.inputSchema, upstreamPromptTags, workflowGlobalPromptTags])
 
@@ -3969,7 +4138,7 @@ function SwitchGateConfig({
    * Appends a routed case row with a stable id so canvas edges stay aligned with handle ids.
    */
   function addCase() {
-    const id = `sw-${crypto.randomUUID().slice(0, 8)}`
+    const id = `sw-${randomBranchIdSuffix()}`
     commitBranches({
       next: [...branches, { id, label: `Case ${branches.length + 1}`, condition: "" }],
     })
@@ -3980,7 +4149,7 @@ function SwitchGateConfig({
    */
   function drillIntoCase({ branchId }: { branchId: string }) {
     setNavDirection(1)
-    setPanel({ view: "case-detail", branchId })
+    onConditionsPanelChange({ view: "case-detail", branchId })
   }
 
   /**
@@ -3988,7 +4157,7 @@ function SwitchGateConfig({
    */
   function popToCaseList() {
     setNavDirection(-1)
-    setPanel({ view: "list" })
+    onConditionsPanelChange({ view: "list" })
   }
 
   /**
@@ -4026,10 +4195,9 @@ function SwitchGateConfig({
     if (panel.view !== "case-detail") return
     if (!branches.some((b) => b.id === panel.branchId)) {
       /* Branch disappeared while viewing detail — e.g. graph restore; safe to reopen list root */
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setPanel({ view: "list" })
+      onConditionsPanelChange({ view: "list" })
     }
-  }, [branches, panel])
+  }, [branches, panel, onConditionsPanelChange])
 
   const activeBranch: SwitchBranch | null =
     panel.view === "case-detail"
@@ -4044,104 +4212,77 @@ function SwitchGateConfig({
         <motion.div
           key={panel.view === "list" ? "switch-cases-root" : `switch-case:${panel.branchId}`}
           custom={navDirection}
-          variants={switchConditionsSlideVariants}
+          variants={workflowStackSlideVariants}
           initial="enter"
           animate="center"
           exit="exit"
           transition={{ type: "spring", stiffness: 380, damping: 34 }}
         >
           {panel.view === "list" ? (
-            <div className="space-y-4">
-              {/* How routing behaves */}
-              <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
-                <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-blue-500/40 bg-blue-500/15">
-                  <div className="size-1.5 rounded-full bg-blue-500" />
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Cases are evaluated top to bottom. The first matching case fires; if none match, use the Else
-                  outlet. Pick a case below to set its conditions, or add a new case.
-                </p>
-              </div>
-
-              {/* Case list — one row per case, drill to edit conditions */}
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Cases
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  {branches.map((b, idx) => {
-                    const displayName = b.label?.trim() ? b.label : "Unnamed case"
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => drillIntoCase({ branchId: b.id })}
-                        className={cn(
-                          "flex w-full items-center gap-3 rounded-lg border border-border/70 bg-muted/15 px-3 py-2.5 text-left transition-colors",
-                          "hover:border-border hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                        )}
-                      >
-                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Case {idx + 1}
-                          </span>
-                          <span className="truncate text-sm font-medium text-foreground">{displayName}</span>
-                        </div>
-                        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      </button>
-                    )
-                  })}
+            <div className="min-w-0 w-full overflow-hidden rounded-xl border border-border/80 bg-card/40">
+              {/* Panel header — mirrors InputSchemaBuilder / ExtractFieldsEditor */}
+              <div className="flex items-start gap-3 border-b border-border/70 bg-muted/25 px-4 py-3">
+                <span
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background"
+                  aria-hidden
+                >
+                  <GitBranch className="size-4 text-muted-foreground" />
+                </span>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="text-sm font-semibold leading-none tracking-tight text-foreground">Cases</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Add cases and define conditions on each one to create decision branches.
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Cases are evaluated from top to bottom: the first match determines the path. If none match, the
+                    Else branch at the bottom of this list is used.
+                  </p>
                 </div>
               </div>
 
-              <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={addCase}>
-                <Plus className="size-4" aria-hidden />
-                Add case
-              </Button>
-
-              <Separator />
-
-              {/* Else handle label — lives on list level so it is not confused with case conditions */}
-              <div className="space-y-1.5">
-                <Label>Else branch label</Label>
-                <Input
-                  value={String(data.defaultBranchLabel ?? "Else")}
-                  onChange={(e) => set("defaultBranchLabel", e.target.value)}
-                  placeholder="Else"
+              <div className="space-y-4 px-4 pb-4 pt-3">
+                {/* Case list — @dnd-kit sortable; blue insertion stroke sits in gaps between rows */}
+                <SwitchCasesSortableList
+                  branches={branches}
+                  onReorder={commitBranches}
+                  onActivateCase={drillIntoCase}
+                  onRemoveCase={deleteCase}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Connect the Default handle when no case condition matches.
-                </p>
+
+                <Button type="button" variant="outline" size="sm" className="w-full gap-2" onClick={addCase}>
+                  <Plus className="size-4" aria-hidden />
+                  Add case
+                </Button>
+
+                <Separator />
+
+                {/* Else handle label — lives on list level so it is not confused with case conditions */}
+                <div className="space-y-1.5">
+                  <Label>Else branch label</Label>
+                  <Input
+                    value={String(data.defaultBranchLabel ?? "Else")}
+                    onChange={(e) => set("defaultBranchLabel", e.target.value)}
+                    placeholder="Else"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Connect the Default handle when no case condition matches.
+                  </p>
+                </div>
               </div>
             </div>
           ) : activeBranch !== null && activeBranchIndex >= 0 ? (
             <div className="space-y-4">
-              {/* Back to case list */}
-              <button
-                type="button"
-                onClick={popToCaseList}
-                className="mb-1 flex items-center gap-1.5 rounded-md px-1 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
-              >
-                <ArrowLeft className="size-4" aria-hidden />
-                <span>All cases</span>
-              </button>
-
-              {/* Case title + rename */}
-              <div className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Case {activeBranchIndex + 1}
-                </p>
-                <div className="space-y-1.5">
-                  <Label htmlFor={`sw-case-name-${activeBranch.id}`}>Case name</Label>
-                  <Input
-                    id={`sw-case-name-${activeBranch.id}`}
-                    value={activeBranch.label ?? ""}
-                    onChange={(e) =>
-                      renameCase({ branchId: activeBranch.id, label: e.target.value })
-                    }
-                    placeholder={`Case ${activeBranchIndex + 1}`}
-                  />
-                </div>
+              {/* Case name — sheet sub-header already shows ordinal + title */}
+              <div className="space-y-1.5">
+                <Label htmlFor={`sw-case-name-${activeBranch.id}`}>Case name</Label>
+                <Input
+                  id={`sw-case-name-${activeBranch.id}`}
+                  value={activeBranch.label ?? ""}
+                  onChange={(e) =>
+                    renameCase({ branchId: activeBranch.id, label: e.target.value })
+                  }
+                  placeholder={`Case ${activeBranchIndex + 1}`}
+                />
               </div>
 
               {/* Visual gate builder for this case only */}
@@ -4153,22 +4294,6 @@ function SwitchGateConfig({
                 }
                 upstreamTags={gateTags}
               />
-
-              {/* Optional remove — keep at least one case */}
-              {branches.length > 1 ? (
-                <div className="pt-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="w-full gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => deleteCase({ branchId: activeBranch.id })}
-                  >
-                    <Trash2 className="size-4" aria-hidden />
-                    Remove this case
-                  </Button>
-                </div>
-              ) : null}
             </div>
           ) : null}
         </motion.div>
@@ -4191,7 +4316,7 @@ const DECISION_RESULT_SEED_FIELD = createEmptyNodeInputField({
 })
 
 /**
- * Decision node output — defines what this step exposes as `prev.*` to downstream steps,
+ * Decision node output — defines what this step exposes as `{{input.*}}` to downstream steps,
  * and optional workflow globals written to the shared `global.*` envelope.
  *
  * Auto-seeds a `decision_result` boolean field on first open; also exposes
@@ -4267,7 +4392,7 @@ function DecisionOutputConfig({
 
   return (
     <div className="space-y-6">
-      {/* Step output — keyed for {{prev.*}} on downstream inbound mapping */}
+      {/* Step output — keyed for {{input.*}} on downstream inbound mapping */}
       <InputSchemaBuilder
         fields={outputSchemaFields}
         onChange={({ fields }) => set("outputSchema", fields)}

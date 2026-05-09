@@ -1,8 +1,13 @@
-import { RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY } from "@/lib/ai-gateway/runner-gateway-tracking"
+import {
+  LEGACY_RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY,
+  RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY,
+} from "@/lib/ai-gateway/runner-gateway-tracking"
 import { stringify } from "@/lib/workflows/engine/template"
 
 /** Marker on runner execution envelopes — must match `runner.ts`. */
-const RUNNER_EXECUTION_MARKER = "__runnerroo_execution" as const
+const RUNNER_EXECUTION_MARKER = "__dailify_execution" as const
+
+const LEGACY_RUNNER_EXECUTION_MARKER = "__runnerroo_execution" as const
 
 /**
  * One titled block of labelled values for the inbox approval “technical details” panel.
@@ -62,7 +67,10 @@ export function approvalEnvelopeSections({
   }
 
   const envelope = stepInput as Record<string, unknown>
-  if (envelope[RUNNER_EXECUTION_MARKER] !== true) {
+  if (
+    envelope[RUNNER_EXECUTION_MARKER] !== true &&
+    envelope[LEGACY_RUNNER_EXECUTION_MARKER] !== true
+  ) {
     return {
       sections: [],
       isStructuredEnvelope: false,
@@ -71,7 +79,8 @@ export function approvalEnvelopeSections({
 
   const sections: ApprovalEnvelopeSection[] = []
 
-  const gatewayRaw = envelope[RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY]
+  const gatewayRaw =
+    envelope[RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY] ?? envelope[LEGACY_RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY]
   if (gatewayRaw && typeof gatewayRaw === "object" && !Array.isArray(gatewayRaw)) {
     const g = gatewayRaw as Record<string, unknown>
     const gwRows: { label: string; value: string }[] = []

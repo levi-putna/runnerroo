@@ -56,24 +56,30 @@ function buildTransformerUserMessage({
   instructions,
   context,
   contentExpressionTemplate,
-  resolvedInputs,
+  inboundInput,
 }: {
   instructions: string
   context: ReturnType<typeof buildResolutionContext>
   contentExpressionTemplate: string
-  resolvedInputs: Record<string, unknown>
+  inboundInput: Record<string, unknown>
 }): string {
   const tmpl = contentExpressionTemplate.trim()
   let sourceBlock: string
+
+  /**
+   * Fallback when no explicit content expression is set: serialise the inbound predecessor
+   * payload (`{{input.*}}`) as JSON so the transformer sees the upstream step's emitted output.
+   */
+  const inboundFallbackJson = JSON.stringify(inboundInput, null, 2)
 
   if (tmpl !== "") {
     const resolved = resolveTemplate(tmpl, context).trim()
     sourceBlock =
       resolved !== ""
         ? formatTransformPayloadFence({ text: resolved })
-        : formatTransformPayloadFence({ text: JSON.stringify(resolvedInputs) })
+        : formatTransformPayloadFence({ text: inboundFallbackJson })
   } else {
-    sourceBlock = formatTransformPayloadFence({ text: JSON.stringify(resolvedInputs, null, 2) })
+    sourceBlock = formatTransformPayloadFence({ text: inboundFallbackJson })
   }
 
   const parts: string[] = ["## Transformation instructions", instructions.trim() || "(none provided)"]
@@ -110,18 +116,16 @@ export async function executeAiTransformStep({
   const context = buildResolutionContext({ stepInput, stepId: node.id })
   const resolvedInstructions = resolveTemplate(instructionsTemplate, context)
 
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-  const resolvedInputs: Record<string, unknown> = {}
-  for (const field of inputSchema) {
-    if (!field.value) continue
-    resolvedInputs[field.key] = resolveTemplate(field.value, context)
-  }
+  const inboundInput =
+    context.input && typeof context.input === "object" && !Array.isArray(context.input)
+      ? (context.input as Record<string, unknown>)
+      : {}
 
   const prompt = buildTransformerUserMessage({
     instructions: resolvedInstructions,
     context,
     contentExpressionTemplate,
-    resolvedInputs,
+    inboundInput,
   })
 
   const gatewayCtx = readRunnerGatewayExecutionContextFromStepInput({ stepInput })
@@ -181,7 +185,6 @@ export async function executeAiTransformStep({
     finishReason: result.finishReason,
     outputs: resolvedOutputs,
     exe: exeContext,
-    inputs: resolvedInputs,
   }
 
   if (Object.keys(resolvedGlobals).length > 0) {

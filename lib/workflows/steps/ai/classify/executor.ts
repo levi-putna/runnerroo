@@ -141,17 +141,17 @@ function buildClassifierUserPromptFromResolvedContent({ text }: { text: string }
 interface BuildClassifierUserMessageParams {
   context: ReturnType<typeof buildResolutionContext>
   contentExpressionTemplate: string
-  resolvedInputs: Record<string, unknown>
+  inboundInput: Record<string, unknown>
 }
 
 /**
  * Prefers a non-empty resolved {@link BuildClassifierUserMessageParams.contentExpressionTemplate};
- * otherwise serialises {@link BuildClassifierUserMessageParams.resolvedInputs} as the structured JSON payload.
+ * otherwise serialises the inbound predecessor payload (`{{input.*}}`) as the structured JSON payload.
  */
 function buildClassifierUserMessage({
   context,
   contentExpressionTemplate,
-  resolvedInputs,
+  inboundInput,
 }: BuildClassifierUserMessageParams): string {
   const tmpl = contentExpressionTemplate.trim()
   if (tmpl !== "") {
@@ -160,7 +160,7 @@ function buildClassifierUserMessage({
       return buildClassifierUserPromptFromResolvedContent({ text: resolved })
     }
   }
-  const payloadPrettyJson = JSON.stringify(resolvedInputs, null, 2)
+  const payloadPrettyJson = JSON.stringify(inboundInput, null, 2)
   return buildClassifierUserPrompt({ payloadPrettyJson })
 }
 
@@ -200,12 +200,10 @@ export async function executeAiClassifyStep({
   const context = buildResolutionContext({ stepInput, stepId: node.id })
   const resolvedInstructions = resolveTemplate(instructionsTemplate, context)
 
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-  const resolvedInputs: Record<string, unknown> = {}
-  for (const field of inputSchema) {
-    if (!field.value) continue
-    resolvedInputs[field.key] = resolveTemplate(field.value, context)
-  }
+  const inboundInput =
+    context.input && typeof context.input === "object" && !Array.isArray(context.input)
+      ? (context.input as Record<string, unknown>)
+      : {}
 
   const catalogue = resolveClassifyCatalogue({ data, context })
   if (catalogue.length === 0) {
@@ -225,7 +223,7 @@ export async function executeAiClassifyStep({
   const prompt = buildClassifierUserMessage({
     context,
     contentExpressionTemplate,
-    resolvedInputs,
+    inboundInput,
   })
 
   const gatewayCtx = readRunnerGatewayExecutionContextFromStepInput({ stepInput })
@@ -284,7 +282,6 @@ export async function executeAiClassifyStep({
     finishReason: exeContext.finishReason,
     outputs: resolvedOutputs,
     exe: exeContext,
-    inputs: resolvedInputs,
   }
 
   if (Object.keys(resolvedGlobals).length > 0) {

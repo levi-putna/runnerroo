@@ -26,7 +26,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 
-const PROMPT_TAG_DRAG_MIME = "application/x-runnerroo-prompt-tag"
+const PROMPT_TAG_DRAG_MIME = "application/x-dailify-prompt-tag"
 
 /** Must match `Mention.configure({ suggestion: { char } })` — stored on each node so TipTap does not fall back to its default `@`. */
 const PROMPT_TAG_TRIGGER = "{{"

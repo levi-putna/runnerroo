@@ -216,6 +216,8 @@ export function computeTimelineDisplayAxis(p: {
 }): {
   displayTotalMs: number
   wallToDisplay: (wallMs: number) => number
+  /** Inverse of `wallToDisplay` for interpolating ruler labels onto an evenly spaced *visual* axis */
+  displayToWall: (displayMs: number) => number
 } {
   const timelineTotalMs = Math.max(0, p.timelineTotalMs)
   const interiors = collectLongStepCompressInteriors({
@@ -245,7 +247,105 @@ export function computeTimelineDisplayAxis(p: {
 
   const displayTotalMs = wallToDisplay(timelineTotalMs)
 
-  return { displayTotalMs, wallToDisplay }
+  /**
+   * Walks display distance at the same piecewise‑linear breakpoints as {@link wallToDisplay}.
+   */
+  function displayToWall(displayMs: number): number {
+    const target = Math.max(0, Math.min(displayMs, displayTotalMs))
+    let accDisplay = 0
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const w0 = pts[i]!
+      const w1 = pts[i + 1]!
+      const segDisplay = wallDeltaToDisplayDelta(w0, w1, interiors)
+      if (segDisplay <= 0) continue
+
+      if (target > accDisplay + segDisplay - Number.EPSILON) {
+        accDisplay += segDisplay
+        continue
+      }
+
+      const frac = Math.min(1, Math.max(0, (target - accDisplay) / segDisplay))
+      return Math.min(timelineTotalMs, Math.max(0, w0 + frac * (w1 - w0)))
+    }
+
+    return timelineTotalMs
+  }
+
+  return { displayTotalMs, wallToDisplay, displayToWall }
+}
+
+/** One ruler position on the execution timeline (wall ms aligned to the distorted display axis when compression is on). */
+export type RunTimelineTickMark = {
+  wallMs: number
+  pctAlongDisplay: number
+}
+
+/**
+ * Chooses tick density from total span so shorter runs gain extra marks without crowding hour-long executions.
+ */
+function pickTimelineTickCount(totalMs: number): number {
+  const safe = Math.max(0, totalMs)
+  if (safe <= 1) return 2
+
+  const sec = safe / 1000
+
+  if (sec <= 5) return 7
+  if (sec <= 30) return 8
+  if (sec <= 120) return 9
+  if (sec <= 3600) return 8
+  if (sec <= 86400) return 7
+  return 6
+}
+
+/**
+ * Tick marks at **uniform spacing on the rendered timeline width** (`pctAlongDisplay`).
+ * Labels use inverted wall-clock time (`displayToWall`) so captions stay truthful while grids stay visually even —
+ * matching how step bars occupy `wallToDisplay / safeDisplay`.
+ */
+export function buildRunTimelineTickMarks(p: {
+  timelineTotalMs: number
+  steps: ParsedRunTimelineStep[]
+  compressLongSteps: boolean
+}): RunTimelineTickMark[] {
+  const timelineTotalMs = Math.max(0, p.timelineTotalMs)
+  const { displayTotalMs, displayToWall } = computeTimelineDisplayAxis(p)
+  /** Same denominator as {@link buildRunTimelineDisplayLayout} pct columns */
+  const safeDisplay = Math.max(1, displayTotalMs)
+
+  if (timelineTotalMs <= 0) {
+    return [{ wallMs: 0, pctAlongDisplay: 0 }]
+  }
+
+  const count = Math.max(2, pickTimelineTickCount(timelineTotalMs))
+  const denom = count - 1
+
+  const ticks: RunTimelineTickMark[] = []
+
+  for (let i = 0; i < count; i++) {
+    /** Equal steps along integrated display ms (inverse of truncation is piecewise‑linear → tick positions stay visually even across the strip) */
+    const targetDisplayMs = (i / denom) * displayTotalMs
+
+    let wallMs: number
+    if (i === 0) {
+      wallMs = 0
+    } else if (i === count - 1) {
+      wallMs = timelineTotalMs
+    } else {
+      wallMs = displayToWall(targetDisplayMs)
+    }
+
+    wallMs = Math.min(timelineTotalMs, Math.max(0, wallMs))
+    /** Same basis as bars: `{@link buildRunTimelineDisplayLayout}` uses `safeDisplay` as denominator */
+    const pctAlongDisplay = Math.min(100, (targetDisplayMs / safeDisplay) * 100)
+
+    ticks.push({
+      wallMs,
+      pctAlongDisplay,
+    })
+  }
+
+  return ticks
 }
 
 export interface RunTimelineStepDisplayLayout {

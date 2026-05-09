@@ -6,6 +6,12 @@ import {
   toPersistableEdges,
   toPersistableNodes,
 } from "@/lib/workflows/engine/persist"
+import {
+  syncDailifyPgCronJobForWorkflowRow,
+  WORKFLOW_CLIENT_SAFE_COLUMNS,
+} from "@/lib/workflows/sync-dailify-pg-cron"
+import { emitWorkflowSaveDbAuditLine } from "@/lib/workflows/workflow-save-debug-log"
+import { deriveWorkflowTriggerFromRfNodes } from "@/lib/workflows/trigger/derive-workflow-trigger-from-graph"
 import type { Json } from "@/types/database"
 
 type PostBody = {
@@ -66,11 +72,13 @@ export async function POST(request: Request) {
 
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : "Untitled workflow"
   const description = body.description ?? null
-  const trigger_type = body.trigger_type ?? "manual"
-  const trigger_config = (body.trigger_config ?? {}) as Json
+  const parsedRfNodes = parseWorkflowNodes(body.nodes)
+  const derivedTrigger = deriveWorkflowTriggerFromRfNodes({ nodes: parsedRfNodes })
+  const trigger_type = derivedTrigger.trigger_type
+  const trigger_config = derivedTrigger.trigger_config as Json
   const status = body.status ?? "draft"
 
-  const nodes = toPersistableNodes(parseWorkflowNodes(body.nodes)) as unknown as Json
+  const nodes = toPersistableNodes(parsedRfNodes) as unknown as Json
   const edges = toPersistableEdges(parseWorkflowEdges(body.edges)) as unknown as Json
 
   const { data: row, error } = await supabase
@@ -85,11 +93,27 @@ export async function POST(request: Request) {
       edges,
       status,
     })
-    .select()
+    .select(WORKFLOW_CLIENT_SAFE_COLUMNS)
     .single()
 
   if (error) {
+    emitWorkflowSaveDbAuditLine({
+      saveSource: "workflow_post_api",
+      phase: "create",
+      message: error.message,
+    })
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  const syncCron = await syncDailifyPgCronJobForWorkflowRow({
+    workflow: row,
+    saveDebugSource: "workflow_post_api",
+  })
+  if (!syncCron.ok) {
+    return NextResponse.json({
+      workflow: row,
+      cron_sync_warning: syncCron.message,
+    })
   }
 
   return NextResponse.json({ workflow: row })

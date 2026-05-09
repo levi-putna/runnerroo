@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-const STORAGE_KEY = "runneroo.favourite-model-ids";
+const STORAGE_KEY = "dailify.favourite-model-ids";
 
 /**
  * Reads the stored favourite model IDs from localStorage.

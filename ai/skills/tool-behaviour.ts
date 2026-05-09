@@ -1,5 +1,5 @@
 /**
- * Tooling rules fragment appended to the assistant system prompt (Runnerroo tool pack).
+ * Tooling rules fragment appended to the assistant system prompt (Dailify tool pack).
  */
 export const toolBehaviourSkill = `
 ## Tool execution rules

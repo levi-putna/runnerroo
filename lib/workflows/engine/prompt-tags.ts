@@ -144,6 +144,25 @@ export const GLOBAL_PROMPT_TAGS: PromptTagDefinition[] = [
   },
 ]
 
+export interface WorkflowConstantsPromptTagsParams {
+  /** Normalised map from `workflows.workflow_constants` */
+  constants: Record<string, string>
+}
+
+/**
+ * Builds `{{const.*}}` suggestions for workflow constants configured under Workflow Settings.
+ */
+export function workflowConstantsPromptTags({
+  constants,
+}: WorkflowConstantsPromptTagsParams): PromptTagDefinition[] {
+  const keys = Object.keys(constants).sort((a, b) => a.localeCompare(b))
+  return keys.map((key) => ({
+    id: `const.${key}`,
+    label: `Constant · ${key}`,
+    description: `Workflow constant “${key}” from Settings — referenced as {{const.${key}}} on every step.`,
+  }))
+}
+
 export interface MergePromptTagDefinitionsParams {
   contextual: PromptTagDefinition[]
 }
@@ -231,7 +250,13 @@ export interface PrevPromptTagsFromPredecessorParams {
 }
 
 /**
- * Maps the selected predecessor’s inferable output shape to prompt tags `{{prev.*}}` for autocomplete.
+ * Maps the selected predecessor's inferable output shape to prompt tags `{{input.*}}` for
+ * autocomplete on the current step.
+ *
+ * The previous step's emitted output is now the standard step's input, so each suggestion is
+ * normalised from the legacy `prev.<path>` token to `input.<path>`. Persisted templates that
+ * still use `{{prev.*}}` continue to resolve at runtime via the back-compat alias on
+ * {@link buildResolutionContext}.
  */
 export function prevPromptTagsFromPredecessorNode({
   previousNode,
@@ -240,7 +265,8 @@ export function prevPromptTagsFromPredecessorNode({
   const inferred = inferPreviousStepOutputFields({ previousNode })
   return inferred.map((f) => {
     const trimmed = f.suggestedValue.trim()
-    const inner = trimmed.startsWith("{{") && trimmed.endsWith("}}") ? trimmed.slice(2, -2).trim() : trimmed
+    const rawInner = trimmed.startsWith("{{") && trimmed.endsWith("}}") ? trimmed.slice(2, -2).trim() : trimmed
+    const inner = rawInner === "prev" ? "input" : rawInner.replace(/^prev(\.|$)/, "input$1")
     return {
       id: inner,
       label: f.label.trim() || inner,

@@ -66,13 +66,6 @@ export async function executeAiGenerateStep({
     ...(providerOptions ? { providerOptions } : {}),
   })
 
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-  const resolvedInputs: Record<string, unknown> = {}
-  for (const field of inputSchema) {
-    if (!field.value) continue
-    resolvedInputs[field.key] = resolveTemplate(field.value, context)
-  }
-
   const exeContext: Record<string, unknown> = {
     text: result.text,
     reasoningText: result.reasoningText ?? "",
@@ -112,7 +105,6 @@ export async function executeAiGenerateStep({
     finishReason: result.finishReason,
     outputs: resolvedOutputs,
     exe: exeContext,
-    inputs: resolvedInputs,
   }
 
   if (Object.keys(resolvedGlobals).length > 0) {

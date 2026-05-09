@@ -8,6 +8,8 @@ export type Json =
 
 export interface Database {
   public: {
+    /** Required for `@supabase/supabase-js` `GenericSchema`; no exposed views wired in codegen yet */
+    Views: Record<string, never>
     Tables: {
       workflows: {
         Row: {
@@ -25,12 +27,27 @@ export interface Database {
           status: "active" | "inactive" | "draft"
           run_count: number
           last_run_at: string | null
+          /**
+           * Per-workflow dispatch token embedded in pg_cron `net.http_post` `Authorization` header.
+           * Never returned in client-facing API responses — service role only.
+           */
+          cron_dispatch_token: string | null
+          /** Author-defined values available as {{const.<key>}} during runs */
+          workflow_constants: Json
         }
         Insert: Omit<
           Database["public"]["Tables"]["workflows"]["Row"],
-          "id" | "created_at" | "updated_at" | "run_count" | "last_run_at"
-        > & { id?: string; run_count?: number; last_run_at?: string | null; graph_version?: number }
+          "id" | "created_at" | "updated_at" | "run_count" | "last_run_at" | "workflow_constants"
+        > & {
+          id?: string
+          run_count?: number
+          last_run_at?: string | null
+          graph_version?: number
+          cron_dispatch_token?: string | null
+          workflow_constants?: Json
+        }
         Update: Partial<Database["public"]["Tables"]["workflows"]["Insert"]>
+        Relationships: []
       }
       workflow_runs: {
         Row: {
@@ -49,6 +66,7 @@ export interface Database {
         }
         Insert: Omit<Database["public"]["Tables"]["workflow_runs"]["Row"], "id" | "started_at">
         Update: Partial<Database["public"]["Tables"]["workflow_runs"]["Insert"]>
+        Relationships: []
       }
       workflow_approvals: {
         Row: {
@@ -85,6 +103,7 @@ export interface Database {
           id?: string
         }
         Update: Partial<Database["public"]["Tables"]["workflow_approvals"]["Insert"]>
+        Relationships: []
       }
       user_files: {
         Row: {
@@ -108,6 +127,7 @@ export interface Database {
           metadata?: Json
         }
         Update: Partial<Database["public"]["Tables"]["user_files"]["Insert"]>
+        Relationships: []
       }
       workflow_document_templates: {
         Row: {
@@ -134,6 +154,33 @@ export interface Database {
           metadata?: Json
         }
         Update: Partial<Database["public"]["Tables"]["workflow_document_templates"]["Insert"]>
+        Relationships: []
+      }
+    }
+    Functions: {
+      dailify_add_or_replace_cron_job: {
+        Args: {
+          p_bearer_secret: string
+          p_job_name: string
+          p_schedule: string
+          p_url: string
+        }
+        Returns: void
+      }
+      dailify_list_dailify_cron_jobs: {
+        Args: Record<string, never>
+        Returns: {
+          active: boolean
+          jobid: number
+          jobname: string
+          schedule: string
+        }[]
+      }
+      dailify_remove_cron_job: {
+        Args: {
+          p_job_name: string
+        }
+        Returns: void
       }
     }
   }

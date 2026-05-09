@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import type { LucideIcon } from "lucide-react"
-import { ChevronDown, Sparkles } from "lucide-react"
+import { MoreHorizontal, Sparkles } from "lucide-react"
 
 import {
   AlertDialog,
@@ -19,10 +19,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
 import type { NodeInputField } from "@/lib/workflows/engine/input-schema"
 import type { WorkflowInputSchemaFromPromptFlavourId } from "@/lib/workflows/input-schema-from-prompt-flavours"
 import { SchemaFromPromptDialog } from "@/components/workflow/schema-from-prompt-dialog"
@@ -62,25 +62,41 @@ export interface WorkflowSchemaBuilderToolbarPromptImport {
   dialogDescription?: string
 }
 
+/**
+ * Clipboard / dialog-driven JSON bulk edits mirrored from the schema panel menu.
+ * When {@link WorkflowSchemaBulkJsonMenuActions.visible} is false, omit JSON entries (e.g. drill-down sub-views).
+ */
+export interface WorkflowSchemaBulkJsonMenuActions {
+  visible: boolean
+  /** Opens the JSON editor dialog (parent-owned). */
+  onEditAsJson: () => void
+  /** Copies serialised schema JSON to the clipboard. */
+  onCopyJson: () => void | Promise<void>
+  /** Reads clipboard text and continues with parent-defined merge UX. */
+  onImportJsonFromClipboard: () => void | Promise<void>
+}
+
 export interface WorkflowSchemaBuilderToolbarProps {
-  /** Highest-priority confirmable imports first — they anchor the combined button when grouped. */
+  /** Confirm-before syncs — each becomes a dropdown row (no separate primary button). */
   confirmableImports?: WorkflowSchemaConfirmableImport[]
   promptImport?: WorkflowSchemaBuilderToolbarPromptImport | null
   existingFields: NodeInputField[]
   onPromptApplyFields: ({ fields }: { fields: NodeInputField[] }) => void
+  /** Optional JSON import/export/edit entries appended after imports (with a separator when both exist). */
+  bulkJsonMenu?: WorkflowSchemaBulkJsonMenuActions | null
 }
 
 type ConfirmTarget = WorkflowSchemaConfirmableImport | null
 
 /**
- * Composes confirm-before syncs and AI prompt fills for schema panels.
- * Renders a split control with a chevron only when more than one action is available.
+ * Compact schema header menu: confirmable imports, prompt generation, and optional JSON bulk actions.
  */
 export function WorkflowSchemaBuilderToolbar({
   confirmableImports = [],
   promptImport,
   existingFields,
   onPromptApplyFields,
+  bulkJsonMenu,
 }: WorkflowSchemaBuilderToolbarProps) {
   const [confirmTarget, setConfirmTarget] = React.useState<ConfirmTarget>(null)
   const [confirmApplyMode, setConfirmApplyMode] = React.useState<WorkflowSchemaImportApplyMode>("append")
@@ -94,104 +110,90 @@ export function WorkflowSchemaBuilderToolbar({
   }, [])
 
   const confirmables = [...confirmableImports].filter((row) => row != null)
-  const primaryConfirmable = confirmables[0]
-  const overflowConfirmables = confirmables.slice(1)
   const promptEnabled = Boolean(promptImport)
-
-  const overflowSlots = overflowConfirmables.length + (promptEnabled ? 1 : 0)
-  const showDropdown = overflowSlots > 0
-  const promptStandalone = promptEnabled && !primaryConfirmable
+  const bulkVisible = bulkJsonMenu?.visible === true
 
   const openPromptFlow = React.useCallback(() => {
     setPromptSession((s) => s + 1)
     setPromptOpen(true)
   }, [])
 
-  if (!primaryConfirmable && !promptEnabled) {
+  const topSectionCount = confirmables.length + (promptEnabled ? 1 : 0)
+  const showBulkSection = bulkVisible && bulkJsonMenu != null
+
+  if (topSectionCount === 0 && !showBulkSection) {
     return null
   }
 
   return (
-    <div className="flex shrink-0 flex-col items-end gap-2">
-      {/* Primary control — fills the row when it is the only affordance */}
-      {promptStandalone ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={openPromptFlow}
-          className="h-8 gap-2 font-normal"
-        >
-          <Sparkles className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-          Import from prompt
-        </Button>
-      ) : primaryConfirmable ? (
-        <div
-          className={cn(
-            "inline-flex items-stretch overflow-hidden rounded-lg border border-input bg-background",
-          )}
-        >
+    <div className="flex shrink-0 flex-col items-end gap-2 self-start">
+      {/* Schema actions — single compact menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            disabled={primaryConfirmable.disabled}
-            onClick={() => openConfirmable(primaryConfirmable)}
-            className={cn(
-              "h-8 min-w-0 gap-2 border-0 px-3 font-normal shadow-none hover:bg-accent",
-              showDropdown ? "max-w-[9rem] rounded-none sm:max-w-[13rem]" : "max-w-[16rem] rounded-none sm:max-w-[18rem]",
-            )}
+            size="icon"
+            className="size-8 shrink-0 border-border/80 shadow-none"
+            aria-label="Schema actions"
           >
-            {(() => {
-              const PrimaryIcon = primaryConfirmable.TriggerIcon
-              return PrimaryIcon ? <PrimaryIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden /> : null
-            })()}
-            <span className="truncate">{primaryConfirmable.label}</span>
+            <MoreHorizontal className="size-4 text-muted-foreground" aria-hidden />
           </Button>
-          {showDropdown ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 min-w-8 shrink-0 rounded-none border-0 border-l border-input/80 px-2 font-normal shadow-none hover:bg-accent"
-                  aria-label="More schema import options"
-                >
-                  <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {overflowConfirmables.map((item) => {
-                  const RowIcon = item.TriggerIcon
-                  return (
-                    <DropdownMenuItem
-                      key={item.id}
-                      disabled={item.disabled}
-                      onSelect={() => {
-                        openConfirmable(item)
-                      }}
-                    >
-                      {RowIcon ? <RowIcon className="mr-2 size-4 text-muted-foreground" aria-hidden /> : null}
-                      {item.label}
-                    </DropdownMenuItem>
-                  )
-                })}
-                {promptEnabled ? (
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      openPromptFlow()
-                    }}
-                  >
-                    <Sparkles className="mr-2 size-4 text-muted-foreground" aria-hidden />
-                    Import from prompt
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          {confirmables.map((item) => {
+            const RowIcon = item.TriggerIcon
+            return (
+              <DropdownMenuItem
+                key={item.id}
+                disabled={item.disabled}
+                onSelect={() => {
+                  openConfirmable(item)
+                }}
+              >
+                {RowIcon ? <RowIcon className="mr-2 size-4 text-muted-foreground" aria-hidden /> : null}
+                {item.label}
+              </DropdownMenuItem>
+            )
+          })}
+          {promptEnabled ? (
+            <DropdownMenuItem
+              onSelect={() => {
+                openPromptFlow()
+              }}
+            >
+              <Sparkles className="mr-2 size-4 text-muted-foreground" aria-hidden />
+              Import from prompt
+            </DropdownMenuItem>
           ) : null}
-        </div>
-      ) : null}
+          {topSectionCount > 0 && showBulkSection ? <DropdownMenuSeparator /> : null}
+          {showBulkSection ? (
+            <>
+              <DropdownMenuItem
+                onSelect={() => {
+                  bulkJsonMenu.onEditAsJson()
+                }}
+              >
+                Edit as JSON…
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  void bulkJsonMenu.onCopyJson()
+                }}
+              >
+                Copy JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  void bulkJsonMenu.onImportJsonFromClipboard()
+                }}
+              >
+                Import JSON from clipboard…
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {confirmTarget ? (
         <AlertDialog open onOpenChange={(open) => !open && setConfirmTarget(null)}>
@@ -225,8 +227,8 @@ export function WorkflowSchemaBuilderToolbar({
                         </Button>
                       </div>
                       <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        Append keeps your current rows and merges placeholders into matching keys. Replace rebuilds the
-                        list from this import source only.
+                        Append keeps your current rows and merges placeholders into matching keys. Replace rebuilds the list
+                        from this import source only.
                       </p>
                     </div>
                   ) : null}

@@ -175,7 +175,7 @@ function ApprovalDialogBody({
               </p>
               <p className="mt-2 text-xs text-muted-foreground/90">
                 Tip: Editors can set an <span className="font-medium">Approval message</span> on the Approval node (with
-                tags such as {"{{prev.*}}"}) so reviewers see a clear checklist here.
+                tags such as {"{{input.*}}"}) so reviewers see a clear checklist here.
               </p>
             </div>
           )}

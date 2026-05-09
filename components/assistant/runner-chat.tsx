@@ -44,6 +44,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -345,7 +346,7 @@ function Composer({
           value={prompt}
           onChange={(e) => onPromptChange({ value: e.target.value })}
           onKeyDown={handleKeyDown}
-          placeholder="Message Runneroo…"
+          placeholder="Message Dailify…"
           disabled={isActive}
           rows={1}
           className="field-sizing-content max-h-[calc(5lh+1rem)] min-h-[2.5rem] w-full overflow-y-auto resize-none rounded-none border-0 bg-transparent px-3 py-2 text-sm shadow-none ring-0 outline-none focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent"
@@ -404,6 +405,32 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
   const [editTruncateFromIndex, setEditTruncateFromIndex] = useState<number | null>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  /**
+   * `useChat` keeps the first `transport` forever unless `id` changes. Resolved `body`
+   * functions run at HTTP send (`resolve(body)`); refs stay current via the effect below.
+   */
+  const conversationIdRef = useRef(conversationId);
+  const modelIdRef = useRef(modelId);
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+    modelIdRef.current = modelId;
+  });
+
+  /* eslint-disable react-hooks/refs -- body resolver runs only when the transport POSTs */
+  const chatTransport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat",
+        body: () => ({
+          conversationId: conversationIdRef.current,
+          modelId: modelIdRef.current,
+        }),
+      }),
+    [],
+  );
+  /* eslint-enable react-hooks/refs */
+
   const {
     messages,
     setMessages,
@@ -414,10 +441,7 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
     addToolOutput,
   } = useChat({
     id: conversationId,
-    transport: new DefaultChatTransport({
-      api: "/api/chat",
-      body: { conversationId, modelId },
-    }),
+    transport: chatTransport,
     messages: activeConversationMessages ?? undefined,
     // After client-completed tools (e.g. askQuestion) call addToolOutput, continue the model turn automatically.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,

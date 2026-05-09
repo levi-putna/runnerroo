@@ -64,7 +64,7 @@ export interface WorkflowSourceHandleProps {
   /** Optional square source handle (e.g. legacy); default is round like all graph exits. */
   shape?: "round" | "square"
   /**
-   * Switch exits use a custom vertical translate; add `runnerroo-handle-switch-exit` so global
+   * Switch exits use a custom vertical translate; add `dailify-handle-switch-exit` so global
    * hover transforms stay aligned (see `globals.css`).
    */
   switchExit?: boolean
@@ -98,7 +98,7 @@ export function WorkflowSourceHandle({
         SOURCE_HANDLE_BASE,
         shape === "square" && "!rounded-[2px]",
         ring,
-        switchExit && "runnerroo-handle-switch-exit",
+        switchExit && "dailify-handle-switch-exit",
         className
       )}
       style={style}

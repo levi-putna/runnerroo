@@ -1,3 +1,5 @@
+import { formatDurationFromSeconds } from "@/lib/format-duration-from-seconds"
+
 /** Stable formatter so SSR and the browser produce identical strings (avoids hydration mismatches). */
 const runLocalDateFormatter = new Intl.DateTimeFormat("en-AU", {
   day: "2-digit",
@@ -29,7 +31,7 @@ export function formatRunLocalDate(iso: string) {
 export function displayRunDuration(ms: number | null) {
   if (ms == null || !Number.isFinite(ms)) return "Running…"
   if (ms < 1000) return `${Math.round(ms)} ms`
-  return `${(ms / 1000).toFixed(ms < 5000 ? 2 : 1)} s`
+  return formatDurationFromSeconds(ms / 1000)
 }
 
 type WorkflowRunPersistedStatus =

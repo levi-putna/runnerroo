@@ -111,8 +111,12 @@ function SelectLabel({
 function SelectItem({
   className,
   children,
+  itemTextClassName,
   ...props
-}: SelectPrimitive.Item.Props) {
+}: SelectPrimitive.Item.Props & {
+  /** Overrides inner item text layout (e.g. multi-line option rows). */
+  itemTextClassName?: string
+}) {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
@@ -122,7 +126,12 @@ function SelectItem({
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2 whitespace-nowrap">
+      <SelectPrimitive.ItemText
+        className={cn(
+          "flex flex-1 shrink-0 gap-2 whitespace-nowrap items-center",
+          itemTextClassName,
+        )}
+      >
         {children}
       </SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator

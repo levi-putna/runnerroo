@@ -3,8 +3,8 @@
 import { GripVerticalIcon } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
-export const CONTEXT_PANEL_STORAGE_KEY = "runneroo-assistant-context-panel-width";
-export const CONTEXT_PANEL_OPEN_STORAGE_KEY = "runneroo-assistant-context-panel-open";
+export const CONTEXT_PANEL_STORAGE_KEY = "dailify-assistant-context-panel-width";
+export const CONTEXT_PANEL_OPEN_STORAGE_KEY = "dailify-assistant-context-panel-open";
 export const CONTEXT_PANEL_DEFAULT_WIDTH_PX = 320;
 const MIN_WIDTH_PX = 220;
 const MAX_WIDTH_PX = 640;

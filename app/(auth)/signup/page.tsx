@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AUTH_EMAIL_OTP_LENGTH, EmailOtpPinInput } from "@/components/auth/email-otp-pin-input"
@@ -11,8 +11,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { GitBranch, KeyRound, Loader2, Mail } from "lucide-react"
-
-const DEV_MAILPIT_URL = process.env.NEXT_PUBLIC_MAILPIT_URL ?? ""
 
 /**
  * Starts passwordless sign-up: creates (or re-sends for) a pending user and emails a confirmation PIN.
@@ -69,6 +67,20 @@ export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
+
+  /**
+   * Handles implicit-flow magic links and ensures already-authenticated users
+   * are redirected immediately rather than staying on the signup page.
+   */
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        router.replace("/app/workflows")
+      }
+    })
+    return () => subscription.unsubscribe()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /**
    * OAuth sign-up uses the same redirect handler as sign-in.
@@ -136,15 +148,6 @@ export default function SignUpPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Mailpit quick link (local dev) */}
-          {DEV_MAILPIT_URL ? (
-            <p className="text-center text-xs text-muted-foreground">
-              Local testing:{" "}
-              <a href={DEV_MAILPIT_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                Open Mailpit
-              </a>
-            </p>
-          ) : null}
           <form onSubmit={handleVerifyCode} className="space-y-3">
             <EmailOtpPinInput
               label="6-digit code"
@@ -253,15 +256,6 @@ export default function SignUpPage() {
               required
             />
           </div>
-          {DEV_MAILPIT_URL ? (
-            <p className="text-xs text-muted-foreground">
-              Local dev — confirmation emails go to{" "}
-              <a href={DEV_MAILPIT_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                Mailpit
-              </a>
-              .
-            </p>
-          ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <Button type="submit" className="w-full" disabled={sendLoading}>
             {sendLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}

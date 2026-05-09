@@ -28,7 +28,7 @@ const workflowFieldDraftSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Suggested default literal, or placeholders such as {{prev.text}}, {{now.iso}}, or for type json a JSON array/object template; omit when unknown",
+      "Suggested default literal, or placeholders such as {{input.text}}, {{trigger_inputs.email}}, {{now.iso}}, or for type json a JSON array/object template; omit when unknown",
     ),
 })
 
@@ -41,7 +41,7 @@ const workflowFieldDraftEnvelopeSchema = z.object({
 })
 
 const WORKFLOW_SCHEMA_BASE_SYSTEM_PROMPT = [
-  "You are a workflow schema assistant for Runnerroo.",
+  "You are a workflow schema assistant for Dailify.",
   "",
   "Produce a JSON-shaped object that lists workflow input FIELD rows for use in the app's schema editor.",
   "",
@@ -51,7 +51,7 @@ const WORKFLOW_SCHEMA_BASE_SYSTEM_PROMPT = [
   '- "type" MUST be one of: string | text | number | boolean | json — use \"json\" when the user needs nested data: objects, or arrays of objects (for example tables or docxtemplater loops {#items} … {/items} fed by `[{...},{...}]`). Pick \"text\" only when long-form content is clearly expected (paragraphs).',
   '- Only mark "required" true when omitting it would reliably break renders or executions.',
   '- "description" is optional but recommended for complex fields — keep it pragmatic.',
-  '- "value" is optional; omit it instead of hallucinating literals. When the user cites upstream data, propose useful "{{prev.*}}" or "{{input.*}}" placeholders as strings exactly as spelled.',
+  '- "value" is optional; omit it instead of hallucinating literals. When the user cites upstream data, propose useful "{{input.*}}" placeholders (the previous step\'s emitted output) or "{{trigger_inputs.*}}" (the original workflow invoke payload) as strings exactly as spelled.',
   "- Produce between 1 and 30 fields depending on clarity (stay concise when the brief is vague).",
   "- Never invent placeholder keys that contradict the flavour-specific guidance below — stay faithful to explicit user wording.",
   "- Dedupe overlapping keys mentally before returning the array — duplicate keys invalidate the downstream parser.",
@@ -69,17 +69,18 @@ function buildFlavourInstructions({ flavourId }: { flavourId: WorkflowInputSchem
         "Focus: Word templates rendered via docxtemplater.",
         "",
         "Assume each simple merge tag looks like {field_name} in the DOCX unless the prompt states otherwise — map those names to keys using snake_case.",
-        "For repeating sections, docxtemplater uses a single array on the render data (#risks ... /risks iterates rows from an array keyed `risks`). Model that as ONE field: key equals the plural name (e.g. risks), type \"json\", value from {{prev.risks}} or a JSON array literal. Each array element must be an object whose keys match the inner loop tags (e.g. description, likelihood, impact, mitigation).",
+        "For repeating sections, docxtemplater uses a single array on the render data (#risks ... /risks iterates rows from an array keyed `risks`). Model that as ONE field: key equals the plural name (e.g. risks), type \"json\", value from {{input.risks}} or a JSON array literal. Each array element must be an object whose keys match the inner loop tags (e.g. description, likelihood, impact, mitigation).",
         "Do not flatten loop rows into separate top-level string fields when a table or list is clearly described — keep them as one json array field unless the user explicitly wants scalars only.",
         "Use \"text\" for multiline blobs and \"string\" for short scalar merges.",
       ].join("\n")
 
     case "workflow_step_input":
       return [
-        "Focus: declarative typed inputs for an arbitrary Runnerroo workflow step.",
+        "Focus: declarative typed inputs for an arbitrary Dailify workflow step.",
         "",
-        "Assume values will ultimately be surfaced as \"{{input.*}}\" prompt tags downstream.",
-        "Highlight dependencies on earlier steps when hints exist (preferred {{prev.*}} defaults in \"value\").",
+        "On standard steps, the previous step's emitted output is automatically the current step's input — those values are read as \"{{input.*}}\" downstream.",
+        "Trigger (entry) steps additionally publish the workflow invoke payload, which remains accessible on every later step as \"{{trigger_inputs.*}}\".",
+        "When the user cites upstream values, prefer \"{{input.*}}\" defaults in \"value\"; reach for \"{{trigger_inputs.*}}\" only for the original invoke payload.",
         "When the user describes nested lists or tabular data, prefer a single \"json\" field whose value is an array of objects with stable keys.",
       ].join("\n")
 

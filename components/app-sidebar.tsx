@@ -108,7 +108,7 @@ const navItems: NavItem[] = [
       { id: "integrations", title: "Integrations", url: "/app/settings/integrations", icon: <GitBranch className="size-4" /> },
       { id: "usage", title: "Usage", url: "/app/settings/usage", icon: <BarChart3 className="size-4" /> },
       { id: "memories", title: "Memories", url: "/app/settings/memories", icon: <BrainIcon className="size-4" /> },
-      { id: "docs", title: "Documentation", url: "https://docs.runneroo.io", icon: <Book className="size-4" /> },
+      { id: "docs", title: "Documentation", url: "https://docs.dailify.io", icon: <Book className="size-4" /> },
       { id: "help", title: "Help & Support", url: "/app/help", icon: <HelpCircle className="size-4" /> },
     ],
   },

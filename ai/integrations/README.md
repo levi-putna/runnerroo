@@ -8,7 +8,7 @@ This folder is the **extension point** for third-party tools (email, CRM, ticket
 2. **Tool builder** — async function `(supabase, userId) => { tools, brief }` merges provider-specific `tool()` definitions into the object passed to `streamText`.
 3. **Permission modes** — see `types.ts`: `disabled`, `auto`, or `approval` per tool (mirrors user settings in the app).
 4. **Prompt appendix** — `McpIntegrationsBrief.summaryLines` becomes a short “Connected integrations” section in `buildRunnerAssistantInstructions` so the model knows what is available.
-5. **Tool UI** — each sensitive or verbose tool should register a `*-ui.tsx` in the same pattern as `ai/tools/tool-ui-registry.tsx` (today only core Runnerroo tools use that registry; integration UIs can be merged into the same map when you add them).
+5. **Tool UI** — each sensitive or verbose tool should register a `*-ui.tsx` in the same pattern as `ai/tools/tool-ui-registry.tsx` (today only core Dailify tools use that registry; integration UIs can be merged into the same map when you add them).
 
 ## Suggested implementation order
 

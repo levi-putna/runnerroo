@@ -1,13 +1,6 @@
 import type { Node } from "@xyflow/react"
 
-import {
-  type NodeInputField,
-  readInputSchemaFromNodeData,
-} from "@/lib/workflows/engine/input-schema"
-import {
-  buildResolutionContext,
-  resolveTemplate,
-} from "@/lib/workflows/engine/template"
+import { buildResolutionContext } from "@/lib/workflows/engine/template"
 
 /**
  * Discriminates routing planned after a decision or switch step evaluates its gate expressions.
@@ -28,65 +21,15 @@ export type PlanSwitchGateResult =
   | { ok: false; error: string }
 
 /**
- * Coerces a resolved template string to a runtime value for gate comparisons,
- * using the same `inputSchema` types as mapping rows (number / boolean / json).
- */
-function coerceGateBindingValue({
-  field,
-  resolvedText,
-}: {
-  field: NodeInputField
-  resolvedText: string
-}): unknown {
-  switch (field.type) {
-    case "number": {
-      const n = Number(String(resolvedText).trim())
-      return Number.isFinite(n) ? n : resolvedText
-    }
-    case "boolean": {
-      const t = String(resolvedText).trim().toLowerCase()
-      if (t === "true") return true
-      if (t === "false") return false
-      return resolvedText
-    }
-    case "json": {
-      try {
-        return JSON.parse(resolvedText) as unknown
-      } catch {
-        return resolvedText
-      }
-    }
-    default:
-      return resolvedText
-  }
-}
-
-/**
- * Builds the `input` object for gate expressions: one key per declared input-schema row
- * with a coerced runtime value after resolving template cells against the step envelope.
- */
-function buildGateInputBindings({
-  node,
-  stepInput,
-}: {
-  node: Node
-  stepInput: unknown
-}): Record<string, unknown> {
-  const data = node.data as Record<string, unknown> | undefined
-  const context = buildResolutionContext({ stepInput, stepId: node.id })
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-  const input: Record<string, unknown> = {}
-  for (const field of inputSchema) {
-    if (!field.value) continue
-    const text = resolveTemplate(field.value, context)
-    input[field.key] = coerceGateBindingValue({ field, resolvedText: text })
-  }
-  return input
-}
-
-/**
- * Evaluates a JavaScript boolean expression with a restricted scope (`input`, `prev`, `global`, `trigger`).
+ * Evaluates a JavaScript boolean expression with a restricted scope (`input`, `prev`, `global`, `trigger`, `constants`).
  * The result is coerced with `!!` so any truthy/falsey outcome maps to a branch.
+ *
+ * Bindings:
+ *  - `input`      — predecessor step's emitted output (or the trigger payload on the entry node)
+ *  - `prev`       — alias of `input`, retained for back-compat with persisted expressions
+ *  - `global`     — accumulated workflow globals
+ *  - `trigger`    — original workflow invoke payload (`{{trigger_inputs.*}}`)
+ *  - `constants`  — workflow constants map (`{{const.*}}`)
  *
  * Empty or whitespace-only expressions are treated as falsy (false branch / no match).
  */
@@ -102,8 +45,8 @@ export function evaluateWorkflowGateExpression({
   const trimmed = expression.trim()
   if (!trimmed) return false
 
-  const context = buildResolutionContext({ stepInput, stepId: node.id })
-  const input = buildGateInputBindings({ node, stepInput })
+  const role = node.type === "entry" ? "entry" : "standard"
+  const context = buildResolutionContext({ stepInput, stepId: node.id, role })
 
   try {
     const fn = new Function(
@@ -111,13 +54,15 @@ export function evaluateWorkflowGateExpression({
       "prev",
       "global",
       "trigger",
+      "constants",
       `"use strict"; return !!( ${trimmed} );`,
     )
     return fn(
-      input,
+      context.input,
       context.prev,
       context.global,
       context.trigger_inputs,
+      context["const"],
     ) as boolean
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

@@ -1,7 +1,21 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
+/**
+ * Next.js 16 request proxy (successor to `middleware.ts`): runs before route handlers on matched paths.
+ * Refreshes the Supabase session from cookies and redirects unauthenticated browser traffic to `/login`.
+ *
+ * Paths that authenticate inside their own route handlers (Bearer tokens, shared secrets) must bypass
+ * this session gate — infrastructure callers do not send browser cookies.
+ */
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Workflow cron hooks (`POST /api/cron/workflows/[id]`, legacy bulk schedule route) — see route handlers.
+  if (pathname.startsWith("/api/cron/")) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -28,8 +42,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
 
   // Redirect unauthenticated users to login
   if (

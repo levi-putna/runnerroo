@@ -133,11 +133,11 @@ function formatExtractPayloadFence({ text }: { text: string }): string {
 function buildExtractorUserMessage({
   context,
   contentExpressionTemplate,
-  resolvedInputs,
+  inboundInput,
 }: {
   context: ReturnType<typeof buildResolutionContext>
   contentExpressionTemplate: string
-  resolvedInputs: Record<string, unknown>
+  inboundInput: Record<string, unknown>
 }): string {
   const tmpl = contentExpressionTemplate.trim()
   if (tmpl !== "") {
@@ -151,7 +151,11 @@ function buildExtractorUserMessage({
     }
   }
 
-  const payloadPrettyJson = JSON.stringify(resolvedInputs, null, 2)
+  /**
+   * Fallback when no explicit content expression is set: serialise the inbound predecessor
+   * payload (`{{input.*}}`) so the extractor sees the upstream step's emitted output.
+   */
+  const payloadPrettyJson = JSON.stringify(inboundInput, null, 2)
   return [
     "Extract the declared fields from the structured payload below using the field list and rules from the system message.",
     "",
@@ -188,12 +192,10 @@ export async function executeAiExtractStep({
   const context = buildResolutionContext({ stepInput, stepId: node.id })
   const resolvedInstructions = resolveTemplate(instructionsTemplate, context)
 
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-  const resolvedInputs: Record<string, unknown> = {}
-  for (const field of inputSchema) {
-    if (!field.value) continue
-    resolvedInputs[field.key] = resolveTemplate(field.value, context)
-  }
+  const inboundInput =
+    context.input && typeof context.input === "object" && !Array.isArray(context.input)
+      ? (context.input as Record<string, unknown>)
+      : {}
 
   const extractFields = readExtractFieldRowsFromNodeData({ value: data?.extractFields })
   if (extractFields.length === 0) {
@@ -210,7 +212,7 @@ export async function executeAiExtractStep({
   const prompt = buildExtractorUserMessage({
     context,
     contentExpressionTemplate,
-    resolvedInputs,
+    inboundInput,
   })
 
   const gatewayCtx = readRunnerGatewayExecutionContextFromStepInput({ stepInput })
@@ -264,7 +266,6 @@ export async function executeAiExtractStep({
     finishReason: exeContext.finishReason,
     outputs: resolvedOutputs,
     exe: exeContext,
-    inputs: resolvedInputs,
   }
 
   if (Object.keys(resolvedGlobals).length > 0) {

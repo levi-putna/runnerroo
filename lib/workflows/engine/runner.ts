@@ -1,6 +1,9 @@
 import type { Edge, Node } from "@xyflow/react"
 import type { RunnerGatewayExecutionContext } from "@/lib/ai-gateway/runner-gateway-tracking"
-import { RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY } from "@/lib/ai-gateway/runner-gateway-tracking"
+import {
+  LEGACY_RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY,
+  RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY,
+} from "@/lib/ai-gateway/runner-gateway-tracking"
 import {
   planDecisionGate,
   planSwitchGate,
@@ -36,6 +39,11 @@ export interface TraverseWorkflowGraphParams {
   executeStep?: StepExecutorFn
   /** When set, forwards Gateway attribution (`user` + `workflow_run` tags) on every downstream envelope. */
   gatewayExecutionContext?: RunnerGatewayExecutionContext
+  /**
+   * Static key/value pairs from `workflows.workflow_constants`, merged into the entry envelope and
+   * carried on every hop as {@link WORKFLOW_EXECUTION_CONSTANTS_ENVELOPE_KEY}.
+   */
+  workflowConstants?: Record<string, string>
   /**
    * Continue a paused run from `nodeId` with the given inbound payload — skips entry resolution and
    * does not replay upstream steps.
@@ -159,7 +167,17 @@ function cloneExecutionPayload(payload: unknown): unknown {
   }
 }
 
-const RUNNER_EXECUTION_MARKER = "__runnerroo_execution" as const
+const RUNNER_EXECUTION_MARKER = "__dailify_execution" as const
+
+/** Legacy marker — still accepted when reading persisted run / approval payloads. */
+const LEGACY_RUNNER_EXECUTION_MARKER = "__runnerroo_execution" as const
+
+/** Envelope field carrying normalised workflow constants for `{{const.*}}` template resolution. */
+export const WORKFLOW_EXECUTION_CONSTANTS_ENVELOPE_KEY = "workflow_constants" as const
+
+function isRunnerExecutionEnvelope({ rec }: { rec: Record<string, unknown> }): boolean {
+  return rec[RUNNER_EXECUTION_MARKER] === true || rec[LEGACY_RUNNER_EXECUTION_MARKER] === true
+}
 
 /**
  * Reads the `globals` object from a step output when present (plain object only).
@@ -179,9 +197,25 @@ function readGlobalsMapFromStepOutput({ stepOutput }: { stepOutput: unknown }): 
 export function readGlobalsFromExecutionStepInput({ stepInput }: { stepInput: unknown }): Record<string, unknown> {
   if (typeof stepInput !== "object" || stepInput === null) return {}
   const e = stepInput as Record<string, unknown>
-  if (e[RUNNER_EXECUTION_MARKER] !== true) return {}
+  if (!isRunnerExecutionEnvelope({ rec: e })) return {}
   const g = e.globals
   if (g && typeof g === "object" && !Array.isArray(g)) return { ...(g as Record<string, unknown>) }
+  return {}
+}
+
+/**
+ * Reads author-defined workflow constants from a runner execution envelope (`workflow_constants`).
+ */
+export function readWorkflowConstantsFromExecutionStepInput({
+  stepInput,
+}: {
+  stepInput: unknown
+}): Record<string, unknown> {
+  if (typeof stepInput !== "object" || stepInput === null) return {}
+  const e = stepInput as Record<string, unknown>
+  if (!isRunnerExecutionEnvelope({ rec: e })) return {}
+  const c = e[WORKFLOW_EXECUTION_CONSTANTS_ENVELOPE_KEY]
+  if (c && typeof c === "object" && !Array.isArray(c)) return { ...(c as Record<string, unknown>) }
   return {}
 }
 
@@ -192,7 +226,7 @@ export function readGlobalsFromExecutionStepInput({ stepInput }: { stepInput: un
 export function readPredecessorNodeIdFromRunStepInput({ stepInput }: { stepInput: unknown }): string | null {
   if (typeof stepInput !== "object" || stepInput === null) return null
   const e = stepInput as Record<string, unknown>
-  if (e[RUNNER_EXECUTION_MARKER] !== true) return null
+  if (!isRunnerExecutionEnvelope({ rec: e })) return null
   const pred = e.predecessor
   if (!pred || typeof pred !== "object") return null
   const id = (pred as Record<string, unknown>).node_id
@@ -205,14 +239,20 @@ export function readPredecessorNodeIdFromRunStepInput({ stepInput }: { stepInput
 function wrapInitialInvokeTriggerPayload({
   inputs,
   gatewayExecutionContext,
+  workflowConstants,
 }: {
   inputs: Record<string, unknown>
   gatewayExecutionContext?: RunnerGatewayExecutionContext
+  workflowConstants?: Record<string, string>
 }): Record<string, unknown> {
   return {
     [RUNNER_EXECUTION_MARKER]: true,
     trigger_inputs: cloneExecutionPayload(inputs),
     globals: {},
+    [WORKFLOW_EXECUTION_CONSTANTS_ENVELOPE_KEY]: cloneExecutionPayload(workflowConstants ?? {}) as Record<
+      string,
+      unknown
+    >,
     ...(gatewayExecutionContext
       ? { [RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY]: gatewayExecutionContext }
       : {}),
@@ -235,7 +275,8 @@ export function mergeDownstreamSimulationPayload({
   if (
     typeof stepInput === "object" &&
     stepInput !== null &&
-    (stepInput as Record<string, unknown>)[RUNNER_EXECUTION_MARKER] === true
+    ((stepInput as Record<string, unknown>)[RUNNER_EXECUTION_MARKER] === true ||
+      (stepInput as Record<string, unknown>)[LEGACY_RUNNER_EXECUTION_MARKER] === true)
   ) {
     triggerEnvelope = (stepInput as Record<string, unknown>).trigger_inputs
   }
@@ -244,17 +285,22 @@ export function mergeDownstreamSimulationPayload({
   const emittedGlobals = readGlobalsMapFromStepOutput({ stepOutput })
   const mergedGlobals = { ...priorGlobals, ...emittedGlobals }
 
+  const priorWorkflowConstants = readWorkflowConstantsFromExecutionStepInput({ stepInput })
+
   const inheritedGateway =
-    typeof stepInput === "object" &&
-    stepInput !== null &&
-    RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY in stepInput
-      ? (stepInput as Record<string, unknown>)[RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY]
+    typeof stepInput === "object" && stepInput !== null
+      ? (stepInput as Record<string, unknown>)[RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY] ??
+        (stepInput as Record<string, unknown>)[LEGACY_RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY]
       : undefined
 
   return {
     [RUNNER_EXECUTION_MARKER]: true,
     trigger_inputs: cloneExecutionPayload(triggerEnvelope),
     globals: cloneExecutionPayload(mergedGlobals) as Record<string, unknown>,
+    [WORKFLOW_EXECUTION_CONSTANTS_ENVELOPE_KEY]: cloneExecutionPayload(priorWorkflowConstants) as Record<
+      string,
+      unknown
+    >,
     predecessor: {
       node_id: node.id,
       type: typeof node.type === "string" ? node.type : "unknown",
@@ -284,6 +330,7 @@ export async function* traverseWorkflowGraph({
   stepDelayMs = DEFAULT_STEP_DELAY_MS,
   executeStep,
   gatewayExecutionContext,
+  workflowConstants,
   resumeFrom,
 }: TraverseWorkflowGraphParams): AsyncGenerator<NodeResult> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
@@ -493,7 +540,7 @@ export async function* traverseWorkflowGraph({
   try {
     yield* runFrom(
       entryId,
-      wrapInitialInvokeTriggerPayload({ inputs, gatewayExecutionContext }),
+      wrapInitialInvokeTriggerPayload({ inputs, gatewayExecutionContext, workflowConstants }),
     )
   } catch {
     /** Failure already yielded from generator */

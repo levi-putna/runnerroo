@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AUTH_EMAIL_OTP_LENGTH, EmailOtpPinInput } from "@/components/auth/email-otp-pin-input"
@@ -10,25 +10,35 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { GitBranch, KeyRound, Loader2, Mail } from "lucide-react"
-
-const DEV_MAILPIT_URL = process.env.NEXT_PUBLIC_MAILPIT_URL ?? ""
+import { ArrowLeft, GitBranch, Inbox, KeyRound, Loader2, Mail } from "lucide-react"
 
 /**
- * Sends a one-time sign-in code to the given email (does not create new users).
+ * Whether the publishable Supabase URL targets the local CLI stack.
+ * Remote projects keep strict sign-in so OTP is only sent for accounts that already exist.
+ */
+function isLocalSupabaseProject(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(url.trim())
+}
+
+/**
+ * Sends a one-time sign-in email (PIN + magic link). Local stacks allow user creation; hosted
+ * keeps existing-user-only behaviour.
  */
 async function sendSignInOtp({
   email,
   emailRedirectTo,
+  shouldCreateUser,
 }: {
   email: string
   emailRedirectTo: string
+  shouldCreateUser: boolean
 }) {
   const supabase = createClient()
   return supabase.auth.signInWithOtp({
     email,
     options: {
-      shouldCreateUser: false,
+      shouldCreateUser,
       emailRedirectTo,
     },
   })
@@ -52,21 +62,49 @@ async function verifySignInOtp({
   })
 }
 
+/**
+ * Password and OAuth sign-in entry point; magic link uses a dedicated card step before OTP email flows.
+ */
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState("")
+  const [otpEmail, setOtpEmail] = useState("")
   const [otpCode, setOtpCode] = useState("")
-  const [step, setStep] = useState<"email" | "code">("email")
+  const [step, setStep] = useState<"email" | "magic-link" | "sent" | "code">("email")
   const [sendLoading, setSendLoading] = useState(false)
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [passwordEmail, setPasswordEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+
+  const [magicLinkEmail, setMagicLinkEmail] = useState("")
+  const [magicLinkError, setMagicLinkError] = useState<string | null>(null)
+
   const supabase = createClient()
+
+  /**
+   * Handles implicit-flow magic links: createBrowserClient auto-detects the
+   * #access_token hash when the page loads and fires SIGNED_IN. We redirect
+   * immediately so the user doesn't get stuck on the login page.
+   * Also covers the case where the user is already logged in and visits /login.
+   */
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        router.replace("/app/workflows")
+      }
+    })
+    return () => subscription.unsubscribe()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /**
    * OAuth sign-in redirects through the PKCE handler route.
    */
   async function handleOAuth({ provider }: { provider: "google" | "github" | "apple" }) {
+    setError(null)
     const { error: oauthErr } = await supabase.auth.signInWithOAuth({
       provider,
       options: { redirectTo: `${window.location.origin}/auth/callback` },
@@ -74,27 +112,54 @@ export default function LoginPage() {
     if (oauthErr) setError(oauthErr.message)
   }
 
-  async function handleSendCode(e: React.FormEvent) {
+  /**
+   * Sends magic link and PIN from the magic-link step, then moves to the check-your-email step.
+   */
+  async function handleMagicLinkSend({ e }: { e: React.FormEvent }) {
     e.preventDefault()
     setSendLoading(true)
-    setError(null)
+    setMagicLinkError(null)
+    const shouldCreateUser = isLocalSupabaseProject()
     const { error: otpErr } = await sendSignInOtp({
-      email,
+      email: magicLinkEmail,
       emailRedirectTo: `${window.location.origin}/auth/callback`,
+      shouldCreateUser,
     })
     if (otpErr) {
-      setError(otpErr.message)
+      setMagicLinkError(otpErr.message)
     } else {
-      setStep("code")
+      setOtpEmail(magicLinkEmail)
+      setStep("sent")
     }
     setSendLoading(false)
+  }
+
+  /**
+   * Signs in with email and password (Supabase uses the account email as the sign-in identifier).
+   */
+  async function handlePasswordSignIn({ e }: { e: React.FormEvent }) {
+    e.preventDefault()
+    setPasswordLoading(true)
+    setPasswordError(null)
+    setError(null)
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email: passwordEmail,
+      password,
+    })
+    if (signInErr) {
+      setPasswordError(signInErr.message)
+    } else {
+      router.push("/app/workflows")
+      router.refresh()
+    }
+    setPasswordLoading(false)
   }
 
   async function handleVerifyCode(e: React.FormEvent) {
     e.preventDefault()
     setVerifyLoading(true)
     setError(null)
-    const { error: verifyErr } = await verifySignInOtp({ email, token: otpCode })
+    const { error: verifyErr } = await verifySignInOtp({ email: otpEmail, token: otpCode })
     if (verifyErr) {
       setError(verifyErr.message)
     } else {
@@ -107,12 +172,132 @@ export default function LoginPage() {
   async function handleResendCode() {
     setSendLoading(true)
     setError(null)
+    const shouldCreateUser = isLocalSupabaseProject()
     const { error: otpErr } = await sendSignInOtp({
-      email,
+      email: otpEmail,
       emailRedirectTo: `${window.location.origin}/auth/callback`,
+      shouldCreateUser,
     })
     if (otpErr) setError(otpErr.message)
     setSendLoading(false)
+  }
+
+  if (step === "magic-link") {
+    return (
+      <Card>
+        <CardHeader className="text-center">
+          {/* Icon + headline — matches other focused auth steps */}
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <Mail className="h-6 w-6 text-primary" aria-hidden />
+          </div>
+          <CardTitle className="text-lg">Sign in with magic link</CardTitle>
+          <CardDescription>
+            We&apos;ll email you a sign-in link and a 6-digit code. Use either to finish signing in.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Magic link email — sends OTP and link via Supabase */}
+          <form
+            onSubmit={e => {
+              void handleMagicLinkSend({ e })
+            }}
+            className="space-y-3"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="magic-link-email">Email</Label>
+              <Input
+                id="magic-link-email"
+                type="email"
+                value={magicLinkEmail}
+                onChange={e => {
+                  setMagicLinkEmail(e.target.value)
+                  if (magicLinkError) setMagicLinkError(null)
+                }}
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+              />
+            </div>
+            {magicLinkError ? <p className="text-sm text-destructive">{magicLinkError}</p> : null}
+            <Button type="submit" className="w-full" disabled={sendLoading}>
+              {sendLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Mail className="mr-2 h-4 w-4" aria-hidden />
+              )}
+              Send magic link
+            </Button>
+          </form>
+        </CardContent>
+        <CardFooter className="flex-col gap-2 sm:flex-row sm:justify-center">
+          {/* Return to full login (social, password, etc.) */}
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setStep("email")
+              setMagicLinkError(null)
+            }}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+            All sign-in options
+          </Button>
+        </CardFooter>
+      </Card>
+    )
+  }
+
+  if (step === "sent") {
+    return (
+      <Card>
+        <CardHeader className="text-center">
+          {/* Icon + headline */}
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <Inbox className="h-6 w-6 text-primary" aria-hidden />
+          </div>
+          <CardTitle>Check your email</CardTitle>
+          <CardDescription>
+            We&apos;ve sent a sign-in link and a 6-digit code to <strong>{otpEmail}</strong>. Use either to finish signing in.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Deliverability hint */}
+          <p className="text-center text-xs text-muted-foreground">
+            If nothing arrives after a minute, check spam or confirm this email already has an account (sign up first if you&apos;re new).
+          </p>
+          {/* Continue to PIN entry or resend */}
+          <Button type="button" className="w-full" onClick={() => setStep("code")}>
+            <KeyRound className="mr-2 h-4 w-4" aria-hidden />
+            Enter my code
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={sendLoading}
+            onClick={() => void handleResendCode()}
+          >
+            {sendLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Resend email
+          </Button>
+        </CardContent>
+        <CardFooter className="justify-center">
+          {/* Return to email step */}
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setStep("email")
+              setOtpCode("")
+              setError(null)
+            }}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+            Back
+          </Button>
+        </CardFooter>
+      </Card>
+    )
   }
 
   if (step === "code") {
@@ -124,19 +309,11 @@ export default function LoginPage() {
           </div>
           <CardTitle>Enter your code</CardTitle>
           <CardDescription>
-            We emailed a sign-in PIN to <strong>{email}</strong>. Enter it below to finish signing in.
+            Enter the 6-digit code from your email (same message as the magic link).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Mailpit quick link (local dev) */}
-          {DEV_MAILPIT_URL ? (
-            <p className="text-center text-xs text-muted-foreground">
-              Local testing:{" "}
-              <a href={DEV_MAILPIT_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                Open Mailpit
-              </a>
-            </p>
-          ) : null}
+          {/* OTP entry */}
           <form onSubmit={handleVerifyCode} className="space-y-3">
             <EmailOtpPinInput
               label="6-digit code"
@@ -161,8 +338,20 @@ export default function LoginPage() {
             Resend code
           </Button>
         </CardContent>
-        <CardFooter className="justify-center">
+        <CardFooter className="flex-col gap-2 sm:flex-row sm:justify-center">
           <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setStep("sent")
+              setError(null)
+            }}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+            Back
+          </Button>
+          <Button
+            type="button"
             variant="ghost"
             onClick={() => {
               setStep("email")
@@ -181,9 +370,13 @@ export default function LoginPage() {
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">Welcome back</CardTitle>
-        <CardDescription>Sign in with a one-time email code or a connected account</CardDescription>
+        <CardDescription>
+          Sign in with a social account, magic link, or your email address and password
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
         {/* Social auth */}
         <div className="grid grid-cols-3 gap-2">
           <Button variant="outline" onClick={() => handleOAuth({ provider: "google" })} type="button">
@@ -219,41 +412,75 @@ export default function LoginPage() {
           </Button>
         </div>
 
+        {/* Magic link — full width under OAuth; dedicated card step for email entry */}
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => {
+            setMagicLinkEmail(otpEmail)
+            setMagicLinkError(null)
+            setStep("magic-link")
+          }}
+        >
+          <Mail className="mr-2 h-4 w-4" aria-hidden />
+          Magic link
+        </Button>
+
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
             <Separator />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">or email code</span>
+            <span className="bg-card px-2 text-muted-foreground">or email and password</span>
           </div>
         </div>
 
-        {/* Email PIN step */}
-        <form onSubmit={handleSendCode} className="space-y-3">
+        {/* Email + password (Supabase uses the account email as the sign-in identifier) */}
+        <form
+          onSubmit={e => {
+            void handlePasswordSignIn({ e })
+          }}
+          className="space-y-3"
+        >
           <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="login-email">Email</Label>
             <Input
-              id="email"
+              id="login-email"
               type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
+              name="email"
+              value={passwordEmail}
+              onChange={e => {
+                setPasswordEmail(e.target.value)
+                if (passwordError) setPasswordError(null)
+                if (error) setError(null)
+              }}
               placeholder="you@example.com"
               required
+              autoComplete="email"
             />
           </div>
-          {DEV_MAILPIT_URL ? (
-            <p className="text-xs text-muted-foreground">
-              Local dev — auth emails arrive in{" "}
-              <a href={DEV_MAILPIT_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                Mailpit
-              </a>
-              .
-            </p>
-          ) : null}
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <Button type="submit" className="w-full" disabled={sendLoading}>
-            {sendLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
-            Send sign-in PIN
+          <div className="space-y-1.5">
+            <Label htmlFor="login-password">Password</Label>
+            <Input
+              id="login-password"
+              type="password"
+              name="password"
+              value={password}
+              onChange={e => {
+                setPassword(e.target.value)
+                if (passwordError) setPasswordError(null)
+                if (error) setError(null)
+              }}
+              placeholder="••••••••"
+              required
+              autoComplete="current-password"
+            />
+          </div>
+          {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
+          <Button type="submit" className="w-full" disabled={passwordLoading}>
+            {passwordLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
+            Sign in with password
           </Button>
         </form>
       </CardContent>

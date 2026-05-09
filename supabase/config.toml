@@ -2,7 +2,7 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "runnerroo"
+project_id = "dailify"
 
 [api]
 enabled = true
@@ -89,19 +89,20 @@ port = 54423
 api_url = "http://127.0.0.1:54421"
 # OpenAI API Key to use for Supabase AI in the Supabase Studio.
 openai_api_key = "env(OPENAI_API_KEY)"
+# Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
+# are monitored, and you can view the emails that would have been sent from the web interface.
 
-# Email testing server (Mailpit). Auth emails are captured here for local testing.
-# Runnerroo uses 54424 so it does not clash with another local stack on the default 54324 (e.g. strata-console).
-# Set NEXT_PUBLIC_MAILPIT_URL in .env.local to match (http://127.0.0.1:54424).
+# Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
+# are monitored, and you can view the emails that would have been sent from the web interface.
 [inbucket]
 enabled = true
 # Port to use for the email testing server web interface.
-port = 54424
+port = 54324
 # Uncomment to expose additional ports for testing user applications that send emails.
-# smtp_port = 54325
-# pop3_port = 54326
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+smtp_port = 54325
+pop3_port = 54326
+admin_email = "admin@email.com"
+sender_name = "Admin"
 
 [storage]
 enabled = true
@@ -147,13 +148,16 @@ max_indexes = 5
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
-# in emails. Match NEXT_PUBLIC_SITE_URL (localhost) so magic links and OAuth redirects match the app.
-site_url = "http://localhost:3000"
+# in emails. Match NEXT_PUBLIC_SITE_URL so magic links and OAuth redirects match the app.
+site_url = "http://dailify.local"
 # URLs auth may redirect to after sign-in (must cover emailRedirectTo / OAuth redirectTo, including wildcards).
 additional_redirect_urls = [
+  "http://dailify.local/**",
+  "http://dailify.local:3000/**",
+  "http://www.dailify.local/**",
+  "http://www.dailify.local:3000/**",
   "http://localhost:3000/**",
   "http://127.0.0.1:3000/**",
-  "https://127.0.0.1:3000",
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
@@ -207,7 +211,7 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-# Local dev: keep true so confirmation and magic-link messages appear in Mailpit (matches signup copy).
+# Local dev: keep true so confirmation and magic-link messages are delivered to your local mail sink.
 enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
@@ -228,25 +232,68 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Email templates: include {{ .Token }} so users can complete sign-in / sign-up with a PIN in the app.
+# Email templates: paths are relative to the project root (same folder as the supabase/ directory).
+# Auth flows: include {{ .Token }} for the PIN where applicable and {{ .ConfirmationURL }} for links.
+# Security notifications reference {{ .SiteURL }}, {{ .Email }}, and flow-specific placeholders (see Supabase docs).
 [auth.email.template.magic_link]
-subject = "Your Runneroo sign-in code"
+subject = "Your Daulufy.ai sign-in code"
 content_path = "./supabase/templates/magic_link.html"
 
 [auth.email.template.confirmation]
-subject = "Confirm your Runneroo email"
+subject = "Confirm your Daulufy.ai email"
 content_path = "./supabase/templates/confirmation.html"
 
-# Uncomment to customise invite template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
+[auth.email.template.invite]
+subject = "You are invited to Daulufy.ai"
+content_path = "./supabase/templates/invite.html"
 
-# Uncomment to customize notification email template
-# [auth.email.notification.password_changed]
-# enabled = true
-# subject = "Your password has been changed"
-# content_path = "./templates/password_changed_notification.html"
+[auth.email.template.recovery]
+subject = "Reset your Daulufy.ai password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your Daulufy.ai email change"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "Sensitive action verification for Daulufy.ai"
+content_path = "./supabase/templates/reauthentication.html"
+
+# Security notifications only send when enabled in Dashboard (hosted) or when enabled below (local/tests).
+[auth.email.notification.password_changed]
+enabled = false
+subject = "Your Daulufy.ai password was updated"
+content_path = "./supabase/templates/password_changed_notification.html"
+
+[auth.email.notification.email_changed]
+enabled = false
+subject = "Your Daulufy.ai login email changed"
+content_path = "./supabase/templates/email_changed_notification.html"
+
+[auth.email.notification.phone_changed]
+enabled = false
+subject = "Your Daulufy.ai phone number changed"
+content_path = "./supabase/templates/phone_changed_notification.html"
+
+[auth.email.notification.mfa_factor_enrolled]
+enabled = false
+subject = "MFA safeguard added for Daulufy.ai"
+content_path = "./supabase/templates/mfa_factor_enrolled_notification.html"
+
+[auth.email.notification.mfa_factor_unenrolled]
+enabled = false
+subject = "MFA method removed from Daulufy.ai"
+content_path = "./supabase/templates/mfa_factor_unenrolled_notification.html"
+
+[auth.email.notification.identity_linked]
+enabled = false
+subject = "Linked identity notification for Daulufy.ai"
+content_path = "./supabase/templates/identity_linked_notification.html"
+
+[auth.email.notification.identity_unlinked]
+enabled = false
+subject = "Disconnected identity notification for Daulufy.ai"
+content_path = "./supabase/templates/identity_unlinked_notification.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

@@ -1,0 +1,87 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en-AU">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <link rel="preload" as="image" href="{{ .SiteURL }}/logo/logo.png" />
+    <link rel="preload" as="image" href="{{ .SiteURL }}/logo/full-logo.png" />
+    <title>Phone number updated · Daulufy.ai</title>
+    <style type="text/css">
+      @media (max-width: 600px) {
+        .mobile-px-2 {
+          padding-right: 0.5rem !important;
+          padding-left: 0.5rem !important;
+        }
+        .mobile-px-6 {
+          padding-right: 1.5rem !important;
+          padding-left: 1.5rem !important;
+        }
+        .mobile-py-10 {
+          padding-top: 2.25rem !important;
+          padding-bottom: 2.25rem !important;
+        }
+      }
+      @font-face {
+        font-family: 'Inter';
+        font-weight: 400;
+        font-display: swap;
+        mso-font-alt: Arial;
+        src:
+          url(https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2) format('woff2'),
+          url(https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfMZg.ttf) format('truetype');
+      }
+      @font-face {
+        font-family: 'Inter';
+        font-weight: 600;
+        font-display: swap;
+        mso-font-alt: Arial;
+        src: url(https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuGKYMZg.ttf) format('truetype');
+      }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f4f5;">
+    <div style="display:none!important;visibility:hidden;font-size:1px;opacity:0;overflow:hidden;mso-hide:all;" aria-hidden="true">
+      Notice: registered phone updated for account {{ .Email }}.
+    </div>
+
+    <table align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0;padding:32px 0;background:#f4f4f5;">
+      <tbody>
+        <tr>
+          <td align="center" style="font-family:Inter,system-ui,Arial,sans-serif;">
+            <table width="100%" cellspacing="0" cellpadding="0" role="presentation" style="max-width:640px;margin:0 auto;">
+              <tr>
+                <td style="padding:0 16px;">
+                  <table width="100%" cellspacing="0" cellpadding="0" role="presentation" style="border:1px solid #e4e4e7;border-radius:12px;background:#fff;">
+                    <tr>
+                      <td class="mobile-px-2" style="padding:20px 24px;">
+                        <table width="100%"><tr><td><img src="{{ .SiteURL }}/logo/logo.png" width="28" alt="" /></td><td align="right" style="font-size:13px;color:#71717a;font-weight:500;">Daulufy.ai</td></tr></table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td class="mobile-px-6 mobile-py-10" style="padding:40px;text-align:center;background:#fafafa;border-top:1px solid #f4f4f5;">
+                        <img src="{{ .SiteURL }}/logo/full-logo.png" width="180" alt="" style="display:block;margin:0 auto 20px;max-width:100%;width:180px;" />
+                        <h1 style="margin:0 0 14px;color:#09090b;font-size:22px;font-weight:600;">Phone number replaced</h1>
+                        <p style="margin:0 auto;color:#3f3f46;font-size:15px;line-height:1.6;max-width:440px;text-align:center;">
+                          Account <strong style="font-weight:600;">{{ .Email }}</strong> now expects SMS at a new handset line.<br /><br />Previously:
+                          {{ .OldPhone }}<br />Now:<br /><strong>{{ .Phone }}</strong>
+                        </p>
+                        <table align="center" role="presentation" cellspacing="0" cellpadding="0" style="margin:22px auto 0;"><tr><td bgcolor="#09090b" style="border-radius:8px;"><a href="{{ .SiteURL }}" target="_blank" style="display:inline-block;padding:14px 28px;font-size:14px;font-weight:600;color:#fafafa;text-decoration:none;">Visit Daulufy.ai</a></td></tr></table>
+                        <p style="margin:22px auto 0;color:#71717a;font-size:13px;max-width:420px;">If you lost access to MFA devices, escalate through your administrator right away.</p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td class="mobile-px-2" style="padding:22px 24px 26px;font-size:12px;color:#71717a;"><p style="margin:0 0 6px;color:#a1a1aa;font-size:11px;">Security alert · &#169; Daulufy.ai</p><a href="{{ .SiteURL }}" style="color:#3f3f46;">{{ .SiteURL }}</a></td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

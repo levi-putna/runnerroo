@@ -94,7 +94,7 @@ export function ContextMemoryDetailDialog({
         <DialogHeader>
           <DialogTitle>Saved memory</DialogTitle>
           <DialogDescription>
-            Review the memory Runneroo surfaced in this sidebar preview.
+            Review the memory Dailify surfaced in this sidebar preview.
           </DialogDescription>
         </DialogHeader>
 

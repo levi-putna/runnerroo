@@ -75,23 +75,29 @@ function formatSummarizePayloadFence({ text }: { text: string }): string {
 function buildSummarizerUserMessage({
   context,
   contentExpressionTemplate,
-  resolvedInputs,
+  inboundInput,
 }: {
   context: ReturnType<typeof buildResolutionContext>
   contentExpressionTemplate: string
-  resolvedInputs: Record<string, unknown>
+  inboundInput: Record<string, unknown>
 }): string {
   const tmpl = contentExpressionTemplate.trim()
   let sourceBlock: string
+
+  /**
+   * Fallback when no explicit content expression is set: serialise the inbound predecessor
+   * payload (`{{input.*}}`) as JSON so the summariser sees the upstream step's emitted output.
+   */
+  const inboundFallbackJson = JSON.stringify(inboundInput, null, 2)
 
   if (tmpl !== "") {
     const resolved = resolveTemplate(tmpl, context).trim()
     sourceBlock =
       resolved !== ""
         ? formatSummarizePayloadFence({ text: resolved })
-        : formatSummarizePayloadFence({ text: JSON.stringify(resolvedInputs) })
+        : formatSummarizePayloadFence({ text: inboundFallbackJson })
   } else {
-    sourceBlock = formatSummarizePayloadFence({ text: JSON.stringify(resolvedInputs, null, 2) })
+    sourceBlock = formatSummarizePayloadFence({ text: inboundFallbackJson })
   }
 
   return ["Summarise the following content using the rules from the system message.", "", sourceBlock].join("\n")
@@ -124,18 +130,16 @@ export async function executeAiSummarizeStep({
   const context = buildResolutionContext({ stepInput, stepId: node.id })
   const resolvedInstructions = resolveTemplate(instructionsTemplate, context)
 
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-  const resolvedInputs: Record<string, unknown> = {}
-  for (const field of inputSchema) {
-    if (!field.value) continue
-    resolvedInputs[field.key] = resolveTemplate(field.value, context)
-  }
+  const inboundInput =
+    context.input && typeof context.input === "object" && !Array.isArray(context.input)
+      ? (context.input as Record<string, unknown>)
+      : {}
 
   const system = buildSummarizerSystemPrompt({ optionalAuthorGuidance: resolvedInstructions })
   const prompt = buildSummarizerUserMessage({
     context,
     contentExpressionTemplate,
-    resolvedInputs,
+    inboundInput,
   })
 
   const gatewayCtx = readRunnerGatewayExecutionContextFromStepInput({ stepInput })
@@ -195,7 +199,6 @@ export async function executeAiSummarizeStep({
     finishReason: result.finishReason,
     outputs: resolvedOutputs,
     exe: exeContext,
-    inputs: resolvedInputs,
   }
 
   if (Object.keys(resolvedGlobals).length > 0) {

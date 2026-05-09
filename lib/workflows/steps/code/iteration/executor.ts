@@ -1,5 +1,9 @@
 /**
  * Iteration step — starting number plus configurable increment.
+ *
+ * The starting number is supplied by an `iterationStartingNumberExpression` template (defaults
+ * to `{{input.starting_number}}` so the step automatically reads the upstream payload). The
+ * increment defaults to `1` and is resolved as a tagged template against the same context.
  */
 
 import type { Node } from "@xyflow/react"
@@ -8,11 +12,13 @@ import { readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema
 import {
   buildResolutionContext,
   parseFiniteNumberFromResolved,
-  resolveDeclaredInputsMap,
   resolveGlobalsSchema,
   resolveOutputSchemaFields,
   resolveTemplate,
 } from "@/lib/workflows/engine/template"
+
+export const DEFAULT_ITERATION_STARTING_NUMBER_EXPRESSION = "{{input.starting_number}}"
+export const DEFAULT_ITERATION_INCREMENT_EXPRESSION = "1"
 
 export function executeIterationStep({
   node,
@@ -24,23 +30,24 @@ export function executeIterationStep({
   const data = node.data as Record<string, unknown> | undefined
   const label = typeof data?.label === "string" ? data.label : node.id
   const context = buildResolutionContext({ stepInput, stepId: node.id })
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-  const resolvedInputs = resolveDeclaredInputsMap({ inputSchema, context })
 
-  const rawStart = resolvedInputs.starting_number
-  if (rawStart === undefined) {
-    throw new Error(
-      'Add an input schema row with key "starting_number" and a mapped value before running this step.',
-    )
-  }
+  const startingNumberTemplateRaw =
+    typeof data?.iterationStartingNumberExpression === "string"
+      ? data.iterationStartingNumberExpression
+      : DEFAULT_ITERATION_STARTING_NUMBER_EXPRESSION
+  const startingNumberTemplate =
+    startingNumberTemplateRaw.trim() === ""
+      ? DEFAULT_ITERATION_STARTING_NUMBER_EXPRESSION
+      : startingNumberTemplateRaw
+
   const startNum = parseFiniteNumberFromResolved({
-    text: rawStart,
-    fieldLabel: 'Input "starting_number"',
+    text: resolveTemplate(startingNumberTemplate, context),
+    fieldLabel: 'Execution "Starting number"',
   })
 
   const incrementTemplateRaw =
-    typeof data?.iterationIncrement === "string" ? data.iterationIncrement : "1"
-  const incrementTemplate = incrementTemplateRaw.trim() === "" ? "1" : incrementTemplateRaw.trim()
+    typeof data?.iterationIncrement === "string" ? data.iterationIncrement : DEFAULT_ITERATION_INCREMENT_EXPRESSION
+  const incrementTemplate = incrementTemplateRaw.trim() === "" ? DEFAULT_ITERATION_INCREMENT_EXPRESSION : incrementTemplateRaw.trim()
   const incrementResolvedStr = resolveTemplate(incrementTemplate, context)
   let increment = Number(incrementResolvedStr.trim())
   if (!Number.isFinite(increment)) {
@@ -49,7 +56,7 @@ export function executeIterationStep({
 
   const nextNumber = startNum + increment
 
-  const exeContext: Record<string, unknown> = { number: nextNumber }
+  const exeContext: Record<string, unknown> = { number: nextNumber, starting_number: startNum, increment }
   const outputContext = { ...context, exe: exeContext }
   const outputSchema = readInputSchemaFromNodeData({ value: data?.outputSchema })
   const resolvedOutputs = resolveOutputSchemaFields({ outputSchema, context: outputContext })
@@ -65,7 +72,6 @@ export function executeIterationStep({
     ...resolvedOutputs,
     outputs: resolvedOutputs,
     exe: exeContext,
-    inputs: resolvedInputs,
   }
 
   if (Object.keys(resolvedGlobals).length > 0) {

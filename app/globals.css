@@ -351,10 +351,10 @@
 /* ─── React Flow ─────────────────────────────────────────────────── */
 
 /*
- * Runner Roo canvas — theme tokens per React Flow theming guide:
+ * Dailify canvas — theme tokens per React Flow theming guide:
  * https://reactflow.dev/learn/customization/theming
  */
-.runnerroo-workflow-flow.react-flow {
+.dailify-workflow-flow.react-flow {
   --xy-edge-stroke-default: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
   --xy-edge-stroke-width-default: 1.25px;
   --xy-edge-stroke-selected-default: color-mix(in oklch, var(--foreground) 80%, transparent);
@@ -423,7 +423,7 @@
  * Handles — React Flow positions each side with translate(-50%/50%); a bare scale-on-hover
  * replaces that transform (see xyflow base.css) and reads as scaling from the wrong corner.
  */
-.runnerroo-workflow-flow .react-flow__handle {
+.dailify-workflow-flow .react-flow__handle {
   cursor: crosshair;
   transform-origin: center;
   transition:
@@ -432,24 +432,24 @@
     box-shadow 0.14s ease;
 }
 
-.runnerroo-workflow-flow .react-flow__handle.react-flow__handle-top:hover {
+.dailify-workflow-flow .react-flow__handle.react-flow__handle-top:hover {
   transform: translate(-50%, -50%) scale(1.22) !important;
 }
 
-.runnerroo-workflow-flow .react-flow__handle.react-flow__handle-bottom:hover {
+.dailify-workflow-flow .react-flow__handle.react-flow__handle-bottom:hover {
   transform: translate(-50%, 50%) scale(1.22) !important;
 }
 
-.runnerroo-workflow-flow .react-flow__handle.react-flow__handle-left:hover {
+.dailify-workflow-flow .react-flow__handle.react-flow__handle-left:hover {
   transform: translate(-50%, -50%) scale(1.22) !important;
 }
 
-.runnerroo-workflow-flow .react-flow__handle.react-flow__handle-right:hover {
+.dailify-workflow-flow .react-flow__handle.react-flow__handle-right:hover {
   transform: translate(50%, -50%) scale(1.22) !important;
 }
 
 /* Switch exits: inline translateY(-50%) replaces the stock right-handle transform — keep it on hover. */
-.runnerroo-workflow-flow .react-flow__handle.runnerroo-handle-switch-exit:hover {
+.dailify-workflow-flow .react-flow__handle.dailify-handle-switch-exit:hover {
   transform: translateY(-50%) scale(1.22) !important;
 }
 

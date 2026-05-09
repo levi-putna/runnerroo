@@ -21,6 +21,9 @@ export type WorkflowAssistantInvokeToolsBrief = {
   summaryLines: string[];
 };
 
+/** Client-completed tool name that asks the user to approve/decline one pending checkpoint. */
+const WORKFLOW_APPROVAL_REQUEST_TOOL_NAME = "workflowApprovalRequest" as const;
+
 /**
  * Builds a Zod object schema from persisted entry-node input fields for `tool({ inputSchema })`.
  */
@@ -64,11 +67,19 @@ function buildWorkflowInvokeToolDescription({
   const headline = `Run the user's workflow "${descriptor.name}" (id ${descriptor.workflowId}).`;
   const tail =
     descriptor.description?.trim() ??
-    "Provide parameters that match the invoke entry input schema. Each result includes __assistantWorkflowName (the workflow title). Other fields are the published End step output. When approvals are required, the chat card can approve/reject inline and may loop through multiple approval steps before completion.";
+    "Provide parameters that match the invoke entry input schema. Each result includes __assistantWorkflowName (the workflow title). Other fields are the published End step output. When approvals are required this tool returns `awaiting_approval: true`; immediately call `workflowApprovalRequest` using the returned approval fields and wait for the user's decision output before proceeding.";
   return `${headline} ${tail}`;
 }
 
 type EndStepOutputRow = { node_id: string; output: unknown };
+
+type PendingApprovalLookupRow = {
+  id: string;
+  node_id: string;
+  title: string | null;
+  description: string | null;
+  reviewer_instructions: string | null;
+} | null;
 
 /**
  * Merges the display name last so it wins if an End payload ever reused the same key.
@@ -121,6 +132,7 @@ function buildWorkflowAssistantInvokeToolOutput({
         approval_title: pendingApproval?.title ?? "Approval required",
         approval_description: pendingApproval?.description ?? null,
         approval_reviewer_instructions: pendingApproval?.reviewer_instructions ?? null,
+        next_tool_call: WORKFLOW_APPROVAL_REQUEST_TOOL_NAME,
         error: "Workflow paused — review and approve in chat (or Inbox).",
       },
     });
@@ -174,6 +186,31 @@ function buildWorkflowAssistantInvokeToolOutput({
 }
 
 /**
+ * Fetches the most recent pending approval row for a run so tool outputs can include reviewer copy.
+ */
+async function fetchPendingApprovalForRun({
+  supabase,
+  runId,
+  userId,
+}: {
+  supabase: SupabaseClient;
+  runId: string;
+  userId: string;
+}): Promise<PendingApprovalLookupRow> {
+  const approvalLookup = await supabase
+    .from("workflow_approvals")
+    .select("id, node_id, title, description, reviewer_instructions")
+    .eq("workflow_run_id", runId)
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (approvalLookup.error || !approvalLookup.data?.id) return null;
+  return approvalLookup.data;
+}
+
+/**
  * Executes a single assistant workflow tool call with ownership checks and persisted attribution.
  */
 async function runWorkflowAssistantInvokeExecution({
@@ -189,7 +226,7 @@ async function runWorkflowAssistantInvokeExecution({
 }) {
   const { data: workflow, error } = await supabase
     .from("workflows")
-    .select("id, name, nodes, edges, trigger_type, run_count, user_id")
+    .select("id, name, nodes, edges, trigger_type, run_count, user_id, workflow_constants")
     .eq("id", descriptor.workflowId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -209,6 +246,7 @@ async function runWorkflowAssistantInvokeExecution({
     workflowId: descriptor.workflowId,
     userId,
     inputs,
+    runTrigger: "manual",
     workflow,
     gatewayUserAndWorkflow: {
       supabaseUserId: userId,
@@ -240,22 +278,18 @@ async function runWorkflowAssistantInvokeExecution({
     reviewer_instructions: string | null;
   } | null = null;
   if (persisted.status === "waiting_approval") {
-    const approvalLookup = await supabase
-      .from("workflow_approvals")
-      .select("id, node_id, title, description, reviewer_instructions")
-      .eq("workflow_run_id", persisted.runId)
-      .eq("user_id", userId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!approvalLookup.error && approvalLookup.data?.id) {
+    const approvalLookup = await fetchPendingApprovalForRun({
+      supabase,
+      runId: persisted.runId,
+      userId,
+    });
+    if (approvalLookup?.id) {
       pendingApproval = {
-        id: approvalLookup.data.id,
-        node_id: approvalLookup.data.node_id,
-        title: approvalLookup.data.title,
-        description: approvalLookup.data.description,
-        reviewer_instructions: approvalLookup.data.reviewer_instructions,
+        id: approvalLookup.id,
+        node_id: approvalLookup.node_id,
+        title: approvalLookup.title,
+        description: approvalLookup.description,
+        reviewer_instructions: approvalLookup.reviewer_instructions,
       };
     }
   }
@@ -312,6 +346,25 @@ export async function createWorkflowAssistantInvokeTools({
       }`,
     );
   }
+
+  tools[WORKFLOW_APPROVAL_REQUEST_TOOL_NAME] = tool({
+    description:
+      "Client-completed checkpoint prompt for one pending workflow approval. Call this immediately after a workflow tool returns `awaiting_approval: true`. The user chooses approve or decline in the chat UI, and the tool output will contain either the next approval checkpoint or the final workflow result envelope.",
+    inputSchema: z.object({
+      approval_id: z.string().describe("Pending workflow approval id."),
+      run_id: z.string().describe("Workflow run id currently paused on this approval."),
+      approval_title: z.string().nullable().optional().describe("Short approval heading."),
+      approval_description: z.string().nullable().optional().describe("Optional approval summary."),
+      approval_reviewer_instructions: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Expanded reviewer guidance shown to the user."),
+    }),
+  });
+  summaryLines.push(
+    `- \`${WORKFLOW_APPROVAL_REQUEST_TOOL_NAME}\` — Present one pending approval to the user in chat and collect approve/decline.`,
+  );
 
   return {
     tools,

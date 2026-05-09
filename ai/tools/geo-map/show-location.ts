@@ -47,7 +47,7 @@ export const showLocation = tool({
       const res = await fetch(url.toString(), {
         headers: {
           // Nominatim requires a User-Agent identifying the application.
-          "User-Agent": "Runnerroo/1.0 (+https://www.openstreetmap.org/copyright)",
+          "User-Agent": "Dailify/1.0 (+https://www.openstreetmap.org/copyright)",
         },
       });
 

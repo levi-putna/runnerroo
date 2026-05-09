@@ -5,7 +5,6 @@ import { GitBranch, Plus, Trash2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -18,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { FunctionInput } from "@/components/workflow/function-input"
+import { PromptTagFieldSelect } from "@/components/workflow/prompt-tag-field-select"
 import { mergePromptTagDefinitions, type PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 import {
   type GateGroup,
@@ -26,118 +26,6 @@ import {
   GATE_OPERATOR_META,
   createEmptyGateRule,
 } from "@/lib/workflows/engine/gate-rule"
-
-// ─── Tag-aware field selector ─────────────────────────────────────────────────
-
-/** Groups upstream tags by namespace prefix for the Select dropdown. */
-function groupTagsByNamespace(tags: PromptTagDefinition[]): {
-  label: string
-  tags: PromptTagDefinition[]
-}[] {
-  const groups: Record<string, PromptTagDefinition[]> = {}
-  const ORDER = ["input", "prev", "global", "trigger", "now"]
-
-  for (const tag of tags) {
-    const ns = tag.id.split(".")[0] ?? "other"
-    if (!groups[ns]) groups[ns] = []
-    groups[ns]?.push(tag)
-  }
-
-  const nsLabels: Record<string, string> = {
-    input: "Step inputs",
-    prev: "Previous step",
-    global: "Workflow globals",
-    trigger: "Trigger payload",
-    now: "Date & time",
-  }
-
-  const result: { label: string; tags: PromptTagDefinition[] }[] = []
-  for (const ns of ORDER) {
-    const t = groups[ns]
-    if (t && t.length > 0) {
-      result.push({ label: nsLabels[ns] ?? ns, tags: t })
-    }
-  }
-  for (const [ns, t] of Object.entries(groups)) {
-    if (!ORDER.includes(ns) && t.length > 0) {
-      result.push({ label: nsLabels[ns] ?? ns, tags: t })
-    }
-  }
-  return result
-}
-
-interface FieldSelectProps {
-  value: string
-  onChange: ({ value }: { value: string }) => void
-  tags: PromptTagDefinition[]
-  ruleId: string
-}
-
-/**
- * Tag-aware field picker for a gate rule LHS.
- * Always renders as a Select dropdown; when no tags are available an explanatory
- * empty-state item is shown inside the menu instead of falling back to a text input.
- */
-function FieldSelect({ value, onChange, tags, ruleId }: FieldSelectProps) {
-  const grouped = React.useMemo(() => groupTagsByNamespace(tags), [tags])
-  const inputId = `gate-field-${ruleId}`
-  const selectedTag = tags.find((t) => t.id === value)
-  const isKnown = selectedTag != null
-
-  return (
-    <Select
-      value={isKnown ? value : (value ? "__custom__" : "")}
-      onValueChange={(v) => {
-        if (v !== "__custom__") onChange({ value: v })
-      }}
-    >
-      <SelectTrigger
-        id={inputId}
-        className="h-8 min-w-0 w-full text-xs truncate"
-      >
-        <SelectValue placeholder="Select a field…">
-          {value ? (
-            selectedTag ? (
-              <span className="text-xs truncate">{selectedTag.label}</span>
-            ) : (
-              <span className="font-mono text-xs text-[var(--purple)] truncate">{value}</span>
-            )
-          ) : (
-            <span className="text-muted-foreground text-xs font-sans">Select a field…</span>
-          )}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent align="start" alignItemWithTrigger={false}>
-        {tags.length === 0 ? (
-          <div className="px-3 py-4 text-center">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              No fields available. Define inputs on the{" "}
-              <span className="font-medium text-foreground">Input</span> tab or connect an
-              upstream step to populate this list.
-            </p>
-          </div>
-        ) : (
-          grouped.map((group, gi) => (
-            <React.Fragment key={group.label}>
-              {gi > 0 ? <SelectSeparator /> : null}
-              <SelectGroup>
-                <SelectLabel>{group.label}</SelectLabel>
-                {group.tags.map((tag) => (
-                  <SelectItem key={tag.id} value={tag.id}>
-                    <span className="font-mono text-[11px] text-[var(--purple)]">
-                      {tag.id}
-                    </span>
-                    <span className="ml-2 text-xs text-muted-foreground">{tag.label}</span>
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </React.Fragment>
-          ))
-        )}
-      </SelectContent>
-    </Select>
-  )
-}
 
 // ─── Operator selector ────────────────────────────────────────────────────────
 
@@ -241,8 +129,8 @@ interface GateRuleRowProps {
 }
 
 /**
- * One condition row: field path → operator → value (optional) → delete.
- * A connector badge ("AND" / "OR") is shown between rows to communicate group logic.
+ * One condition row — bordered list row aligned with {@link WorkflowEditableListRow} styling.
+ * A connector badge ("AND" / "OR") appears above rows after the first.
  */
 function GateRuleRow({
   rule,
@@ -259,12 +147,15 @@ function GateRuleRow({
   const needsValue = meta?.needsValue ?? true
   const mergedTags = React.useMemo(() => mergePromptTagDefinitions({ contextual: upstreamTags }), [upstreamTags])
 
+  const labelClass =
+    "text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+
   return (
     <div className="space-y-2">
-      {/* AND / OR connector shown between rules */}
+      {/* Join label between stacked condition rows — rhythm matches schema list spacing */}
       {index > 0 ? (
-        <div className="flex items-center gap-2 pl-1">
-          <div className="h-px flex-1 bg-border/60" />
+        <div className="flex items-center gap-2 px-1 pt-1">
+          <div className="h-px flex-1 bg-border/70" />
           <span
             className={cn(
               "rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest",
@@ -275,30 +166,33 @@ function GateRuleRow({
           >
             {logic === "and" ? "AND" : "OR"}
           </span>
-          <div className="h-px flex-1 bg-border/60" />
+          <div className="h-px flex-1 bg-border/70" />
         </div>
       ) : null}
 
-      {/* Rule card */}
-      <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/10 p-2">
-        {/* Top row: field | operator | delete */}
-        <div className="flex items-end gap-1.5">
-          {/* Field */}
-          <div className="min-w-0 flex-1 space-y-1">
-            <Label htmlFor={`gate-field-${rule.id}`} className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+      {/* Row chrome aligned with {@link WorkflowEditableListRow} lists */}
+      <div
+        className={cn(
+          "group flex min-w-0 w-full flex-col gap-2 rounded-lg border border-border/70 bg-background px-3 py-2.5 transition-colors",
+          "focus-within:ring-2 focus-within:ring-ring hover:bg-muted/30",
+        )}
+      >
+        {/* Field | operator | delete rail */}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-0 flex-1 basis-[min(100%,11rem)] space-y-1">
+            <Label htmlFor={`gate-field-${rule.id}`} className={labelClass}>
               Field
             </Label>
-            <FieldSelect
+            <PromptTagFieldSelect
+              id={`gate-field-${rule.id}`}
               value={rule.field}
               onChange={({ value }) => onChangeField({ ruleId: rule.id, value })}
               tags={upstreamTags}
-              ruleId={rule.id}
             />
           </div>
 
-          {/* Operator */}
-          <div className="min-w-0 flex-1 space-y-1">
-            <Label htmlFor={`gate-op-${rule.id}`} className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <div className="min-w-0 flex-1 basis-[min(100%,10rem)] space-y-1">
+            <Label htmlFor={`gate-op-${rule.id}`} className={labelClass}>
               Condition
             </Label>
             <OperatorSelect
@@ -308,26 +202,32 @@ function GateRuleRow({
             />
           </div>
 
-          {/* Delete */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            disabled={!canRemove}
-            onClick={() => onRemove({ ruleId: rule.id })}
-            aria-label="Remove condition"
+          {/* Delete — hover / focus-within reveal like schema list rows */}
+          <div
+            className={cn(
+              "flex shrink-0 items-end pb-0.5 opacity-0 pointer-events-none transition-opacity duration-150",
+              "group-hover:pointer-events-auto group-hover:opacity-100",
+              "group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+            )}
           >
-            <Trash2 className="size-3.5" aria-hidden />
-          </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={!canRemove}
+              onClick={() => onRemove({ ruleId: rule.id })}
+              aria-label="Remove condition"
+            >
+              <Trash2 className="size-4" aria-hidden />
+            </Button>
+          </div>
         </div>
 
-        {/* Bottom row: value — full width for breathing room */}
+        {/* Value row */}
         {needsValue ? (
           <div className="space-y-1">
-            <Label className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Value
-            </Label>
+            <Label className={labelClass}>Value</Label>
             <FunctionInput
               tags={mergedTags}
               value={rule.value}
@@ -339,11 +239,8 @@ function GateRuleRow({
             />
           </div>
         ) : (
-          <p className="text-[10px] italic text-muted-foreground pl-0.5">
-            No value needed for this condition.
-          </p>
+          <p className="text-[11px] italic text-muted-foreground">No value needed for this condition.</p>
         )}
-
       </div>
     </div>
   )
@@ -365,11 +262,11 @@ export interface WorkflowGateRuleBuilderProps {
 /**
  * Visual rule-row builder for workflow logic gates (Decision and Switch).
  *
- * Renders a card shell (consistent with InputSchemaBuilder) with:
+ * Renders a shell consistent with {@link InputSchemaBuilder} plus:
  * - AND / ANY logic toggle
- * - A stack of condition rows (field ▸ operator ▸ value)
- * - Coloured AND/OR connectors between rows
- * - Add condition button
+ * - A stacked list of condition rows (same bordered row chrome as schema lists)
+ * - Subtle AND/OR join markers between rows
+ * - Add condition control
  *
  * The caller is responsible for compiling the resulting `GateGroup` to a JS
  * expression (`compileGateGroupToExpression`) and writing it to `data.condition`.
@@ -428,9 +325,9 @@ export function WorkflowGateRuleBuilder({
           <p className="text-xs text-muted-foreground leading-relaxed">
             Evaluated top to bottom. Use{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">input.*</code> for
-            mapped step fields,{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">prev.*</code> for
-            the predecessor output, and{" "}
+            the previous step&apos;s output,{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">trigger_inputs.*</code>{" "}
+            for the original workflow invoke payload, and{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">global.*</code> for
             shared workflow state.
           </p>
@@ -450,8 +347,8 @@ export function WorkflowGateRuleBuilder({
           </p>
         ) : null}
 
-        {/* Rule rows */}
-        <div className="space-y-0">
+        {/* Condition rows — spaced like Output schema / globals lists */}
+        <div className="space-y-2">
           {rules.map((rule, idx) => (
             <GateRuleRow
               key={rule.id}

@@ -25,27 +25,46 @@ import { approvalDefinition } from "@/lib/workflows/steps/human/approval/definit
 import { endDefinition } from "@/lib/workflows/steps/termination/end/definition"
 import type { StepDefinition } from "@/lib/workflows/engine/step-definition"
 
-/** Flat list — UI groups rows by `definition.group`. */
+/**
+ * Flat list — the add-step sheet groups rows by `definition.group`, so this array's
+ * order mainly controls the in-group ordering. Comments below mirror the section
+ * layout under `lib/workflows/steps/` for quick navigation.
+ */
 export const STEP_CATALOGUE: StepDefinition[] = [
+  // ─── Triggers (entry family — variant chosen via data.entryType) ──────────
   invokeTriggerDefinition,
   webhookTriggerDefinition,
   scheduleTriggerDefinition,
+
+  // ─── Logic / branching ────────────────────────────────────────────────────
   decisionDefinition,
   switchDefinition,
   splitDefinition,
+
+  // ─── Human-in-the-loop ────────────────────────────────────────────────────
   approvalDefinition,
+
+  // ─── AI family (data.subtype selects the executor) ───────────────────────
   aiGenerateDefinition,
   aiSummarizeDefinition,
   aiClassifyDefinition,
   aiExtractDefinition,
   aiChatDefinition,
   aiTransformDefinition,
+
+  // ─── Code family ──────────────────────────────────────────────────────────
   codeRunDefinition,
   randomNumberDefinition,
   iterationDefinition,
+
+  // ─── Documents (data.subtype selects template vs docxml) ─────────────────
   documentFromTemplateDefinition,
   documentFromXmlDefinition,
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
   actionDefinition,
   webhookCallDefinition,
+
+  // ─── Termination ──────────────────────────────────────────────────────────
   endDefinition,
 ]

@@ -75,7 +75,7 @@ ${trimmedInvokeAppendix}
 `
       : "";
 
-  const systemPrompt = `You are a planning assistant for Runnerroo AI (workflow automation + in-app assistant).
+  const systemPrompt = `You are a planning assistant for Dailify AI (workflow automation + in-app assistant).
 
 Review the conversation below and produce:
 1. A skill selection — pick the most relevant skill from the list below, or "none" if no skill applies.
@@ -119,7 +119,7 @@ ${invokeWorkflowSection}
       skill: z
         .string()
         .describe(
-          'The name of the selected skill (e.g. "workflow-builder", "runneroo-product"), or "none" if no skill applies'
+          'The name of the selected skill (e.g. "workflow-builder", "dailify-product"), or "none" if no skill applies'
         ),
     }),
   });

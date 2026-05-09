@@ -14,7 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { WorkflowAssistantInvokeDescriptor } from "@/lib/workflows/assistant-workflow-invoke-support";
 
 /**
- * Builds the tool map passed to {@link import('ai').streamText} for the Runnerroo assistant.
+ * Builds the tool map passed to {@link import('ai').streamText} for the Dailify assistant.
  *
  * To add a tool:
  * 1. Implement it under `ai/tools/...` (server `execute` unless it is client-completed).

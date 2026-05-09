@@ -1,14 +1,14 @@
 ---
-name: runneroo-product
-description: Explain how Runnerroo fits together (assistant, conversations, memories, and workflows at a high level).
+name: dailify-product
+description: Explain how Dailify fits together (assistant, conversations, memories, and workflows at a high level).
 triggers:
-  - what is runnerroo
+  - what is dailify
   - how does this app work
   - assistant vs workflow
   - memories
 ---
 
-# Runnerroo product context
+# Dailify product context
 
 Use this skill for **onboarding-style questions** about how the product pieces fit together.
 

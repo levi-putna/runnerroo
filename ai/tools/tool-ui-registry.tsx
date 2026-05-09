@@ -49,6 +49,8 @@ import { WebSearchUI } from "@/ai/tools/utility/web-search-ui";
 import { WorkflowInvokeToolUI } from "@/ai/tools/workflows/workflow-invoke-ui";
 import { isWorkflowAssistantToolName } from "@/lib/workflows/assistant-workflow-invoke-support";
 
+const WORKFLOW_APPROVAL_REQUEST_TOOL_NAME = "workflowApprovalRequest" as const;
+
 const toolUIRegistry: Record<string, ToolUIComponent> = {
   webSearch: WebSearchUI,
   tavilyExtract: TavilyExtractUI,
@@ -74,7 +76,10 @@ type ToolRendererProps = {
 export function ToolRenderer({ part, addToolApprovalResponse, addToolOutput }: ToolRendererProps) {
   const toolName = getToolOrDynamicToolName(part);
 
-  if (isWorkflowAssistantToolName({ toolName })) {
+  if (
+    isWorkflowAssistantToolName({ toolName }) ||
+    toolName === WORKFLOW_APPROVAL_REQUEST_TOOL_NAME
+  ) {
     return (
       <div className="w-full min-w-0">
         <WorkflowInvokeToolUI

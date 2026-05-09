@@ -1,12 +1,24 @@
 "use client"
 
-import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Monitor, Moon, Sparkles, Sun } from "lucide-react"
+import Link from "next/link"
+import {
+  BookOpen,
+  Home,
+  LifeBuoy,
+  LogOut,
+  Monitor,
+  Moon,
+  MoreHorizontal,
+  PenLine,
+  Settings,
+  SmilePlus,
+  Sun,
+} from "lucide-react"
 import { useTheme } from "@teispace/next-themes"
 import { useEffect, useState } from "react"
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -17,6 +29,8 @@ import { cn } from "@/lib/utils"
 import { getResolvedAvatarUrlForAuthUser } from "@/lib/avatar/dicebear"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import { UserFeedbackDialog } from "@/components/feedback/user-feedback-dialog"
+import { Button } from "@/components/ui/button"
 
 interface UserDetails {
   name: string
@@ -30,20 +44,17 @@ interface NavUserProps {
   user: UserDetails
 }
 
-/** Available theme options rendered in the tab switcher. */
+/** Theme control: system first so the icon order matches common layout (display, light, dark). */
 const THEME_OPTIONS = [
-  { value: "light", label: "Light", Icon: Sun },
-  { value: "dark",  label: "Dark",  Icon: Moon },
-  { value: "system", label: "System", Icon: Monitor },
-] as const
+  { value: "system" as const, label: "System", Icon: Monitor },
+  { value: "light" as const, label: "Light", Icon: Sun },
+  { value: "dark" as const, label: "Dark", Icon: Moon },
+]
 
-type ThemeValue = typeof THEME_OPTIONS[number]["value"]
+type ThemeValue = (typeof THEME_OPTIONS)[number]["value"]
 
 /**
- * Sidebar footer user menu.
- *
- * Displays the authenticated Supabase user's details and provides
- * sign-out and theme-switching controls.
+ * Sidebar footer user menu: profile header with settings link, feedback dialog, theme control, and sign out.
  */
 export function NavUser({ user: initialUser }: NavUserProps) {
   const router = useRouter()
@@ -51,6 +62,7 @@ export function NavUser({ user: initialUser }: NavUserProps) {
   const { theme, setTheme } = useTheme()
 
   const [user, setUser] = useState<UserDetails>(initialUser)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   // Sync live Supabase session into local state on mount.
   useEffect(() => {
@@ -86,97 +98,142 @@ export function NavUser({ user: initialUser }: NavUserProps) {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
+        <UserFeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+
         <DropdownMenu>
-          {/* Trigger: Radix uses asChild — SidebarMenuButton is the actual control (no invalid `render` on Trigger). */}
+          {/* Trigger — avatar, name stack, overflow affordance */}
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <UserAvatar src={user.avatar} alt={user.name} fallback={initials} className="h-8 w-8" />
-              {/* Text stack — min-w-0 so truncation works inside the flex row */}
               <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{user.name}</span>
                 <span className="truncate text-xs text-muted-foreground">{user.email}</span>
               </div>
-              <ChevronsUpDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
+              <MoreHorizontal className="ml-auto size-4 shrink-0 text-muted-foreground" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
 
           <DropdownMenuContent
-            className="min-w-72 rounded-lg"
+            className="min-w-72 rounded-xl p-1.5 shadow-lg ring-1 ring-border/60"
             side="right"
             align="end"
             sideOffset={4}
           >
-            {/* User identity header */}
-            <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-              <UserAvatar src={user.avatar} alt={user.name} fallback={initials} className="h-8 w-8" />
-              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{user.name}</span>
+            {/* Header — name, email, settings shortcut */}
+            <div className="flex items-start justify-between gap-2 px-2 pb-2 pt-1">
+              <div className="grid min-w-0 flex-1 text-left leading-tight">
+                <span className="truncate text-sm font-semibold">{user.name}</span>
                 <span className="truncate text-xs text-muted-foreground">{user.email}</span>
               </div>
+              <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
+                <Link href="/app/settings/profile" aria-label="Profile and settings">
+                  <Settings className="size-4" />
+                </Link>
+              </Button>
             </div>
 
-            {/* Theme switcher — tab-style row */}
-            <div className="px-1 pb-1.5">
-              <div className="inline-flex w-full items-center rounded-lg bg-muted p-1">
-                {THEME_OPTIONS.map(({ value, label, Icon }) => (
+            {/* Feedback */}
+            <DropdownMenuItem
+              className="justify-between gap-3 rounded-lg"
+              onSelect={() => {
+                setFeedbackOpen(true)
+              }}
+            >
+              <span>Feedback</span>
+              <SmilePlus className="size-4 text-muted-foreground" />
+            </DropdownMenuItem>
+
+            {/* Theme — label left, compact icon segment right */}
+            <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+              <span className="text-sm text-foreground">Theme</span>
+              <div
+                className="inline-flex shrink-0 items-center rounded-lg bg-muted p-0.5"
+                role="group"
+                aria-label="Theme"
+              >
+                {THEME_OPTIONS.map(({ value, Icon }) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setTheme(value)}
                     className={cn(
-                      "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-xs font-medium whitespace-nowrap transition-[color,box-shadow]",
+                      "inline-flex size-8 items-center justify-center rounded-md border border-transparent transition-[color,box-shadow,background-color]",
                       "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring",
                       currentTheme === value
                         ? "bg-background text-foreground shadow-sm dark:border-input dark:bg-input/30"
-                        : "text-muted-foreground hover:text-foreground dark:text-muted-foreground"
+                        : "text-muted-foreground hover:text-foreground"
                     )}
                     aria-pressed={currentTheme === value}
+                    aria-label={value}
                   >
                     <Icon className="size-3.5" />
-                    {label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator className="my-1.5" />
 
-            {/* Upgrade prompt */}
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <Sparkles />
-                Upgrade to Pro
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-
-            <DropdownMenuSeparator />
-
-            {/* Account actions */}
-            <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <BadgeCheck />
-                Account
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard />
-                Billing
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Bell />
-                Notifications
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-
-            <DropdownMenuSeparator />
-
-            {/* Sign out */}
-            <DropdownMenuItem onClick={handleSignOut}>
-              <LogOut />
-              Log out
+            {/* Placeholder links — no destination yet */}
+            <DropdownMenuItem
+              className="justify-between gap-3 rounded-lg"
+              onSelect={(e) => e.preventDefault()}
+            >
+              <span>Home Page</span>
+              <Home className="size-4 text-muted-foreground" />
             </DropdownMenuItem>
+            <DropdownMenuItem
+              className="justify-between gap-3 rounded-lg"
+              onSelect={(e) => e.preventDefault()}
+            >
+              <span>Changelog</span>
+              <PenLine className="size-4 text-muted-foreground" />
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="justify-between gap-3 rounded-lg"
+              onSelect={(e) => e.preventDefault()}
+            >
+              <span>Help</span>
+              <LifeBuoy className="size-4 text-muted-foreground" />
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="justify-between gap-3 rounded-lg"
+              onSelect={(e) => e.preventDefault()}
+            >
+              <span>Docs</span>
+              <BookOpen className="size-4 text-muted-foreground" />
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator className="my-1.5" />
+
+            <DropdownMenuItem
+              className="justify-between gap-3 rounded-lg"
+              onSelect={() => {
+                void handleSignOut()
+              }}
+            >
+              <span>Log out</span>
+              <LogOut className="size-4 text-muted-foreground" />
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator className="my-1.5" />
+
+            {/* Platform status footer */}
+            <div className="space-y-0.5 px-2 pb-1 pt-0.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Platform status
+              </p>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-foreground">All systems normal.</span>
+                <span
+                  className="size-2 shrink-0 rounded-full bg-blue-500"
+                  aria-hidden
+                />
+              </div>
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

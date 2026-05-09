@@ -37,6 +37,17 @@ export function createWorkflowStepExecutor(): StepExecutorFn {
 
 /**
  * Executes one workflow step — exported for tests or custom runners.
+ *
+ * Branches are grouped by step family below to mirror the layout of `lib/workflows/steps/`:
+ *   1. Triggers (entry)
+ *   2. AI family (subtype-driven)
+ *   3. Code family (code, random, iteration)
+ *   4. Documents (subtype-driven)
+ *   5. Logic (decision, switch, split)
+ *   6. Actions (action, webhookCall)
+ *   7. Human (approval — may throw {@link ApprovalRequiredError} to pause the run)
+ *   8. Termination (end)
+ *   9. Fallback stub for unknown / not-yet-implemented types
  */
 export async function dispatchWorkflowStep({
   node,
@@ -47,10 +58,12 @@ export async function dispatchWorkflowStep({
 }): Promise<unknown> {
   const t = node.type
 
+  // ─── 1. Triggers ──────────────────────────────────────────────────────────
   if (t === "entry") {
     return executeEntryNode({ node, stepInput })
   }
 
+  // ─── 2. AI family (one React Flow type, many templates via data.subtype) ─
   if (t === "ai") {
     const data = node.data as Record<string, unknown> | undefined
     const subtype = normaliseAiSubtype({ value: typeof data?.subtype === "string" ? data.subtype : null })
@@ -72,6 +85,7 @@ export async function dispatchWorkflowStep({
     }
   }
 
+  // ─── 3. Code family ───────────────────────────────────────────────────────
   if (t === "random") {
     return executeRandomNumberStep({ node, stepInput })
   }
@@ -80,6 +94,11 @@ export async function dispatchWorkflowStep({
     return executeIterationStep({ node, stepInput })
   }
 
+  if (t === "code") {
+    return executeCodeStep({ node, stepInput })
+  }
+
+  // ─── 4. Documents (template vs docxml — chosen by data.subtype) ──────────
   if (t === "document") {
     const data = node.data as Record<string, unknown> | undefined
     const documentSubtype = normaliseDocumentSubtype({ value: typeof data?.subtype === "string" ? data.subtype : null })
@@ -89,6 +108,7 @@ export async function dispatchWorkflowStep({
     return executeDocumentFromTemplateStep({ node, stepInput })
   }
 
+  // ─── 5. Logic / branching ────────────────────────────────────────────────
   if (t === "decision") {
     return executeDecisionStep({ node, stepInput })
   }
@@ -101,10 +121,7 @@ export async function dispatchWorkflowStep({
     return executeSplitStep({ node, stepInput })
   }
 
-  if (t === "code") {
-    return executeCodeStep({ node, stepInput })
-  }
-
+  // ─── 6. Actions ───────────────────────────────────────────────────────────
   if (t === "action") {
     return executeActionStep({ node, stepInput })
   }
@@ -113,13 +130,16 @@ export async function dispatchWorkflowStep({
     return executeWebhookCallStep({ node, stepInput })
   }
 
+  // ─── 7. Human-in-the-loop (may throw ApprovalRequiredError) ──────────────
   if (t === "approval") {
     return executeApprovalStep({ node, stepInput })
   }
 
+  // ─── 8. Termination ──────────────────────────────────────────────────────
   if (t === "end") {
     return executeEndStep({ node, stepInput })
   }
 
+  // ─── 9. Fallback — unknown type emits a stub `ok` payload (see README) ──
   return buildStubOkStepOutput({ node })
 }

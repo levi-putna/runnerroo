@@ -17,6 +17,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -51,6 +52,10 @@ import {
   startOfMonth,
   subDays,
 } from "date-fns"
+import {
+  WORKFLOW_OPEN_RUN_INTENT_VALUE,
+  workflowOpenRunIntentStorageKey,
+} from "@/lib/workflows/workflow-open-run-intent-storage"
 import type { DateRange } from "react-day-picker"
 
 const triggerMeta = {
@@ -735,6 +740,26 @@ export function WorkflowsIndex({ workflows, className }: WorkflowsIndexProps) {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => {
+                                  try {
+                                    if (typeof window.sessionStorage?.setItem === "function") {
+                                      sessionStorage.setItem(
+                                        workflowOpenRunIntentStorageKey({ workflowId: workflow.id }),
+                                        WORKFLOW_OPEN_RUN_INTENT_VALUE
+                                      )
+                                    }
+                                  } catch {
+                                    /* private / blocked storage — still navigate */
+                                  }
+                                  router.push(`/app/workflows/${workflow.id}`)
+                                }}
+                              >
+                                <Play className="size-3.5 fill-current" aria-hidden />
+                                Run
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => router.push(`/app/workflows/${workflow.id}`)}
                               >

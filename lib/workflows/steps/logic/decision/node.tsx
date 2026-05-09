@@ -61,7 +61,7 @@ export function DecisionNode({ id, data, selected }: NodeProps) {
             <p className="text-[13px] font-semibold uppercase tracking-wide leading-tight text-foreground">
               {nodeData.label || "Decision"}
             </p>
-            <span className="mt-2 inline-flex w-fit rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="mt-1 block truncate text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
               Decision
             </span>
             {nodeData.condition ? (

@@ -24,6 +24,8 @@ type Props = {
   addToolOutput?: ChatAddToolOutputFunction<UIMessage>;
 };
 
+const WORKFLOW_APPROVAL_REQUEST_TOOL_NAME = "workflowApprovalRequest" as const;
+
 function safeStringify({ value }: { value: unknown }): string {
   try {
     return JSON.stringify(value, null, 2);
@@ -178,6 +180,8 @@ type PendingApprovalRow = {
   id: string;
   node_id: string;
   title: string | null;
+  description: string | null;
+  reviewer_instructions: string | null;
   workflow_run_id: string;
 };
 
@@ -192,6 +196,69 @@ type WorkflowInvokeApprovalEnvelope = {
   approval_reviewer_instructions?: string | null;
   error?: string;
 };
+
+/**
+ * Reads workflow approval tool args for display, merging persisted tool output when input is absent
+ * (for example after approve or decline when the UI only retains `output-available`).
+ */
+function readWorkflowApprovalDisplayFields({ part }: { part: DynamicToolUIPart }): {
+  approvalId: string;
+  runId: string;
+  stepLabel: string;
+  description: string;
+  instructions: string;
+} {
+  const inputObj =
+    part.input && typeof part.input === "object" && !Array.isArray(part.input)
+      ? (part.input as Record<string, unknown>)
+      : {};
+  const outputObj =
+    part.output && typeof part.output === "object" && !Array.isArray(part.output)
+      ? (part.output as Record<string, unknown>)
+      : {};
+
+  const coalesceString = ({ key }: { key: string }): string => {
+    const fromInput = inputObj[key];
+    if (typeof fromInput === "string") return fromInput;
+    const fromOutput = outputObj[key];
+    if (typeof fromOutput === "string") return fromOutput;
+    return "";
+  };
+
+  const approvalIdRaw = inputObj.approval_id;
+  const approvalId = typeof approvalIdRaw === "string" ? approvalIdRaw : "";
+
+  return {
+    approvalId,
+    runId: coalesceString({ key: "run_id" }),
+    stepLabel: coalesceString({ key: "approval_title" }).trim(),
+    description: coalesceString({ key: "approval_description" }),
+    instructions: coalesceString({ key: "approval_reviewer_instructions" }),
+  };
+}
+
+/**
+ * Echo fields so completed tool cards still show the step label and approval message from history.
+ */
+function workflowApprovalUiEchoFields({
+  stepLabel,
+  description,
+  instructions,
+}: {
+  stepLabel: string;
+  description: string;
+  instructions: string;
+}): {
+  approval_title: string | null;
+  approval_description: string | null;
+  approval_reviewer_instructions: string | null;
+} {
+  return {
+    approval_title: stepLabel.trim() !== "" ? stepLabel.trim() : null,
+    approval_description: description.trim() !== "" ? description : null,
+    approval_reviewer_instructions: instructions.trim() !== "" ? instructions : null,
+  };
+}
 
 function readAwaitingApprovalEnvelope({
   value,
@@ -233,6 +300,8 @@ function normalisePendingApprovalRow({
     node_id: nodeId,
     workflow_run_id: runId,
     title: typeof row.title === "string" ? row.title : null,
+    description: typeof row.description === "string" ? row.description : null,
+    reviewer_instructions: typeof row.reviewer_instructions === "string" ? row.reviewer_instructions : null,
   };
 }
 
@@ -307,7 +376,9 @@ export function WorkflowInvokeToolUI({
   addToolOutput: _addToolOutput,
 }: Props) {
   const toolName = getToolOrDynamicToolName(part);
-  const isWorkflowTool = isWorkflowAssistantToolName({ toolName });
+  const isWorkflowTool =
+    isWorkflowAssistantToolName({ toolName }) ||
+    toolName === WORKFLOW_APPROVAL_REQUEST_TOOL_NAME;
 
   void _addToolApprovalResponse;
   void _addToolOutput;
@@ -316,6 +387,270 @@ export function WorkflowInvokeToolUI({
   const [pendingApproval, setPendingApproval] = useState<PendingApprovalRow | null>(null);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [inlineBusy, setInlineBusy] = useState<"approved" | "declined" | null>(null);
+
+  if (toolName === WORKFLOW_APPROVAL_REQUEST_TOOL_NAME) {
+    const { approvalId, runId: toolRunId, stepLabel, description, instructions } =
+      readWorkflowApprovalDisplayFields({ part });
+    const headerLabel =
+      stepLabel.trim() !== "" ? `Approval Required (${stepLabel.trim()})` : "Approval Required";
+    const bodyMessage =
+      instructions.trim() !== ""
+        ? instructions
+        : description.trim() !== ""
+          ? description
+          : "No approval message provided.";
+    const approvalUiEcho = workflowApprovalUiEchoFields({
+      stepLabel,
+      description,
+      instructions,
+    });
+
+    if (part.state === "input-streaming") {
+      return (
+        <AssistantToolCard title={headerLabel} icon={Workflow} variant="loading">
+          <p className="text-xs text-muted-foreground">Preparing approval prompt…</p>
+        </AssistantToolCard>
+      );
+    }
+
+    if (part.state === "input-available") {
+      const resolveAndEmitApprovalDecision = async ({ decision }: { decision: "approved" | "declined" }) => {
+        if (!_addToolOutput || approvalId.trim() === "") return;
+        setInlineBusy(decision);
+        setInlineError(null);
+        try {
+          const response = await fetch(`/api/approvals/${approvalId}/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ decision }),
+          });
+          const body = (await response.json().catch(() => ({}))) as { error?: string; runId?: string };
+          if (!response.ok) {
+            setInlineError(typeof body.error === "string" ? body.error : "Could not apply decision.");
+            return;
+          }
+
+          const respondedRunId =
+            typeof body.runId === "string" && body.runId.trim() !== ""
+              ? body.runId
+              : typeof toolRunId === "string" && toolRunId.trim() !== ""
+                ? toolRunId
+                : "";
+          if (!respondedRunId) {
+            _addToolOutput({
+              tool: WORKFLOW_APPROVAL_REQUEST_TOOL_NAME,
+              toolCallId: part.toolCallId,
+              output: {
+                success: false,
+                approval_decision: decision,
+                error: "Approval recorded, but run id is missing.",
+                ...approvalUiEcho,
+              },
+            });
+            return;
+          }
+
+          let runSnapshot: Record<string, unknown> | null = null;
+          let settledStatus: string | null = null;
+          for (let i = 0; i < 45; i += 1) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+            const runRes = await fetch(`/api/run/${respondedRunId}`, { cache: "no-store" });
+            if (!runRes.ok) continue;
+            const runBody = (await runRes.json().catch(() => ({}))) as { run?: unknown };
+            if (!runBody.run || typeof runBody.run !== "object") continue;
+            const run = runBody.run as Record<string, unknown>;
+            const status = readRunStatusFromUnknown({ value: run });
+            runSnapshot = run;
+            if (status === "waiting_approval" || status === "success" || status === "failed") {
+              settledStatus = status;
+              break;
+            }
+          }
+
+          if (settledStatus === "waiting_approval") {
+            const approvalRes = await fetch(
+              `/api/approvals?workflow_run_id=${encodeURIComponent(respondedRunId)}`,
+              { cache: "no-store" },
+            );
+            const approvalBody = (await approvalRes.json().catch(() => ({}))) as { approvals?: unknown[] };
+            const rows = Array.isArray(approvalBody.approvals) ? approvalBody.approvals : [];
+            const normalised = rows
+              .map((row) => normalisePendingApprovalRow({ value: row }))
+              .filter(Boolean) as PendingApprovalRow[];
+            const awaitedNodeResult =
+              runSnapshot != null && Array.isArray(runSnapshot.node_results)
+                ? (runSnapshot.node_results as Array<Record<string, unknown>>).find(
+                    (row) => row.status === "awaiting_approval",
+                  ) ?? null
+                : null;
+            const awaitedOutput =
+              awaitedNodeResult && typeof awaitedNodeResult.output === "object" && awaitedNodeResult.output !== null
+                ? (awaitedNodeResult.output as Record<string, unknown>)
+                : null;
+            const awaitedApprovalId =
+              typeof awaitedOutput?.workflow_approval_id === "string" ? awaitedOutput.workflow_approval_id : null;
+            const awaitedNodeId =
+              awaitedNodeResult && typeof awaitedNodeResult.node_id === "string" ? awaitedNodeResult.node_id : null;
+            const next =
+              (awaitedApprovalId
+                ? normalised.find((row) => row.id === awaitedApprovalId) ?? null
+                : null) ??
+              (awaitedNodeId
+                ? normalised.find((row) => row.node_id === awaitedNodeId) ?? null
+                : null) ??
+              normalised[0] ??
+              null;
+
+            _addToolOutput({
+              tool: WORKFLOW_APPROVAL_REQUEST_TOOL_NAME,
+              toolCallId: part.toolCallId,
+              output: {
+                success: false,
+                approval_decision: decision,
+                awaiting_approval: true,
+                run_id: respondedRunId,
+                approval_id: next?.id ?? null,
+                approval_node_id: next?.node_id ?? null,
+                approval_title: next?.title ?? "Approval required",
+                approval_description: next?.description ?? null,
+                approval_reviewer_instructions: next?.reviewer_instructions ?? null,
+                next_tool_call: WORKFLOW_APPROVAL_REQUEST_TOOL_NAME,
+                error: "Workflow paused — review and approve the next checkpoint.",
+              },
+            });
+            return;
+          }
+
+          if (settledStatus === "success" && runSnapshot) {
+            const nodeResultsRaw = runSnapshot.node_results;
+            const nodeResults = Array.isArray(nodeResultsRaw)
+              ? (nodeResultsRaw as Array<Record<string, unknown>>)
+              : [];
+            const endOutputs = nodeResults
+              .filter((row) => row.status === "success")
+              .map((row) => row.output)
+              .filter(
+                (output): output is Record<string, unknown> =>
+                  Boolean(output) &&
+                  typeof output === "object" &&
+                  !Array.isArray(output) &&
+                  (output as Record<string, unknown>).success === true,
+              );
+
+            const outputPayload =
+              endOutputs.length === 1
+                ? endOutputs[0]
+                : endOutputs.length > 1
+                  ? { outputs: endOutputs }
+                  : { success: true, run_id: respondedRunId };
+
+            _addToolOutput({
+              tool: WORKFLOW_APPROVAL_REQUEST_TOOL_NAME,
+              toolCallId: part.toolCallId,
+              output: {
+                ...(outputPayload as Record<string, unknown>),
+                approval_decision: decision,
+                ...approvalUiEcho,
+              },
+            });
+            return;
+          }
+
+          _addToolOutput({
+            tool: WORKFLOW_APPROVAL_REQUEST_TOOL_NAME,
+            toolCallId: part.toolCallId,
+            output: {
+              success: false,
+              approval_decision: decision,
+              error:
+                settledStatus === "failed"
+                  ? typeof runSnapshot?.error === "string"
+                    ? runSnapshot.error
+                    : "Workflow failed after approval."
+                  : "Approval recorded. Workflow is still processing; check run details shortly.",
+              ...approvalUiEcho,
+            },
+          });
+        } catch {
+          setInlineError("Could not apply decision.");
+        } finally {
+          setInlineBusy(null);
+        }
+      };
+
+      return (
+        <AssistantToolCard
+          title={headerLabel}
+          icon={Workflow}
+          forceExpanded
+          headerActions={
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                disabled={!_addToolOutput || approvalId.trim() === "" || inlineBusy !== null}
+                onClick={() => void resolveAndEmitApprovalDecision({ decision: "declined" })}
+              >
+                {inlineBusy === "declined" ? "Rejecting…" : "Reject"}
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                disabled={!_addToolOutput || approvalId.trim() === "" || inlineBusy !== null}
+                onClick={() => void resolveAndEmitApprovalDecision({ decision: "approved" })}
+              >
+                {inlineBusy === "approved" ? "Approving…" : "Approve"}
+              </Button>
+            </>
+          }
+        >
+          <p className={bodyMessage === "No approval message provided." ? "text-sm text-muted-foreground" : "whitespace-pre-wrap text-sm"}>
+            {bodyMessage}
+          </p>
+          {inlineError ? <p className="text-xs text-destructive">{inlineError}</p> : null}
+        </AssistantToolCard>
+      );
+    }
+
+    if (part.state === "output-available") {
+      const out = (part.output ?? {}) as Record<string, unknown>;
+      const decision = typeof out.approval_decision === "string" ? out.approval_decision : "approved";
+      const isDeclined = decision === "declined";
+      return (
+        <AssistantToolCard
+          title={headerLabel}
+          icon={Workflow}
+          variant={isDeclined ? "denied" : "success"}
+          headerActions={
+            <span className="text-xs font-medium text-muted-foreground">{isDeclined ? "Rejected" : "Approved"}</span>
+          }
+        >
+          <p className={bodyMessage === "No approval message provided." ? "text-sm text-muted-foreground" : "whitespace-pre-wrap text-sm"}>
+            {bodyMessage}
+          </p>
+        </AssistantToolCard>
+      );
+    }
+
+    if (part.state === "output-error") {
+      return (
+        <AssistantToolCard title={headerLabel} icon={Workflow} variant="error">
+          <p className="text-xs text-destructive">{part.errorText ?? "Could not submit approval decision."}</p>
+          <p
+            className={
+              bodyMessage === "No approval message provided."
+                ? "mt-2 text-sm text-muted-foreground"
+                : "mt-2 whitespace-pre-wrap text-sm"
+            }
+          >
+            {bodyMessage}
+          </p>
+        </AssistantToolCard>
+      );
+    }
+    return null;
+  }
 
   const inputPayload = (part.input ?? {}) as Record<string, unknown>;
   const parameterEntries = sortedEntriesFromRecord({ record: inputPayload });
@@ -455,7 +790,9 @@ export function WorkflowInvokeToolUI({
     const failed = isWorkflowInvokeFailureEnvelope(out);
     const heading = readWorkflowInvokeDisplayName({ value: out }) ?? defaultTitle;
     const awaitingApproval = readAwaitingApprovalEnvelope({ value: out }) !== null;
-    const showPendingApprovalUi = awaitingApproval && pendingApproval !== null;
+    // Approval decisions are collected via the dedicated `workflowApprovalRequest` tool call.
+    // Keep invoke/decision cards read-only so each checkpoint appears as its own tool step.
+    const showPendingApprovalUi = false;
 
     return (
       <AssistantToolCard

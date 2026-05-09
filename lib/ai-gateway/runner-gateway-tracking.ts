@@ -13,7 +13,10 @@ export const GATEWAY_USAGE_TAG_MEMORY_WRITE = "memory:write" as const;
 export const GATEWAY_USAGE_TAG_MEMORY_QUERY = "memory:query" as const;
 
 /** Envelope key on each workflow `stepInput` carrying {@link RunnerGatewayExecutionContext}. */
-export const RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY = "__runnerroo_gateway_context" as const;
+export const RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY = "__dailify_gateway_context" as const;
+
+/** Legacy key from before the Dailify rebrand — still accepted when reading persisted envelopes. */
+export const LEGACY_RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY = "__runnerroo_gateway_context" as const;
 
 export type RunnerGatewayExecutionContext = {
   supabaseUserId: string;
@@ -38,7 +41,9 @@ export function readRunnerGatewayExecutionContextFromStepInput({
   if (typeof stepInput !== "object" || stepInput === null) {
     return null;
   }
-  const raw = (stepInput as Record<string, unknown>)[RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY];
+  const raw =
+    (stepInput as Record<string, unknown>)[RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY] ??
+    (stepInput as Record<string, unknown>)[LEGACY_RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY];
   if (!raw || typeof raw !== "object") {
     return null;
   }

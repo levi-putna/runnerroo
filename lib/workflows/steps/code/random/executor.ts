@@ -9,7 +9,6 @@ import {
   buildResolutionContext,
   drawUniformInclusiveBetween,
   parseFiniteNumberFromResolved,
-  resolveDeclaredInputsMap,
   resolveGlobalsSchema,
   resolveOutputSchemaFields,
   resolveTemplate,
@@ -25,8 +24,6 @@ export function executeRandomNumberStep({
   const data = node.data as Record<string, unknown> | undefined
   const label = typeof data?.label === "string" ? data.label : node.id
   const context = buildResolutionContext({ stepInput, stepId: node.id })
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-  const resolvedInputs = resolveDeclaredInputsMap({ inputSchema, context })
 
   const minExpression = typeof data?.randomMinExpression === "string" ? data.randomMinExpression : "0"
   const maxExpression = typeof data?.randomMaxExpression === "string" ? data.randomMaxExpression : "100"
@@ -56,7 +53,6 @@ export function executeRandomNumberStep({
     ...resolvedOutputs,
     outputs: resolvedOutputs,
     exe: exeContext,
-    inputs: resolvedInputs,
   }
 
   if (Object.keys(resolvedGlobals).length > 0) {

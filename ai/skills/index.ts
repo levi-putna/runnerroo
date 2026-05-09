@@ -1,5 +1,5 @@
 import type { PlanningResult } from "@/ai/agents/planning-agent";
-import { runnerooDomainSkill } from "@/ai/skills/runneroo-domain";
+import { dailifyDomainSkill } from "@/ai/skills/dailify-domain";
 import { toneSkill } from "@/ai/skills/tone";
 import { toolBehaviourSkill } from "@/ai/skills/tool-behaviour";
 
@@ -31,7 +31,7 @@ export function buildRunnerAssistantInstructions({
     timeZoneName: "short",
   });
 
-  let base = `${runnerooDomainSkill}
+  let base = `${dailifyDomainSkill}
 
 ${toneSkill}
 

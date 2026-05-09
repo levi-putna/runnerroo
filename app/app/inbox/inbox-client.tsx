@@ -190,13 +190,6 @@ export function InboxClient({ initialApprovals, className }: InboxClientProps) {
                 </p>
               ) : null}
             </div>
-            <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 sm:col-span-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">How reviewing works</p>
-              <p className="mt-1 text-sm text-muted-foreground leading-snug">
-                Open an item for full context — resolved approval message (when the builder adds one with tags), the
-                step summary, then expandable run context.
-              </p>
-            </div>
           </div>
         </div>
 

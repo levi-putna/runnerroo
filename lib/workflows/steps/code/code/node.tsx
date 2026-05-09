@@ -104,7 +104,7 @@ export function CodeNode({ id, data, selected }: NodeProps) {
               <p className="text-[13px] font-semibold uppercase tracking-wide truncate">
                 {nodeData.label || "Run code"}
               </p>
-              <span className="mt-1 inline-flex rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <span className="mt-1 block truncate text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
                 {CODE_META.typeLabel}
               </span>
             </div>

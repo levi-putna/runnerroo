@@ -32,7 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: workflow, error: wfErr } = await supabase
     .from("workflows")
-    .select("id, name, nodes, edges, trigger_type, run_count, user_id")
+    .select("id, name, nodes, edges, trigger_type, run_count, user_id, workflow_constants")
     .eq("id", workflowId)
     .eq("user_id", user.id)
     .maybeSingle()
@@ -64,6 +64,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           workflowId,
           userId: user.id,
           inputs,
+          runTrigger: "manual",
           workflow,
           gatewayUserAndWorkflow: {
             supabaseUserId: user.id,

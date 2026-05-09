@@ -8,9 +8,10 @@ import {
 } from "@/lib/workflows/engine/template"
 
 /**
- * Builds the template resolution map for an Approval step: inbound runner envelope plus values from
- * this step’s Input tab merged onto `input` / `trigger_inputs`, so `{{input.<key>}}` in the approval
- * message and output mappings sees declared fields.
+ * Builds the template resolution map for an Approval step. `{{input.*}}` resolves to the
+ * predecessor step's emitted output (set by {@link buildResolutionContext}); the original
+ * workflow invoke payload remains accessible as `{{trigger_inputs.*}}`. The approval message
+ * and output mappings can mix any of these tags with `{{global.*}}` and `{{now.*}}`.
  */
 export function buildApprovalResolutionContext({
   node,
@@ -19,29 +20,12 @@ export function buildApprovalResolutionContext({
   node: Node
   stepInput: unknown
 }): Record<string, unknown> {
-  const base = buildResolutionContext({ stepInput, stepId: node.id })
-  const data = node.data as Record<string, unknown> | undefined
-  const inputSchema = readInputSchemaFromNodeData({ value: data?.inputSchema })
-
-  const resolvedStepInputs =
-    inputSchema.length > 0 ? resolveOutputSchemaFields({ outputSchema: inputSchema, context: base }) : {}
-
-  const trig = base.trigger_inputs
-  const triggerRecord =
-    trig && typeof trig === "object" && !Array.isArray(trig) ? { ...(trig as Record<string, unknown>) } : {}
-
-  const mergedInputs = { ...triggerRecord, ...resolvedStepInputs }
-
-  return {
-    ...base,
-    trigger_inputs: mergedInputs,
-    input: mergedInputs,
-  }
+  return buildResolutionContext({ stepInput, stepId: node.id })
 }
 
 /**
  * Builds the step output persisted when an approval is granted: mapped output/globals rows plus `exe.*`
- * reviewer metadata for downstream `{{prev.*}}`.
+ * reviewer metadata. Downstream steps see this object via `{{input.*}}`.
  */
 export function buildApprovedApprovalStepOutput({
   node,

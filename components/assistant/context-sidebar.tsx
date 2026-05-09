@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { ContextMemoryDetailDialog } from "@/components/assistant/context-memory-detail-dialog";
+import { ContextPanelSection } from "@/components/assistant/context-panel-section";
 import {
   useAssistantContext,
   type AssistantArtifact,
@@ -15,9 +16,10 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   BrainIcon,
-  CodeIcon,
   ChevronDownIcon,
+  CodeIcon,
   FileTextIcon,
+  Layers,
   LinkIcon,
   MailIcon,
   PackageIcon,
@@ -72,15 +74,6 @@ function ArtifactIcon({ type }: { type: AssistantArtifact["type"] }) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Lightweight section label used to group items within the panel. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
-      {children}
-    </span>
-  );
-}
-
 /** Minimal single-line empty state for sections with no content yet. */
 function InlineEmptyState({ label }: { label: string }) {
   return (
@@ -99,7 +92,7 @@ type ContextSidebarSectionId =
   | "plan";
 
 /**
- * Chevron toggle header for collapsing/expanding a context sidebar section.
+ * Collapse toggle heading for compact sidebar sections (Usage-style label + chevron).
  */
 function ContextSidebarSectionHeader({
   label,
@@ -120,7 +113,9 @@ function ContextSidebarSectionHeader({
       aria-controls={controlsId}
       onClick={() => onOpenChange(!open)}
     >
-      <SectionLabel>{label}</SectionLabel>
+      <span className="text-[11px] font-medium tracking-wider text-muted-foreground/60 uppercase">
+        {label}
+      </span>
       <ChevronDownIcon
         className={`size-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200 ${
           open ? "rotate-180" : ""
@@ -181,7 +176,7 @@ export function ContextSidebar() {
       aria-label="Context and memory"
     >
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-5 pr-1">
+        <div className="flex flex-col gap-4 pr-1">
           {/* ── Usage (tokens & cost) ───────────────────────────────────── */}
           <ContextUsageSection
             open={openSections.usage}
@@ -189,18 +184,14 @@ export function ContextSidebar() {
           />
 
           {/* ── Entities ──────────────────────────────────────────────── */}
-          <section>
-            <ContextSidebarSectionHeader
-              label="Entities"
+          <section aria-label="Attached entities">
+            <ContextPanelSection
+              regionId="context-sidebar-section-entities"
+              title="Entities"
+              subtitle="Documents, uploads, links and inbox items attached to this chat."
+              icon={Layers}
               open={openSections.entities}
-              controlsId="context-sidebar-section-entities"
               onOpenChange={(nextOpen) => setSectionOpen("entities", nextOpen)}
-            />
-
-            <div
-              id="context-sidebar-section-entities"
-              role="region"
-              hidden={!openSections.entities}
             >
               {hasEntities ? (
                 <div className="flex flex-col gap-1" role="list">
@@ -269,7 +260,7 @@ export function ContextSidebar() {
                   </p>
                 </div>
               )}
-            </div>
+            </ContextPanelSection>
           </section>
 
           {/* ── Artifacts ─────────────────────────────────────────────── */}

@@ -31,9 +31,9 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
 import { InputGroup, InputGroupAddon, InputGroupButton } from "@/components/ui/input-group";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
-  BotIcon,
   CornerDownLeftIcon,
   CopyIcon,
   PencilIcon,
@@ -69,6 +69,55 @@ function getTextFromMessage(message: UIMessage): string {
     .filter((p) => p.type === "text")
     .map((p) => (p as { type: "text"; text: string }).text)
     .join("");
+}
+
+/**
+ * Whether an assistant {@link UIMessage} already shows streamed output users can see
+ * (text, reasoning chrome, or an inline tool card). When false during streaming, we
+ * show a skeleton so the gap before the first token is not mistaken for an error.
+ */
+function assistantMessageHasRenderableBody({ message }: { message: UIMessage }): boolean {
+  if (message.role !== "assistant") {
+    return false;
+  }
+  for (const part of message.parts) {
+    if (isReasoningUIPart(part)) {
+      return true;
+    }
+    if (part.type === "text" && part.text.trim().length > 0) {
+      return true;
+    }
+    if (isToolOrDynamicToolUIPart(part)) {
+      const toolName = getToolOrDynamicToolName(part);
+      if (hasAssistantToolInlineUI({ toolName })) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Skeleton and status copy shown while the assistant message exists but no body yet,
+ * or while the request is submitted before streaming begins.
+ */
+function AssistantAwaitingResponsePlaceholder() {
+  return (
+    <div
+      className="flex w-full flex-col gap-2.5 py-0.5"
+      aria-busy="true"
+      aria-label="Assistant is preparing a response"
+    >
+      {/* Status line — explains we are waiting, not failed */}
+      <p className="text-xs text-muted-foreground">Preparing a response…</p>
+      {/* Skeleton lines — approximate message shape */}
+      <div className="flex flex-col gap-2" aria-hidden>
+        <Skeleton className="h-3.5 w-[min(100%,28rem)]" />
+        <Skeleton className="h-3.5 w-[min(100%,22rem)]" />
+        <Skeleton className="h-3.5 w-[min(100%,24rem)]" />
+      </div>
+    </div>
+  );
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
@@ -172,6 +221,8 @@ function MessageList({
           const isLastMessage = messageIndex === messages.length - 1;
           const isStreaming =
             status === "streaming" && messages[messages.length - 1]?.id === message.id;
+          const hasRenderableBody = assistantMessageHasRenderableBody({ message });
+          const showAwaitingSkeleton = isLastMessage && isStreaming && !hasRenderableBody;
 
           const reasoningParts = message.parts.filter((p) => isReasoningUIPart(p));
           const reasoningText = reasoningParts.map((p) => p.text).join("\n\n");
@@ -222,6 +273,8 @@ function MessageList({
                   }
                   return null;
                 })}
+                {/* Placeholder while streamed body has not started — avoids a blank assistant row */}
+                {showAwaitingSkeleton ? <AssistantAwaitingResponsePlaceholder /> : null}
               </MessageContent>
               {!isStreaming && canEditOrCopy && (
                 <MessageActions
@@ -255,10 +308,7 @@ function MessageList({
       {status === "submitted" && (
         <Message from="assistant">
           <MessageContent>
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <BotIcon className="size-4 animate-pulse" />
-              <span>Thinking…</span>
-            </div>
+            <AssistantAwaitingResponsePlaceholder />
           </MessageContent>
         </Message>
       )}

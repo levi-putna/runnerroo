@@ -3,7 +3,7 @@
 import * as React from "react"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-import type { WorkflowListRow } from "@/lib/workflows/queries/queries"
+import type { SidebarRecentEntry } from "@/lib/app/sidebar-recent-entries"
 
 interface User {
   name: string
@@ -26,17 +26,21 @@ interface User {
 export function AppLayoutClient({
   children,
   user,
-  recentWorkflows,
+  recentSidebarEntries,
   pendingApprovalCount = 0,
 }: {
   children: React.ReactNode
   user: User
-  recentWorkflows: WorkflowListRow[]
+  recentSidebarEntries: SidebarRecentEntry[]
   pendingApprovalCount?: number
 }) {
   return (
     <SidebarProvider className="h-full overflow-hidden">
-      <AppSidebar pendingApprovalCount={pendingApprovalCount} recentWorkflows={recentWorkflows} user={user} />
+      <AppSidebar
+        pendingApprovalCount={pendingApprovalCount}
+        recentSidebarEntries={recentSidebarEntries}
+        user={user}
+      />
 
       {/* SidebarInset is the <main> element — no extra wrapper needed */}
       <SidebarInset className="overflow-y-auto">

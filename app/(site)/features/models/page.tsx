@@ -10,25 +10,25 @@ import { getCatalogueGatewayModelsOrFallback } from "@/lib/ai-gateway/get-catalo
 export const revalidate = 3600
 
 export const metadata: Metadata = {
-  title: "Models — Features — Dailify",
+  title: "Models | Features | Dailify",
   description:
     "Browse AI Gateway models available in Dailify: many providers, list pricing passed through, no hidden markup.",
   openGraph: {
-    title: "Models — Features — Dailify",
+    title: "Models | Features | Dailify",
     description:
       "Browse AI Gateway models available in Dailify: many providers, list pricing passed through, no hidden markup.",
   },
 }
 
 /**
- * Public model catalogue — same gateway cache as in-app selectors, styled for the marketing site.
+ * Public model catalogue: same gateway cache as in-app selectors, styled for the marketing site.
  */
 export default async function FeaturesModelsPage() {
   const models = await getCatalogueGatewayModelsOrFallback()
 
   return (
     <div className="flex-1">
-      {/* Hero — multi-provider + wholesale pricing (Vercel AI Gateway–style narrative) */}
+      {/* Hero: multi-provider + wholesale pricing (Vercel AI Gateway–style narrative) */}
       <section className="relative overflow-hidden border-b border-border/60">
         <div className="site-hero-grid pointer-events-none absolute inset-0 opacity-60" aria-hidden />
         <div className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20 lg:py-24">
@@ -48,7 +48,7 @@ export default async function FeaturesModelsPage() {
             >
               Vercel AI Gateway
             </a>{" "}
-            so you can pick from a wide range of labs and price points — OpenAI, Anthropic, Google, xAI, and many more —
+            so you can pick from a wide range of labs and price points (OpenAI, Anthropic, Google, xAI, and many more)
             without juggling separate accounts for each product surface.
           </p>
           <p className="mt-4 max-w-3xl text-base text-muted-foreground">
@@ -89,14 +89,14 @@ export default async function FeaturesModelsPage() {
         <MagicCard className="p-6">
           <h2 className="text-sm font-semibold text-foreground">Switch models freely</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Move between providers for latency, quality, or budget — your workspace is not tied to a single brand the way
+            Move between providers for latency, quality, or budget. Your workspace is not tied to a single brand the way
             consumer chat apps are.
           </p>
         </MagicCard>
         <MagicCard className="p-6">
           <h2 className="text-sm font-semibold text-foreground">Straightforward columns</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Name, provider, context window, input and output unit pricing, and catalogue release date — nothing else
+            Name, provider, context window, input and output unit pricing, and catalogue release date. Nothing else
             cluttering the view.
           </p>
         </MagicCard>

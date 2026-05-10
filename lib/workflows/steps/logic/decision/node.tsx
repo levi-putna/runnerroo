@@ -49,7 +49,7 @@ export function DecisionNode({ id, data, selected }: NodeProps) {
           <div className="relative flex size-[52px] shrink-0 items-center justify-center">
             <div
               className={cn(
-                "size-11 rotate-45 rounded-lg shadow-[0_6px_16px_oklch(62%_0.14_240_/_35%)]",
+                "size-11 rotate-45 rounded-lg shadow-[0_6px_16px_oklch(0_0_0_/_18%)]",
                 decisionAccentBg,
               )}
             />

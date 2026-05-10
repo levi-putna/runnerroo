@@ -33,8 +33,6 @@ type MemoryRow = {
   created_at: string;
 };
 
-type StatusFilter = "active" | "archived" | "deleted" | "all";
-
 type MemoryTypeFilter = "all" | MemoryType;
 
 const FILTER_TRIGGER_CLASS =
@@ -57,7 +55,6 @@ function formatMemoryTypeLabel({ type }: { type: MemoryType }): string {
  */
 export function MemoriesSettingsPanel({ className }: { className?: string }) {
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [typeFilter, setTypeFilter] = useState<MemoryTypeFilter>("all");
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [rows, setRows] = useState<MemoryRow[]>([]);
@@ -68,7 +65,7 @@ export function MemoriesSettingsPanel({ className }: { className?: string }) {
   const typeTriggerLabel = typeFilter === "all" ? "All types" : formatMemoryTypeLabel({ type: typeFilter });
 
   const loadMemories = useCallback(
-    async ({ search, status, type }: { search: string; status: StatusFilter; type: MemoryTypeFilter }) => {
+    async ({ search, type }: { search: string; type: MemoryTypeFilter }) => {
       setIsLoading(true);
       setError(null);
 
@@ -76,7 +73,6 @@ export function MemoriesSettingsPanel({ className }: { className?: string }) {
         const params = new URLSearchParams();
         params.set("limit", "200");
         if (search.trim()) params.set("q", search.trim());
-        if (status !== "all") params.set("status", status);
         if (type !== "all") params.set("type", type);
 
         const response = await fetch(`/api/memories?${params.toString()}`);
@@ -99,10 +95,10 @@ export function MemoriesSettingsPanel({ className }: { className?: string }) {
 
   useEffect(() => {
     const id = window.setTimeout(() => {
-      void loadMemories({ search: query, status: statusFilter, type: typeFilter });
+      void loadMemories({ search: query, type: typeFilter });
     }, 250);
     return () => window.clearTimeout(id);
-  }, [loadMemories, query, statusFilter, typeFilter]);
+  }, [loadMemories, query, typeFilter]);
 
   const activeCount = useMemo(
     () => rows.filter((m) => m.status === "active").length,
@@ -128,95 +124,68 @@ export function MemoriesSettingsPanel({ className }: { className?: string }) {
       />
 
       <div className="flex flex-col gap-4 p-6">
-        {/* Toolbar — status chips + usage-style type dropdown and search */}
-        <div className="flex flex-col gap-3 rounded-lg border bg-background p-4">
-          {/* Status row */}
-          <div className="flex flex-wrap items-center gap-2">
-            {(
-              [
-                { id: "active" as const, label: "Active" },
-                { id: "archived" as const, label: "Archived" },
-                { id: "deleted" as const, label: "Deleted" },
-                { id: "all" as const, label: "All" },
-              ] satisfies { id: StatusFilter; label: string }[]
-            ).map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                className={cn(
-                  FILTER_TRIGGER_CLASS,
-                  statusFilter === chip.id ? "border-primary/50 bg-muted/80" : ""
-                )}
-                onClick={() => setStatusFilter(chip.id)}
-              >
-                {chip.label}
+        {/* Filters — type dropdown + search (usage-style pills, no outer filter card) */}
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+          <Popover open={typePickerOpen} onOpenChange={setTypePickerOpen}>
+            <PopoverTrigger asChild>
+              <button type="button" className={cn(FILTER_TRIGGER_CLASS, "max-w-[min(100%,20rem)]")}>
+                <TagIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="shrink-0 text-muted-foreground">Type</span>
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">{typeTriggerLabel}</span>
+                <ChevronDownIcon className="size-4 shrink-0 opacity-60" aria-hidden />
               </button>
-            ))}
-          </div>
-
-          {/* Filters row — mirrors Gateway usage pill row + compact search */}
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-            <Popover open={typePickerOpen} onOpenChange={setTypePickerOpen}>
-              <PopoverTrigger asChild>
-                <button type="button" className={cn(FILTER_TRIGGER_CLASS, "max-w-[min(100%,20rem)]")}>
-                  <TagIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="shrink-0 text-muted-foreground">Type</span>
-                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">{typeTriggerLabel}</span>
-                  <ChevronDownIcon className="size-4 shrink-0 opacity-60" aria-hidden />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-[16rem] p-0">
-                <Command>
-                  <CommandInput placeholder="Search types…" />
-                  <CommandList>
-                    <CommandEmpty>No type found.</CommandEmpty>
-                    <CommandGroup>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[16rem] p-0">
+              <Command>
+                <CommandInput placeholder="Search types…" />
+                <CommandList>
+                  <CommandEmpty>No type found.</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="__all__"
+                      keywords={["all", "types", "any"]}
+                      onSelect={() => {
+                        setTypeFilter("all");
+                        setTypePickerOpen(false);
+                      }}
+                    >
+                      All types
+                    </CommandItem>
+                    {MEMORY_TYPES.map((memoryType) => (
                       <CommandItem
-                        value="__all__"
-                        keywords={["all", "types", "any"]}
+                        key={memoryType}
+                        value={memoryType}
+                        keywords={[memoryType, formatMemoryTypeLabel({ type: memoryType })]}
                         onSelect={() => {
-                          setTypeFilter("all");
+                          setTypeFilter(memoryType);
                           setTypePickerOpen(false);
                         }}
                       >
-                        All types
+                        {formatMemoryTypeLabel({ type: memoryType })}
                       </CommandItem>
-                      {MEMORY_TYPES.map((memoryType) => (
-                        <CommandItem
-                          key={memoryType}
-                          value={memoryType}
-                          keywords={[memoryType, formatMemoryTypeLabel({ type: memoryType })]}
-                          onSelect={() => {
-                            setTypeFilter(memoryType);
-                            setTypePickerOpen(false);
-                          }}
-                        >
-                          {formatMemoryTypeLabel({ type: memoryType })}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
 
-            <div className="relative min-w-0 flex-1 sm:max-w-md">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by key, content, or type"
-                className="h-9 pl-9"
-              />
-            </div>
+          <div className="relative min-w-0 flex-1 sm:max-w-md">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by key, content, or type"
+              className="h-9 pl-9"
+            />
           </div>
+        </div>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <BrainIcon className="size-4 shrink-0" aria-hidden />
-            <span>
-              {rows.length} shown · {activeCount} active in results
-            </span>
-          </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <BrainIcon className="size-4 shrink-0" aria-hidden />
+          <span>
+            {rows.length} shown · {activeCount} active in results
+          </span>
         </div>
 
         {error && (

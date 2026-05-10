@@ -5,16 +5,16 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export const metadata: Metadata = {
-  title: "Contact — Dailify",
+  title: "Contact | Dailify",
   description: "Reach the Dailify team for sales, support, and partnerships.",
   openGraph: {
-    title: "Contact — Dailify",
+    title: "Contact | Dailify",
     description: "Reach the Dailify team for sales, support, and partnerships.",
   },
 }
 
 /**
- * Marketing contact page — mailto and in-app entry points.
+ * Marketing contact page: mailto and in-app entry points.
  */
 export default function ContactPage() {
   return (

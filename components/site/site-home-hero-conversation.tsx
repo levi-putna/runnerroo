@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 const HERO_CHAT_SCRIPT: readonly { role: "user" | "assistant"; text: string }[] = [
   {
     role: "user",
-    text: "Before stand-up — clashes, approvals, anything I should not miss?",
+    text: "Before stand-up: clashes, approvals, anything I should not miss?",
   },
   {
     role: "assistant",
@@ -22,7 +22,7 @@ const HERO_CHAT_SCRIPT: readonly { role: "user" | "assistant"; text: string }[] 
   },
   {
     role: "assistant",
-    text: "10:00 clash w/ Product; 3 approvals (1 overdue); headcount note from Finance — replying first.",
+    text: "10:00 clash w/ Product; 3 approvals (1 overdue); headcount note from Finance; replying first.",
   },
 ] as const
 
@@ -76,7 +76,7 @@ function UserBubbleTail({ className }: { className?: string }) {
 }
 
 /**
- * Enter animation wrapper — fade and lift when a bubble appears.
+ * Enter animation wrapper: fade and lift when a bubble appears.
  */
 function BubbleEnter({
   children,
@@ -134,7 +134,7 @@ function RevealOnMount({
 }
 
 /**
- * Animated mock thread for the marketing hero — uses {@link Conversation} / {@link Message} like the in-app assistant.
+ * Animated mock thread for the marketing hero: uses {@link Conversation} / {@link Message} like the in-app assistant.
  */
 export function SiteHomeHeroConversation({ className }: { className?: string }) {
   const reduceMotion = usePrefersReducedMotion()
@@ -166,7 +166,7 @@ export function SiteHomeHeroConversation({ className }: { className?: string }) 
           continue
         }
 
-        // Assistant — stream characters (or show whole line when reduced motion)
+        // Assistant: stream characters (or show whole line when reduced motion)
         setStreamSource(line.text)
         if (reduceMotion) {
           setStreamLen(line.text.length)

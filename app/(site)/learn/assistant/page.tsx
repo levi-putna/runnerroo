@@ -4,10 +4,10 @@ import Link from "next/link"
 import { LearnArticle } from "@/components/site/learn-article"
 
 export const metadata: Metadata = {
-  title: "Assistant — Learn — Dailify",
+  title: "Assistant | Learn | Dailify",
   description: "Chat with context, tools, and your workspace.",
   openGraph: {
-    title: "Assistant — Learn — Dailify",
+    title: "Assistant | Learn | Dailify",
     description: "Chat with context, tools, and your workspace.",
   },
 }

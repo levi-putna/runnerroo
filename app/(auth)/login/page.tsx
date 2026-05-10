@@ -93,7 +93,7 @@ export default function LoginPage() {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
-        router.replace("/app/workflows")
+        router.replace("/app")
       }
     })
     return () => subscription.unsubscribe()
@@ -150,7 +150,7 @@ export default function LoginPage() {
       setPasswordError(signInErr.message)
     } else {
       /** Full navigation so SSR `getUser()` sees the new session cookies (soft `router.push` can race the layout). */
-      window.location.assign(`${window.location.origin}/app/workflows`)
+      window.location.assign(`${window.location.origin}/app`)
     }
     setPasswordLoading(false)
   }
@@ -163,7 +163,7 @@ export default function LoginPage() {
     if (verifyErr) {
       setError(verifyErr.message)
     } else {
-      window.location.assign(`${window.location.origin}/app/workflows`)
+      window.location.assign(`${window.location.origin}/app`)
     }
     setVerifyLoading(false)
   }

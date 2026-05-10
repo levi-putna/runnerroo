@@ -20,11 +20,11 @@ import { SiteHomeHeroConversation } from "@/components/site/site-home-hero-conve
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Dailify — Your personal AI executive assistant",
+  title: "Dailify: Your personal AI executive assistant",
   description:
     "Dailify gives you a personal AI executive assistant that handles coordination, routes approvals, and runs your recurring processes so you can focus on the work that matters.",
   openGraph: {
-    title: "Dailify — Your personal AI executive assistant",
+    title: "Dailify: Your personal AI executive assistant",
     description:
       "Dailify gives you a personal AI executive assistant that handles coordination, routes approvals, and runs your recurring processes so you can focus on the work that matters.",
   },
@@ -68,7 +68,7 @@ export default function SiteHomePage() {
             </div>
           </div>
 
-          {/* Hero visual — animated mock conversation */}
+          {/* Hero visual: animated mock conversation */}
           <div className="flex w-full flex-1 justify-center sm:justify-end">
             <SiteHomeHeroConversation />
           </div>

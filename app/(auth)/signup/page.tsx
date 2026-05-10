@@ -75,7 +75,7 @@ export default function SignUpPage() {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
-        router.replace("/app/workflows")
+        router.replace("/app")
       }
     })
     return () => subscription.unsubscribe()
@@ -117,7 +117,7 @@ export default function SignUpPage() {
     if (verifyErr) {
       setError(verifyErr.message)
     } else {
-      window.location.assign(`${window.location.origin}/app/workflows`)
+      window.location.assign(`${window.location.origin}/app`)
     }
     setVerifyLoading(false)
   }

@@ -5,6 +5,7 @@ import { createDeleteUserMemoryTool } from "@/ai/tools/memories/delete-user-memo
 import { createPatchUserMemoryTool } from "@/ai/tools/memories/patch-user-memory";
 import { createSearchUserMemoriesTool } from "@/ai/tools/memories/search-user-memories";
 import { createUpsertUserMemoryTool } from "@/ai/tools/memories/upsert-user-memory";
+import { createUpdateAssistantSettingsTool } from "@/ai/tools/assistant-settings/update-assistant-settings";
 import { askQuestion } from "@/ai/tools/utility/ask-question";
 import { tavilyCrawl } from "@/ai/tools/utility/tavily-crawl";
 import { tavilyExtract } from "@/ai/tools/utility/tavily-extract";
@@ -58,6 +59,7 @@ export async function createAssistantTools({
       upsertUserMemory: createUpsertUserMemoryTool({ supabase, userId, conversationId }),
       patchUserMemory: createPatchUserMemoryTool({ supabase, userId, conversationId }),
       deleteUserMemory: createDeleteUserMemoryTool({ supabase, userId, conversationId }),
+      updateAssistantSettings: createUpdateAssistantSettingsTool({ supabase, userId }),
       ...integrationTools,
       ...workflowInvoke.tools,
     },

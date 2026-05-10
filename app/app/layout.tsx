@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation"
 import { getResolvedAvatarUrlForAuthUser } from "@/lib/avatar/dicebear"
 import { createClient } from "@/lib/supabase/server"
+import { fetchSidebarRecentEntries } from "@/lib/app/sidebar-recent-entries"
 import { countPendingWorkflowApprovalsForUser } from "@/lib/workflows/queries/approval-queries"
-import { fetchWorkflowsForUser } from "@/lib/workflows/queries/queries"
 import { AppLayoutClient } from "./layout-client"
 
 /**
@@ -24,15 +24,19 @@ export default async function AppLayout({
     avatar: getResolvedAvatarUrlForAuthUser({ user }),
   }
 
-  const [recentWorkflows, pendingApprovalCount] = await Promise.all([
-    fetchWorkflowsForUser({ limit: 12 }),
+  const [recentSidebarEntries, pendingApprovalCount] = await Promise.all([
+    fetchSidebarRecentEntries(),
     countPendingWorkflowApprovalsForUser(),
   ])
 
   return (
     <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden">
       {/* Product shell — full viewport height and clipped overflow live here so the public `(site)` tree can scroll on `body`. */}
-      <AppLayoutClient pendingApprovalCount={pendingApprovalCount} recentWorkflows={recentWorkflows} user={userData}>
+      <AppLayoutClient
+        pendingApprovalCount={pendingApprovalCount}
+        recentSidebarEntries={recentSidebarEntries}
+        user={userData}
+      >
         {children}
       </AppLayoutClient>
     </div>

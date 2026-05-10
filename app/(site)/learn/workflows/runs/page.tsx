@@ -3,16 +3,16 @@ import type { Metadata } from "next"
 import { LearnArticle } from "@/components/site/learn-article"
 
 export const metadata: Metadata = {
-  title: "Runs and schedules — Learn — Dailify",
+  title: "Runs and schedules | Learn | Dailify",
   description: "Execute workflows on demand or on a schedule.",
   openGraph: {
-    title: "Runs and schedules — Learn — Dailify",
+    title: "Runs and schedules | Learn | Dailify",
     description: "Execute workflows on demand or on a schedule.",
   },
 }
 
 /**
- * Runs and schedules — operational view of workflows.
+ * Runs and schedules: operational view of workflows.
  */
 export default function LearnWorkflowsRunsPage() {
   return (

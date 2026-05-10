@@ -1,16 +1,16 @@
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Terms of service — Dailify",
+  title: "Terms of service | Dailify",
   description: "Terms of service for the Dailify website and product.",
   openGraph: {
-    title: "Terms of service — Dailify",
+    title: "Terms of service | Dailify",
     description: "Terms of service for the Dailify website and product.",
   },
 }
 
 /**
- * Terms of service placeholder — replace with counsel-reviewed copy before launch.
+ * Terms of service placeholder: replace with counsel-reviewed copy before launch.
  */
 export default function TermsPage() {
   return (

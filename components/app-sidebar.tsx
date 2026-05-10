@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { DailifyFullLogo } from "@/components/brand/dailify-logos"
 import { NavUser } from "@/components/nav-user"
-import type { WorkflowListRow } from "@/lib/workflows/queries/queries"
+import type { SidebarRecentEntry } from "@/lib/app/sidebar-recent-entries"
 
 interface User {
   name: string
@@ -105,6 +105,7 @@ const navItems: NavItem[] = [
     backLabel: "Navigation",
     subItems: [
       { id: "profile", title: "Profile", url: "/app/settings/profile", icon: <Settings className="size-4" /> },
+      { id: "assistant", title: "Assistant", url: "/app/settings/assistant", icon: <MessageSquareIcon className="size-4" /> },
       { id: "integrations", title: "Integrations", url: "/app/settings/integrations", icon: <GitBranch className="size-4" /> },
       { id: "usage", title: "Usage", url: "/app/settings/usage", icon: <BarChart3 className="size-4" /> },
       { id: "memories", title: "Memories", url: "/app/settings/memories", icon: <BrainIcon className="size-4" /> },
@@ -127,15 +128,15 @@ const SIDEBAR_STRUCTURED_NAV_IDS = new Set<string>([
 ])
 
 /**
- * Primary app navigation with optional recent workflows under the composer entry point.
+ * Primary app navigation with optional merged Recent items (conversations, workflows, …).
  */
 export function AppSidebar({
   user,
-  recentWorkflows,
+  recentSidebarEntries,
   pendingApprovalCount = 0,
 }: {
   user: User
-  recentWorkflows: WorkflowListRow[]
+  recentSidebarEntries: SidebarRecentEntry[]
   pendingApprovalCount?: number
 }) {
   const navItemsEffective = React.useMemo(
@@ -307,30 +308,37 @@ export function AppSidebar({
             <div key={item.id}>{renderRootNavLinkOrDrilldown(item)}</div>
           ))}
 
-          {/* Recent workflows */}
-          {recentWorkflows.length > 0 && (
+          {/* Recent — conversations and workflows merged by recency */}
+          {recentSidebarEntries.length > 0 && (
             <>
               <SidebarSeparator className="my-2" />
               <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
                 Recent
               </p>
               <div className="flex flex-col gap-0.5">
-                {recentWorkflows.slice(0, 8).map((w) => {
-                  const href = `/app/workflows/${w.id}`
-                  const isActive = pathname === href || pathname.startsWith(`${href}/`)
+                {recentSidebarEntries.map((entry) => {
+                  const href = entry.href
+                  const isActive =
+                    pathname === href ||
+                    (entry.kind === "workflow" && pathname.startsWith(`${href}/`)) ||
+                    (entry.kind === "conversation" && pathname.startsWith(`${href}/`))
                   return (
                     <Link
-                      key={w.id}
+                      key={`${entry.kind}-${entry.id}`}
                       href={href}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                         isActive &&
                           "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground [&_svg]:text-primary-foreground"
                       )}
-                      title={w.name}
+                      title={entry.label}
                     >
-                      <Workflow className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                      {entry.kind === "conversation" ? (
+                        <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Workflow className="size-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                     </Link>
                   )
                 })}
@@ -423,7 +431,7 @@ export function AppSidebar({
               size="lg"
               tooltip="Dailify"
               className="py-1.5"
-              render={<Link href="/app/workflows" />}
+              render={<Link href="/app" />}
             >
               <DailifyFullLogo className="h-9 w-auto max-w-full" priority />
             </SidebarMenuButton>

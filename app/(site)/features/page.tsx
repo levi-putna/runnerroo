@@ -9,16 +9,16 @@ import { ShineBorder } from "@/components/site/magic/shine-border"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Features — Dailify",
+  title: "Features | Dailify",
   description: "Assistant chat, visual workflows, approvals, and durable runs in one workspace.",
   openGraph: {
-    title: "Features — Dailify",
+    title: "Features | Dailify",
     description: "Assistant chat, visual workflows, approvals, and durable runs in one workspace.",
   },
 }
 
 /**
- * Product features page — assistant and workflows with bento-style explanations.
+ * Product features page: assistant and workflows with bento-style explanations.
  */
 export default function FeaturesPage() {
   return (
@@ -57,7 +57,7 @@ export default function FeaturesPage() {
           <div>
             <h2 className="text-2xl font-semibold tracking-tight text-foreground">Assistant</h2>
             <p className="mt-2 max-w-2xl text-muted-foreground">
-              A conversational layer with tools, memories, and model choice — grounded in the same workspace you operate
+              A conversational layer with tools, memories, and model choice, grounded in the same workspace you operate
               day to day.
             </p>
           </div>
@@ -71,7 +71,7 @@ export default function FeaturesPage() {
             </div>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
               Pick the right model for the job, stream responses, and let the assistant call tools when it needs fresh
-              data — without leaving the thread you already trust.
+              data, without leaving the thread you already trust.
             </p>
           </MagicCard>
           <MagicCard className="p-8">
@@ -93,7 +93,7 @@ export default function FeaturesPage() {
           <div>
             <h2 className="text-2xl font-semibold tracking-tight text-foreground">Workflows</h2>
             <p className="mt-2 max-w-2xl text-muted-foreground">
-              A visual graph for orchestration: triggers, branches, integrations, and human checkpoints — with history you
+              A visual graph for orchestration: triggers, branches, integrations, and human checkpoints, with history you
               can audit.
             </p>
           </div>
@@ -109,7 +109,7 @@ export default function FeaturesPage() {
                   Lay out the spine of your process, branch for exceptions, and keep naming honest so the next engineer
                   understands intent at a glance.
                 </p>
-                {/* Run spine — same component as Learn /workflows, embedded in the bento */}
+                {/* Run spine: same component as Learn /workflows, embedded in the bento */}
                 <div className="mt-5">
                   <LearnWorkflowsHero variant="embedded" />
                 </div>
@@ -123,7 +123,7 @@ export default function FeaturesPage() {
                   Approvals
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">
-                  Sensitive steps wait for explicit human consent — surfaced in the inbox so work does not stall in the
+                  Sensitive steps wait for explicit human consent, surfaced in the inbox so work does not stall in the
                   dark.
                 </p>
               </div>

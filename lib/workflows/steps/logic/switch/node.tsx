@@ -89,7 +89,7 @@ export function SwitchNode({ id, data, selected }: NodeProps) {
             <div className="relative flex size-[52px] shrink-0 items-center justify-center">
               <div
                 className={cn(
-                  "size-11 rounded-xl shadow-[0_6px_16px_oklch(62%_0.14_180_/_35%)]",
+                  "size-11 rounded-xl shadow-[0_6px_16px_oklch(0_0_0_/_18%)]",
                   switchAccentBg,
                 )}
               />

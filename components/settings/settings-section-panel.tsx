@@ -56,16 +56,17 @@ export function SettingsSectionPanel({
       <div className="space-y-4 px-4 pb-4 pt-3">{children}</div>
 
       {showFooter ? (
-        <div
-          className={cn(
-            "flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/10 px-4 py-3",
-            footerHint ? "" : "justify-end",
-          )}
-        >
+        <div className="flex items-start justify-between gap-4 border-t border-border/70 bg-muted/10 px-4 py-3">
+          {/* Hint — allowed to wrap; min-w-0 lets it shrink below its content size */}
           {footerHint ? (
-            <p className="mr-auto min-w-0 max-w-prose text-xs text-muted-foreground leading-relaxed">{footerHint}</p>
+            <p className="min-w-0 flex-1 text-xs text-muted-foreground leading-relaxed">{footerHint}</p>
+          ) : (
+            <span aria-hidden />
+          )}
+          {/* Actions — shrink-0 keeps the button on the right and prevents it collapsing */}
+          {footerActions ? (
+            <div className="flex shrink-0 items-center gap-2">{footerActions}</div>
           ) : null}
-          {footerActions ? <div className="flex flex-wrap justify-end gap-2">{footerActions}</div> : null}
         </div>
       ) : null}
     </div>

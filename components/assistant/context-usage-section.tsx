@@ -65,7 +65,7 @@ function sdkUsageColumns(usage: LanguageModelUsage): {
 /** Matches the section heading used in {@link ContextSidebar}. */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+    <span className="text-[11px] font-medium uppercase tracking-wider text-foreground">
       {children}
     </span>
   );
@@ -86,7 +86,7 @@ function UsageSectionHeader({
   return (
     <button
       type="button"
-      className="mb-1.5 flex w-full cursor-pointer items-center justify-between rounded-md px-1 py-1 text-left hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className="mb-1.5 flex w-full cursor-pointer items-center justify-between rounded-md px-1 py-1 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       aria-expanded={open}
       aria-controls={controlsId}
       onClick={() => onOpenChange(!open)}

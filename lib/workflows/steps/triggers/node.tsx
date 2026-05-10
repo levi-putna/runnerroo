@@ -3,7 +3,11 @@
 import * as React from "react"
 import { type NodeProps } from "@xyflow/react"
 import { Play, Square } from "lucide-react"
-import { WORKFLOW_ENTRY_KIND_META, normaliseEntryKind } from "@/lib/workflows/engine/node-type-registry"
+import {
+  WORKFLOW_ENTRY_KIND_META,
+  WORKFLOW_TRIGGER_RUN_BUTTON_OUTLINE_CLASSNAME,
+  normaliseEntryKind,
+} from "@/lib/workflows/engine/node-type-registry"
 import { WorkflowNodeGlyph } from "@/components/workflow/node-type-presentation"
 import { OutputHandle } from "@/lib/workflows/steps/shared/handles"
 import {
@@ -61,7 +65,7 @@ export function EntryNode({ id, data, selected }: NodeProps) {
         type="button"
         variant="outline"
         size="icon-sm"
-        className="border-emerald-600/35 text-emerald-700 hover:bg-emerald-500/10"
+        className={WORKFLOW_TRIGGER_RUN_BUTTON_OUTLINE_CLASSNAME}
         aria-label="Run workflow"
         title="Run workflow"
         onClick={(evt) => {

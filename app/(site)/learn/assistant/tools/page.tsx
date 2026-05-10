@@ -3,22 +3,22 @@ import type { Metadata } from "next"
 import { LearnArticle } from "@/components/site/learn-article"
 
 export const metadata: Metadata = {
-  title: "Tools and approvals — Learn — Dailify",
+  title: "Tools and approvals | Learn | Dailify",
   description: "Tool calls, human approvals, and safe automation.",
   openGraph: {
-    title: "Tools and approvals — Learn — Dailify",
+    title: "Tools and approvals | Learn | Dailify",
     description: "Tool calls, human approvals, and safe automation.",
   },
 }
 
 /**
- * Assistant tools and approvals — safety and governance.
+ * Assistant tools and approvals: safety and governance.
  */
 export default function LearnAssistantToolsPage() {
   return (
     <LearnArticle
       title="Tools and approvals"
-      description="Let the assistant act — with guardrails when a human must confirm."
+      description="Let the assistant act with guardrails when a human must confirm."
     >
       <p>
         Tools can fetch data, update systems, or kick off workflows. When a tool is sensitive, route it through an

@@ -55,16 +55,16 @@ export function ModelsCatalogueTable({
               </td>
               <td className="px-4 py-3 align-top text-foreground">{model.providerLabel}</td>
               <td className="px-4 py-3 align-top font-mono tabular-nums text-muted-foreground">
-                {model.contextLabel ?? "—"}
+                {model.contextLabel ?? "-"}
               </td>
               <td className="px-4 py-3 align-top font-mono tabular-nums text-muted-foreground">
-                {model.inputPriceLabel ?? "—"}
+                {model.inputPriceLabel ?? "-"}
               </td>
               <td className="px-4 py-3 align-top font-mono tabular-nums text-muted-foreground">
-                {model.outputPriceLabel ?? "—"}
+                {model.outputPriceLabel ?? "-"}
               </td>
               <td className="px-4 py-3 align-top font-mono text-xs text-muted-foreground">
-                {model.releaseDateLabel ?? "—"}
+                {model.releaseDateLabel ?? "-"}
               </td>
             </tr>
           ))}

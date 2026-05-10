@@ -36,11 +36,11 @@ export function EndNode({ id, data, selected }: NodeProps) {
       {/* Minimal terminator disc — intent only, not a full step card */}
       <div
         className={cn(
-          "flex size-[52px] items-center justify-center rounded-full border border-rose-700/35 shadow-[0_4px_14px_oklch(55%_0.2_15_/_28%)] transition-[box-shadow,transform]",
+          "flex size-[52px] items-center justify-center rounded-full border border-black/15 shadow-[0_4px_14px_oklch(0_0_0_/_18%)] transition-[box-shadow,transform]",
           endMeta.accentBg,
           haloShell,
           !runRing && selected ? "scale-[1.02]" : null,
-          !runRing && !selected ? "hover:shadow-[0_6px_18px_oklch(55%_0.2_15_/_35%)]" : null
+          !runRing && !selected ? "hover:shadow-[0_6px_18px_oklch(0_0_0_/_22%)]" : null
         )}
         title={title}
         aria-label={`${title}, end of workflow`}

@@ -3,16 +3,16 @@ import Link from "next/link"
 import { ExternalLink } from "lucide-react"
 
 export const metadata: Metadata = {
-  title: "About — Dailify",
-  description: "The story behind Dailify — why it was built, and who built it.",
+  title: "About | Dailify",
+  description: "The story behind Dailify: why it was built, and who built it.",
   openGraph: {
-    title: "About — Dailify",
-    description: "The story behind Dailify — why it was built, and who built it.",
+    title: "About | Dailify",
+    description: "The story behind Dailify: why it was built, and who built it.",
   },
 }
 
 /**
- * About page — the origin story of Dailify and the person behind it.
+ * About page: the origin story of Dailify and the person behind it.
  */
 export default function AboutPage() {
   return (
@@ -29,7 +29,7 @@ export default function AboutPage() {
       <section className="mb-16 space-y-6 text-lg leading-relaxed text-muted-foreground">
         <p>
           Like a lot of people working in technology, I got genuinely excited when generative AI started
-          moving fast. Not just the hype — the real, tangible shift in what was becoming possible with
+          moving fast. Not just the hype: the real, tangible shift in what was becoming possible with
           tools like{" "}
           <span className="text-foreground">Cursor</span>,{" "}
           <span className="text-foreground">Claude</span>, and{" "}
@@ -39,14 +39,14 @@ export default function AboutPage() {
 
         <p>
           But I kept running into the same gap. I wanted a single assistant that could help me with the
-          repetitive, time-consuming tasks in my day-to-day life — reliably, and in a way that felt like
+          repetitive, time-consuming tasks in my day-to-day life, reliably, and in a way that felt like
           it actually represented me.
         </p>
 
         <p>
           Claude was impressive, but it never quite did things consistently the way I wanted. It lacked
           just enough control to make me comfortable using it on my behalf. n8n was powerful, but it felt
-          like a slightly disconnected, technical tool — more infrastructure than assistant. And the various
+          like a slightly disconnected, technical tool: more infrastructure than assistant. And the various
           open-source alternatives, while exciting, came with security considerations I wasn&apos;t
           comfortable managing in my personal workflow.
         </p>
@@ -60,7 +60,7 @@ export default function AboutPage() {
       <section className="mb-16 rounded-2xl bg-muted/50 px-8 py-10 sm:px-10">
         <h2 className="mb-4 text-2xl font-semibold tracking-tight text-foreground">The vision</h2>
         <p className="text-lg leading-relaxed text-muted-foreground">
-          Dailify is the single, simple tool I wished existed — one that lets you realise the genuine
+          Dailify is the single, simple tool I wished existed: one that lets you realise the genuine
           potential of AI in your day-to-day life. Not a sprawling platform. Not a raw API wrapper. Just
           a tool that works the way you want, does what you ask, and stays out of the way the rest of
           the time.
@@ -76,13 +76,13 @@ export default function AboutPage() {
           <div className="space-y-4 text-muted-foreground">
             <p className="text-lg leading-relaxed">
               Dailify is built and maintained by{" "}
-              <span className="font-medium text-foreground">Levi Putna</span> — a developer and product
+              <span className="font-medium text-foreground">Levi Putna</span>, a developer and product
               person based in Australia with a background spanning e-commerce platforms, lottery retail,
               and web application development.
             </p>
             <p className="leading-relaxed">
               Levi holds a Bachelor of Information Technology and Business/Commerce, and has spent his
-              career building software that handles real scale — from platforms servicing tens of
+              career building software that handles real scale, from platforms servicing tens of
               thousands of customers to systems processing hundreds of millions of dollars in
               transactions annually.
             </p>

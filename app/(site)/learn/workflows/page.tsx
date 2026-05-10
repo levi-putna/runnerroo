@@ -5,10 +5,10 @@ import { LearnArticle } from "@/components/site/learn-article"
 import { LearnWorkflowsHero } from "@/components/site/learn-workflows-hero"
 
 export const metadata: Metadata = {
-  title: "Workflows — Learn — Dailify",
+  title: "Workflows | Learn | Dailify",
   description: "Concepts for building and operating visual workflows.",
   openGraph: {
-    title: "Workflows — Learn — Dailify",
+    title: "Workflows | Learn | Dailify",
     description: "Concepts for building and operating visual workflows.",
   },
 }

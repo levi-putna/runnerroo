@@ -4,16 +4,16 @@ import Link from "next/link"
 import { getAllBlogPosts } from "@/lib/blog/posts"
 
 export const metadata: Metadata = {
-  title: "Blog — Dailify",
+  title: "Blog | Dailify",
   description: "Product updates, guides, and notes from the Dailify team.",
   openGraph: {
-    title: "Blog — Dailify",
+    title: "Blog | Dailify",
     description: "Product updates, guides, and notes from the Dailify team.",
   },
 }
 
 /**
- * Blog index — lists Markdown posts from `content/blog/`.
+ * Blog index: lists Markdown posts from `content/blog/`.
  */
 export default function BlogIndexPage() {
   const posts = getAllBlogPosts()

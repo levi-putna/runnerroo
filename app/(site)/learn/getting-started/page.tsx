@@ -3,16 +3,16 @@ import type { Metadata } from "next"
 import { LearnArticle } from "@/components/site/learn-article"
 
 export const metadata: Metadata = {
-  title: "Getting started — Learn — Dailify",
+  title: "Getting started | Learn | Dailify",
   description: "Create an account, open the app, and ship your first workflow.",
   openGraph: {
-    title: "Getting started — Learn — Dailify",
+    title: "Getting started | Learn | Dailify",
     description: "Create an account, open the app, and ship your first workflow.",
   },
 }
 
 /**
- * Getting started guide — account, navigation, first workflow.
+ * Getting started guide: account, navigation, first workflow.
  */
 export default function LearnGettingStartedPage() {
   return (
@@ -32,7 +32,7 @@ export default function LearnGettingStartedPage() {
       </p>
       <h2>3. Build a workflow</h2>
       <p>
-        Create a new workflow, add nodes on the canvas, and connect them. Save often — your graph is the source of truth
+        Create a new workflow, add nodes on the canvas, and connect them. Save often: your graph is the source of truth
         for how work moves through your team.
       </p>
     </LearnArticle>

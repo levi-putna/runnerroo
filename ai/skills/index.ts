@@ -2,6 +2,8 @@ import type { PlanningResult } from "@/ai/agents/planning-agent";
 import { dailifyDomainSkill } from "@/ai/skills/dailify-domain";
 import { toneSkill } from "@/ai/skills/tone";
 import { toolBehaviourSkill } from "@/ai/skills/tool-behaviour";
+import type { AssistantSettings } from "@/lib/assistant-settings/types";
+import { buildAssistantSettingsPromptBlock } from "@/lib/assistant-settings/build-assistant-settings-prompt";
 
 /**
  * Composes the final system prompt: domain baseline, tone, tool rules, optional planning
@@ -12,11 +14,14 @@ export function buildRunnerAssistantInstructions({
   memoryContext,
   integrationsContext,
   workflowsInvokeContext,
+  assistantSettings,
 }: {
   planning?: PlanningResult;
   memoryContext?: string;
   integrationsContext?: string;
   workflowsInvokeContext?: string;
+  /** Per-user assistant behaviour preferences. Injected directly after the date block. */
+  assistantSettings?: AssistantSettings;
 } = {}): string {
   const now = new Date();
   const currentDate = now.toLocaleDateString("en-AU", {
@@ -40,6 +45,10 @@ ${toolBehaviourSkill}
 ## Current date and time
 
 Today is ${currentDate} at ${currentTime}.`;
+
+  if (assistantSettings) {
+    base += `\n\n${buildAssistantSettingsPromptBlock(assistantSettings)}`;
+  }
 
   if (planning) {
     base += `

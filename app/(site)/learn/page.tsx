@@ -5,16 +5,16 @@ import { LearnArticle } from "@/components/site/learn-article"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Learn — Dailify",
+  title: "Learn | Dailify",
   description: "Documentation-style guides for workflows and the assistant.",
   openGraph: {
-    title: "Learn — Dailify",
+    title: "Learn | Dailify",
     description: "Documentation-style guides for workflows and the assistant.",
   },
 }
 
 /**
- * Learn hub landing — entry point for documentation topics.
+ * Learn hub landing: entry point for documentation topics.
  */
 export default function LearnIndexPage() {
   return (

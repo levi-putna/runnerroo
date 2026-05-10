@@ -28,6 +28,7 @@ import {
 } from "@/ai/agents/memory-retrieval-agent";
 import { getAiGatewayModelListCached } from "@/lib/ai-gateway/gateway-raw-models";
 import { memoryRetrievedRowsToSidebarPreviewItems } from "@/lib/conversations/sidebar-memory-preview";
+import { getAssistantSettings } from "@/lib/assistant-settings/assistant-settings-service";
 
 const PLANNING_ENV = "RUNNER_ASSISTANT_PLANNING";
 
@@ -215,14 +216,17 @@ export async function runAssistantChatTurn({
       })
     : undefined;
 
-  const { tools, integrationsBrief, workflowsInvokeBrief } = await createAssistantTools({
-    supabase,
-    userId,
-    conversationId,
-    ...(invokeDescriptorsForPlanningTurn !== undefined
-      ? { cachedInvokeDescriptors: invokeDescriptorsForPlanningTurn }
-      : {}),
-  });
+  const [{ tools, integrationsBrief, workflowsInvokeBrief }, assistantSettings] = await Promise.all([
+    createAssistantTools({
+      supabase,
+      userId,
+      conversationId,
+      ...(invokeDescriptorsForPlanningTurn !== undefined
+        ? { cachedInvokeDescriptors: invokeDescriptorsForPlanningTurn }
+        : {}),
+    }),
+    getAssistantSettings({ supabase, userId }),
+  ]);
 
   const system = buildRunnerAssistantInstructions({
     planning,
@@ -235,6 +239,7 @@ export async function runAssistantChatTurn({
       workflowsInvokeBrief.summaryLines.length > 0
         ? workflowsInvokeBrief.summaryLines.join("\n")
         : undefined,
+    assistantSettings,
   });
 
   const modelMessages = await convertToModelMessages(uiMessages);

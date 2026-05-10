@@ -3,16 +3,16 @@ import type { Metadata } from "next"
 import { LearnArticle } from "@/components/site/learn-article"
 
 export const metadata: Metadata = {
-  title: "Chat and context — Learn — Dailify",
+  title: "Chat and context | Learn | Dailify",
   description: "How the assistant uses conversation and sidebar context.",
   openGraph: {
-    title: "Chat and context — Learn — Dailify",
+    title: "Chat and context | Learn | Dailify",
     description: "How the assistant uses conversation and sidebar context.",
   },
 }
 
 /**
- * Assistant context — conversation and sidebar usage.
+ * Assistant context: conversation and sidebar usage.
  */
 export default function LearnAssistantContextPage() {
   return (

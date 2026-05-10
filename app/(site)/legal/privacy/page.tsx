@@ -2,16 +2,16 @@ import type { Metadata } from "next"
 import Link from "next/link"
 
 export const metadata: Metadata = {
-  title: "Privacy policy — Dailify",
+  title: "Privacy policy | Dailify",
   description: "How Dailify handles personal information and analytics.",
   openGraph: {
-    title: "Privacy policy — Dailify",
+    title: "Privacy policy | Dailify",
     description: "How Dailify handles personal information and analytics.",
   },
 }
 
 /**
- * Privacy policy placeholder — replace with counsel-reviewed copy and subprocessors before launch.
+ * Privacy policy placeholder: replace with counsel-reviewed copy and subprocessors before launch.
  */
 export default function PrivacyPage() {
   return (

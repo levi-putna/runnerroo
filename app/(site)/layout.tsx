@@ -7,7 +7,7 @@ import { SiteHeader } from "@/components/site/site-header"
 export const metadata: Metadata = {
   title: {
     default: "Dailify",
-    template: "%s — Dailify",
+    template: "%s | Dailify",
   },
 }
 

@@ -25,19 +25,19 @@ export async function generateMetadata({
 }: BlogPostPageProps): Promise<Metadata> {
   const { slug } = await params
   const post = getBlogPostBySlug({ slug })
-  if (!post) return { title: "Post — Dailify" }
+  if (!post) return { title: "Post | Dailify" }
   return {
-    title: `${post.title} — Blog — Dailify`,
+    title: `${post.title} | Blog | Dailify`,
     description: post.description || post.title,
     openGraph: {
-      title: `${post.title} — Dailify`,
+      title: `${post.title} | Dailify`,
       description: post.description || post.title,
     },
   }
 }
 
 /**
- * Blog article detail — Markdown body rendered via {@link BlogMarkdown}.
+ * Blog article detail: Markdown body rendered via {@link BlogMarkdown}.
  */
 export default async function BlogPostPage({
   params,

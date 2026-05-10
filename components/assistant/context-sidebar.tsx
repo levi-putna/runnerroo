@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { ContextMemoryDetailDialog } from "@/components/assistant/context-memory-detail-dialog";
-import { ContextPanelSection } from "@/components/assistant/context-panel-section";
 import {
   useAssistantContext,
   type AssistantArtifact,
@@ -20,12 +19,10 @@ import {
   ChevronDownIcon,
   CodeIcon,
   FileTextIcon,
-  Layers,
   LinkIcon,
   MailIcon,
   PackageIcon,
   SparklesIcon,
-  UploadCloudIcon,
   XIcon,
 } from "lucide-react";
 
@@ -109,12 +106,12 @@ function ContextSidebarSectionHeader({
   return (
     <button
       type="button"
-      className="mb-1.5 flex w-full cursor-pointer items-center justify-between rounded-md px-1 py-1 text-left hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className="mb-1.5 flex w-full cursor-pointer items-center justify-between rounded-md px-1 py-1 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       aria-expanded={open}
       aria-controls={controlsId}
       onClick={() => onOpenChange(!open)}
     >
-      <span className="text-[11px] font-medium tracking-wider text-muted-foreground/60 uppercase">
+      <span className="text-[11px] font-medium uppercase tracking-wider text-foreground">
         {label}
       </span>
       <ChevronDownIcon
@@ -194,13 +191,17 @@ export function ContextSidebar() {
 
           {/* ── Entities ──────────────────────────────────────────────── */}
           <section aria-label="Attached entities">
-            <ContextPanelSection
-              regionId="context-sidebar-section-entities"
-              title="Entities"
-              subtitle="Documents, uploads, links and inbox items attached to this chat."
-              icon={Layers}
+            <ContextSidebarSectionHeader
+              label="Entities"
               open={openSections.entities}
+              controlsId="context-sidebar-section-entities"
               onOpenChange={(nextOpen) => setSectionOpen("entities", nextOpen)}
+            />
+
+            <div
+              id="context-sidebar-section-entities"
+              role="region"
+              hidden={!openSections.entities}
             >
               {hasEntities ? (
                 <div className="flex flex-col gap-1" role="list">
@@ -262,14 +263,9 @@ export function ContextSidebar() {
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-2 py-4 text-center">
-                  <UploadCloudIcon className="size-7 text-muted-foreground/40" />
-                  <p className="px-1 text-xs leading-relaxed text-muted-foreground/50">
-                    Drop documents or images to attach them to your next message
-                  </p>
-                </div>
+                <InlineEmptyState label="Drop documents or images to attach them to your next message" />
               )}
-            </ContextPanelSection>
+            </div>
           </section>
 
           {/* ── Artifacts ─────────────────────────────────────────────── */}

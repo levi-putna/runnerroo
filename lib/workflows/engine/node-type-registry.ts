@@ -83,6 +83,56 @@ export const WORKFLOW_GLYPH_SIZE_CLASSES = {
 
 export type WorkflowGlyphSize = keyof typeof WORKFLOW_GLYPH_SIZE_CLASSES
 
+/**
+ * Bright category accents for canvas tiles, add-step picker, minimap, and node sheet badges.
+ * Each group matches {@link WorkflowStepGroupId}; AI steps use app primary `#ff0073`, triggers use start green.
+ */
+const WORKFLOW_CATEGORY_TRIGGER_ACCENT = {
+  accentBg: "bg-[#00e676]",
+  accentHex: "#00e676",
+} as const
+
+/**
+ * Outline "Run workflow" on invoke nodes — Tailwind literals must match {@link WORKFLOW_CATEGORY_TRIGGER_ACCENT} hex `#00e676`.
+ */
+export const WORKFLOW_TRIGGER_RUN_BUTTON_OUTLINE_CLASSNAME =
+  "border-[#00e676]/40 text-[#00e676] hover:bg-[#00e676]/10" as const
+
+const WORKFLOW_CATEGORY_AI_ACCENT = {
+  accentBg: "bg-[#ff0073]",
+  accentHex: "#ff0073",
+} as const
+
+const WORKFLOW_CATEGORY_LOGIC_ACCENT = {
+  accentBg: "bg-[#00bfe6]",
+  accentHex: "#00bfe6",
+} as const
+
+const WORKFLOW_CATEGORY_HUMAN_ACCENT = {
+  accentBg: "bg-[#f0a010]",
+  accentHex: "#f0a010",
+} as const
+
+const WORKFLOW_CATEGORY_CODE_ACCENT = {
+  accentBg: "bg-[#5c4ee5]",
+  accentHex: "#5c4ee5",
+} as const
+
+const WORKFLOW_CATEGORY_DOCUMENTS_ACCENT = {
+  accentBg: "bg-[#2a7eff]",
+  accentHex: "#2a7eff",
+} as const
+
+const WORKFLOW_CATEGORY_ACTIONS_ACCENT = {
+  accentBg: "bg-[#00b396]",
+  accentHex: "#00b396",
+} as const
+
+const WORKFLOW_CATEGORY_TERMINATION_ACCENT = {
+  accentBg: "bg-[#c40018]",
+  accentHex: "#c40018",
+} as const
+
 /** Heading row in the add-step sheet: neutral tile + group title. */
 export const WORKFLOW_STEP_GROUP_META: Record<
   WorkflowStepGroupId,
@@ -113,23 +163,20 @@ export const WORKFLOW_ENTRY_KIND_META: Record<
 > = {
   invoke: {
     Icon: Play,
-    accentBg: "bg-orange-500",
-    accentHex: "#f97316",
+    ...WORKFLOW_CATEGORY_TRIGGER_ACCENT,
     canvasBadge: "Invoke",
     defaultLabel: "Invoke workflow",
     glyphClassName: "fill-white",
   },
   webhook: {
     Icon: Webhook,
-    accentBg: "bg-purple-500",
-    accentHex: "#a855f7",
+    ...WORKFLOW_CATEGORY_TRIGGER_ACCENT,
     canvasBadge: "Webhook",
     defaultLabel: "Webhook",
   },
   schedule: {
     Icon: Clock,
-    accentBg: "bg-blue-500",
-    accentHex: "#3b82f6",
+    ...WORKFLOW_CATEGORY_TRIGGER_ACCENT,
     canvasBadge: "Schedule",
     defaultLabel: "Schedule",
   },
@@ -148,76 +195,64 @@ export const WORKFLOW_NODE_CORE_META: Record<
 > = {
   approval: {
     Icon: UserCheck,
-    accentBg: "bg-amber-500",
-    accentHex: "#f59e0b",
+    ...WORKFLOW_CATEGORY_HUMAN_ACCENT,
     typeLabel: "Approval",
   },
   action: {
     Icon: Zap,
-    accentBg: "bg-emerald-500",
-    accentHex: "#10b981",
+    ...WORKFLOW_CATEGORY_ACTIONS_ACCENT,
     typeLabel: "Action",
   },
   code: {
     Icon: Code2,
-    accentBg: "bg-slate-700",
-    accentHex: "#334155",
+    ...WORKFLOW_CATEGORY_CODE_ACCENT,
     typeLabel: "Code",
   },
   random: {
     Icon: Dice3,
-    accentBg: "bg-amber-600",
-    accentHex: "#d97706",
+    ...WORKFLOW_CATEGORY_CODE_ACCENT,
     typeLabel: "Random number",
   },
   iteration: {
     Icon: IterationCw,
-    accentBg: "bg-lime-600",
-    accentHex: "#65a30d",
+    ...WORKFLOW_CATEGORY_CODE_ACCENT,
     typeLabel: "Iteration",
   },
   document: {
     Icon: FileText,
-    accentBg: "bg-indigo-600",
-    accentHex: "#4f46e5",
+    ...WORKFLOW_CATEGORY_DOCUMENTS_ACCENT,
     typeLabel: "Document step",
   },
   decision: {
     Icon: GitBranch,
-    accentBg: "bg-sky-500",
-    accentHex: "#0ea5e9",
+    ...WORKFLOW_CATEGORY_LOGIC_ACCENT,
     typeLabel: "Decision",
   },
   switch: {
     Icon: GitFork,
-    accentBg: "bg-teal-600",
-    accentHex: "#0d9488",
+    ...WORKFLOW_CATEGORY_LOGIC_ACCENT,
     typeLabel: "Switch",
   },
   split: {
     Icon: Split,
-    accentBg: "bg-cyan-600",
-    accentHex: "#0891b2",
+    ...WORKFLOW_CATEGORY_LOGIC_ACCENT,
     typeLabel: "Split",
   },
   end: {
     Icon: CircleStop,
-    accentBg: "bg-rose-600",
-    accentHex: "#e11d48",
+    ...WORKFLOW_CATEGORY_TERMINATION_ACCENT,
     typeLabel: "End",
   },
   webhookCall: {
     Icon: Send,
-    accentBg: "bg-blue-600",
-    accentHex: "#2563eb",
+    ...WORKFLOW_CATEGORY_ACTIONS_ACCENT,
     typeLabel: "Webhook",
   },
 }
 
 /** Shared AI step chrome; subtypes only swap the glyph + canvas pill. */
 export const WORKFLOW_AI_FAMILY_META = {
-  accentBg: "bg-violet-600",
-  accentHex: "#7c3aed",
+  ...WORKFLOW_CATEGORY_AI_ACCENT,
   sheetTypeLabel: "AI step",
 } as const
 
@@ -264,8 +299,7 @@ export const WORKFLOW_AI_SUBTYPE_META: Record<
 
 /** Shared document step chrome; subtypes swap the glyph + canvas pill. */
 export const WORKFLOW_DOCUMENT_FAMILY_META = {
-  accentBg: "bg-indigo-600",
-  accentHex: "#4f46e5",
+  ...WORKFLOW_CATEGORY_DOCUMENTS_ACCENT,
   sheetTypeLabel: "Document step",
 } as const
 
@@ -354,8 +388,8 @@ export function resolveWorkflowNodeTilePresentation({
 
   return {
     Icon: Zap,
-    accentBg: "bg-slate-500",
-    accentHex: "#64748b",
+    accentBg: "bg-[#94a3b8]",
+    accentHex: "#94a3b8",
   }
 }
 

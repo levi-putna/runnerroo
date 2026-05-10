@@ -72,7 +72,7 @@ export async function proxy(request: NextRequest) {
   // Redirect authenticated users away from auth pages
   if (user && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone()
-    url.pathname = "/app/workflows"
+    url.pathname = "/app"
     return NextResponse.redirect(url)
   }
 

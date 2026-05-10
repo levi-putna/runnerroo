@@ -79,7 +79,7 @@ export async function SiteHeader({
         <div className="flex shrink-0 items-center gap-2">
           {user ? (
             <Button variant="outline" size="sm" asChild>
-              <Link href="/app/workflows">{authedLabel}</Link>
+              <Link href="/app">{authedLabel}</Link>
             </Button>
           ) : (
             <>

@@ -186,6 +186,7 @@ export function ProfilePasswordForm({ email, identityProviders }: ProfilePasswor
   return (
     <SettingsSectionPanel
       id="password"
+      dataTestId="profile-password-section"
       icon={KeyRound}
       title="Password"
       subtitle={
@@ -229,24 +230,35 @@ export function ProfilePasswordForm({ email, identityProviders }: ProfilePasswor
               variant="outline"
               disabled={submitting}
               onClick={() => void handleSendReauthCode()}
+              data-testid="profile-password-send-reauth"
             >
               {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
               Send verification code
             </Button>
-            <Button type="submit" form="profile-password-form" disabled={submitting || !codeSent}>
+            <Button
+              type="submit"
+              form="profile-password-form"
+              disabled={submitting || !codeSent}
+              data-testid="profile-password-confirm-reauth"
+            >
               {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
               Confirm password update
             </Button>
           </>
         ) : (
-          <Button type="submit" form="profile-password-form" disabled={submitting}>
+          <Button type="submit" form="profile-password-form" disabled={submitting} data-testid="profile-password-submit">
             {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
             Update password
           </Button>
         )
       }
     >
-      <form id="profile-password-form" className="space-y-4" onSubmit={(e) => void handleSubmit(e)}>
+      <form
+        id="profile-password-form"
+        className="space-y-4"
+        data-testid="profile-password-form"
+        onSubmit={(e) => void handleSubmit(e)}
+      >
         {reauthStepActive ? (
           <>
             {/* Reauthentication step — secure password change */}
@@ -258,6 +270,7 @@ export function ProfilePasswordForm({ email, identityProviders }: ProfilePasswor
               <EmailOtpPinInput
                 label="Verification code"
                 value={reauthNonce}
+                dataTestId="profile-password-reauth-otp"
                 onValueChange={({ valueAsString }) => setReauthNonce(valueAsString)}
               />
             ) : null}
@@ -269,6 +282,7 @@ export function ProfilePasswordForm({ email, identityProviders }: ProfilePasswor
               <Label htmlFor="profile-current-password">Current password</Label>
               <Input
                 id="profile-current-password"
+                data-testid="profile-current-password"
                 type="password"
                 autoComplete="current-password"
                 value={currentPassword}
@@ -280,6 +294,7 @@ export function ProfilePasswordForm({ email, identityProviders }: ProfilePasswor
               <Label htmlFor="profile-new-password">New password</Label>
               <Input
                 id="profile-new-password"
+                data-testid="profile-new-password"
                 type="password"
                 autoComplete="new-password"
                 value={newPassword}
@@ -292,6 +307,7 @@ export function ProfilePasswordForm({ email, identityProviders }: ProfilePasswor
               <Label htmlFor="profile-confirm-password">Confirm new password</Label>
               <Input
                 id="profile-confirm-password"
+                data-testid="profile-confirm-password"
                 type="password"
                 autoComplete="new-password"
                 value={confirmPassword}
@@ -311,6 +327,7 @@ export function ProfilePasswordForm({ email, identityProviders }: ProfilePasswor
                 : "text-sm text-destructive"
             }
             role="status"
+            data-testid="profile-password-message"
           >
             {message.text}
           </p>

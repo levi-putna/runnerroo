@@ -277,6 +277,7 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
   return (
     <SettingsSectionPanel
       id="avatar"
+      dataTestId="profile-avatar-section"
       icon={ImageIcon}
       title="Avatar"
       subtitle="Here is an avatar we created just for you. If you would prefer, build your own."
@@ -287,7 +288,7 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
       }
       footerActions={
         customiseEnabled ? (
-          <Button type="button" onClick={() => void handleSave()} disabled={pending}>
+          <Button type="button" onClick={() => void handleSave()} disabled={pending} data-testid="profile-avatar-save">
             {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
             Save avatar
           </Button>
@@ -296,19 +297,22 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
     >
       {/* Avatar preview and customise switch */}
       <div className="flex w-full flex-wrap items-center justify-between gap-4">
-        <UserAvatar
-          src={displayAvatarUrl}
-          alt="Avatar preview"
-          fallback={initials}
-          className="h-24 w-24"
-          fallbackClassName="text-lg"
-        />
+        <div data-testid="profile-avatar-preview">
+          <UserAvatar
+            src={displayAvatarUrl}
+            alt="Avatar preview"
+            fallback={initials}
+            className="h-24 w-24"
+            fallbackClassName="text-lg"
+          />
+        </div>
         <div className="flex shrink-0 items-center gap-3">
           <Label htmlFor="avatar-customise" className="font-normal whitespace-nowrap">
             Customise avatar
           </Label>
           <Switch
             id="avatar-customise"
+            data-testid="profile-avatar-customise-switch"
             checked={customiseEnabled}
             disabled={pending}
             onCheckedChange={(c) => void handleCustomiseSwitch({ checked: c })}
@@ -334,7 +338,7 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
                 setEyebrows(AUTO_VALUE)
               }}
             >
-              <SelectTrigger id="avatar-style" className="w-full min-w-0">
+              <SelectTrigger id="avatar-style" data-testid="profile-avatar-style" className="w-full min-w-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -515,6 +519,7 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
             message.tone === "success" ? "text-sm text-green-600 dark:text-green-400" : "text-sm text-destructive"
           }
           role="status"
+          data-testid="profile-avatar-message"
         >
           {message.text}
         </p>

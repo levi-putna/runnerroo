@@ -17,6 +17,8 @@ type EmailOtpPinInputProps = {
   required?: boolean
   /** Optional extra class on root for layout (for example full width). */
   className?: string
+  /** Optional stable hook for Playwright (`[data-testid]` wrapper). */
+  dataTestId?: string
   onValueChange: (args: { valueAsString: string }) => void
 }
 
@@ -35,11 +37,12 @@ export function EmailOtpPinInput({
   count = AUTH_EMAIL_OTP_LENGTH,
   required = false,
   className,
+  dataTestId,
   onValueChange,
 }: EmailOtpPinInputProps) {
   const cells = Array.from({ length: count }, (_, index) => value[index] ?? "")
 
-  return (
+  const root = (
     <PinInput.Root
       count={count}
       otp
@@ -50,7 +53,7 @@ export function EmailOtpPinInput({
       onValueChange={({ valueAsString }) => {
         onValueChange({ valueAsString })
       }}
-      className={className}
+      className={dataTestId ? undefined : className}
     >
       {/* Accessible label tied to the control */}
       <PinInput.Label className="mb-1.5 block text-sm font-medium">{label}</PinInput.Label>
@@ -71,7 +74,15 @@ export function EmailOtpPinInput({
         ))}
       </PinInput.Control>
       {/* Hidden field carries OTP autocomplete semantics for supporting browsers */}
-      <PinInput.HiddenInput />
+      <PinInput.HiddenInput data-testid={dataTestId ? `${dataTestId}-hidden` : undefined} />
     </PinInput.Root>
+  )
+
+  if (!dataTestId) return root
+
+  return (
+    <div data-testid={dataTestId} className={className}>
+      {root}
+    </div>
   )
 }

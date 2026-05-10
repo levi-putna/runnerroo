@@ -15,7 +15,7 @@ import {
   Sun,
 } from "lucide-react"
 import { useTheme } from "@teispace/next-themes"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,21 +64,33 @@ export function NavUser({ user: initialUser }: NavUserProps) {
   const [user, setUser] = useState<UserDetails>(initialUser)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
 
-  // Sync live Supabase session into local state on mount.
-  useEffect(() => {
-    async function loadUser() {
-      const { data: { user: supabaseUser } } = await supabase.auth.getUser()
-      if (!supabaseUser) return
+  const loadUserFromSession = useCallback(async () => {
+    const {
+      data: { user: supabaseUser },
+    } = await supabase.auth.getUser()
+    if (!supabaseUser) return
 
-      setUser({
-        name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email?.split("@")[0] ?? "User",
-        email: supabaseUser.email ?? "",
-        avatar: getResolvedAvatarUrlForAuthUser({ user: supabaseUser }),
-      })
-    }
-
-    loadUser()
+    setUser({
+      name: supabaseUser.user_metadata?.full_name ?? supabaseUser.email?.split("@")[0] ?? "User",
+      email: supabaseUser.email ?? "",
+      avatar: getResolvedAvatarUrlForAuthUser({ user: supabaseUser }),
+    })
   }, [supabase])
+
+  /** Hydrate from cookies on first paint (deferred to avoid cascading render lint). */
+  useEffect(() => {
+    queueMicrotask(() => void loadUserFromSession())
+  }, [loadUserFromSession])
+
+  /** Profile updates (`updateUser`) fire auth events — refresh name/avatar without full reload. */
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadUserFromSession()
+    })
+    return () => subscription.unsubscribe()
+  }, [supabase, loadUserFromSession])
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -105,12 +117,20 @@ export function NavUser({ user: initialUser }: NavUserProps) {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
+              data-testid="nav-user-menu-trigger"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <UserAvatar src={user.avatar} alt={user.name} fallback={initials} className="h-8 w-8" />
+              {/* Footer avatar */}
+              <div data-testid="nav-user-footer-avatar">
+                <UserAvatar src={user.avatar} alt={user.name} fallback={initials} className="h-8 w-8" />
+              </div>
               <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{user.name}</span>
-                <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+                <span className="truncate font-semibold" data-testid="nav-user-footer-name">
+                  {user.name}
+                </span>
+                <span className="truncate text-xs text-muted-foreground" data-testid="nav-user-footer-email">
+                  {user.email}
+                </span>
               </div>
               <MoreHorizontal className="ml-auto size-4 shrink-0 text-muted-foreground" />
             </SidebarMenuButton>
@@ -125,8 +145,12 @@ export function NavUser({ user: initialUser }: NavUserProps) {
             {/* Header — name, email, settings shortcut */}
             <div className="flex items-start justify-between gap-2 px-2 pb-2 pt-1">
               <div className="grid min-w-0 flex-1 text-left leading-tight">
-                <span className="truncate text-sm font-semibold">{user.name}</span>
-                <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+                <span className="truncate text-sm font-semibold" data-testid="nav-user-menu-name">
+                  {user.name}
+                </span>
+                <span className="truncate text-xs text-muted-foreground" data-testid="nav-user-menu-email">
+                  {user.email}
+                </span>
               </div>
               <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
                 <Link href="/app/settings/profile" aria-label="Profile and settings">
@@ -214,6 +238,7 @@ export function NavUser({ user: initialUser }: NavUserProps) {
               onSelect={() => {
                 void handleSignOut()
               }}
+              data-testid="nav-user-log-out"
             >
               <span>Log out</span>
               <LogOut className="size-4 text-muted-foreground" />

@@ -117,8 +117,7 @@ export default function SignUpPage() {
     if (verifyErr) {
       setError(verifyErr.message)
     } else {
-      router.push("/app/workflows")
-      router.refresh()
+      window.location.assign(`${window.location.origin}/app/workflows`)
     }
     setVerifyLoading(false)
   }
@@ -155,19 +154,31 @@ export default function SignUpPage() {
               required
               invalid={Boolean(error)}
               count={AUTH_EMAIL_OTP_LENGTH}
+              dataTestId="auth-signup-otp"
               onValueChange={({ valueAsString }) => {
                 setOtpCode(valueAsString)
                 if (error) setError(null)
               }}
               className="w-full"
             />
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <Button type="submit" className="w-full" disabled={verifyLoading}>
+            {error ? (
+              <p className="text-sm text-destructive" data-testid="auth-signup-otp-error">
+                {error}
+              </p>
+            ) : null}
+            <Button type="submit" className="w-full" disabled={verifyLoading} data-testid="auth-signup-verify">
               {verifyLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Verify and continue
             </Button>
           </form>
-          <Button type="button" variant="outline" className="w-full" disabled={sendLoading} onClick={handleResendCode}>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={sendLoading}
+            onClick={handleResendCode}
+            data-testid="auth-signup-resend"
+          >
             {sendLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Resend code
           </Button>
@@ -243,12 +254,19 @@ export default function SignUpPage() {
         <form onSubmit={handleSendCode} className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="name">Full name</Label>
-            <Input id="name" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Alex Johnson" />
+            <Input
+              id="name"
+              data-testid="auth-signup-name"
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              placeholder="Alex Johnson"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
+              data-testid="auth-signup-email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -256,8 +274,12 @@ export default function SignUpPage() {
               required
             />
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <Button type="submit" className="w-full" disabled={sendLoading}>
+          {error ? (
+            <p className="text-sm text-destructive" data-testid="auth-signup-details-error">
+              {error}
+            </p>
+          ) : null}
+          <Button type="submit" className="w-full" disabled={sendLoading} data-testid="auth-signup-send-pin">
             {sendLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
             Send verification PIN
           </Button>

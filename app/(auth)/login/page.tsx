@@ -149,8 +149,8 @@ export default function LoginPage() {
     if (signInErr) {
       setPasswordError(signInErr.message)
     } else {
-      router.push("/app/workflows")
-      router.refresh()
+      /** Full navigation so SSR `getUser()` sees the new session cookies (soft `router.push` can race the layout). */
+      window.location.assign(`${window.location.origin}/app/workflows`)
     }
     setPasswordLoading(false)
   }
@@ -163,8 +163,7 @@ export default function LoginPage() {
     if (verifyErr) {
       setError(verifyErr.message)
     } else {
-      router.push("/app/workflows")
-      router.refresh()
+      window.location.assign(`${window.location.origin}/app/workflows`)
     }
     setVerifyLoading(false)
   }
@@ -207,6 +206,7 @@ export default function LoginPage() {
               <Label htmlFor="magic-link-email">Email</Label>
               <Input
                 id="magic-link-email"
+                data-testid="auth-login-magic-link-email"
                 type="email"
                 value={magicLinkEmail}
                 onChange={e => {
@@ -219,7 +219,7 @@ export default function LoginPage() {
               />
             </div>
             {magicLinkError ? <p className="text-sm text-destructive">{magicLinkError}</p> : null}
-            <Button type="submit" className="w-full" disabled={sendLoading}>
+            <Button type="submit" className="w-full" disabled={sendLoading} data-testid="auth-send-magic-link">
               {sendLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
               ) : (
@@ -266,7 +266,7 @@ export default function LoginPage() {
             If nothing arrives after a minute, check spam or confirm this email already has an account (sign up first if you&apos;re new).
           </p>
           {/* Continue to PIN entry or resend */}
-          <Button type="button" className="w-full" onClick={() => setStep("code")}>
+          <Button type="button" className="w-full" onClick={() => setStep("code")} data-testid="auth-login-enter-code">
             <KeyRound className="mr-2 h-4 w-4" aria-hidden />
             Enter my code
           </Button>
@@ -276,6 +276,7 @@ export default function LoginPage() {
             className="w-full"
             disabled={sendLoading}
             onClick={() => void handleResendCode()}
+            data-testid="auth-login-resend-email"
           >
             {sendLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Resend email
@@ -321,19 +322,31 @@ export default function LoginPage() {
               required
               invalid={Boolean(error)}
               count={AUTH_EMAIL_OTP_LENGTH}
+              dataTestId="auth-login-otp"
               onValueChange={({ valueAsString }) => {
                 setOtpCode(valueAsString)
                 if (error) setError(null)
               }}
               className="w-full"
             />
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <Button type="submit" className="w-full" disabled={verifyLoading}>
+            {error ? (
+              <p className="text-sm text-destructive" data-testid="auth-login-otp-error">
+                {error}
+              </p>
+            ) : null}
+            <Button type="submit" className="w-full" disabled={verifyLoading} data-testid="auth-login-confirm-otp">
               {verifyLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Confirm and sign in
             </Button>
           </form>
-          <Button type="button" variant="outline" className="w-full" disabled={sendLoading} onClick={handleResendCode}>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={sendLoading}
+            onClick={handleResendCode}
+            data-testid="auth-login-resend-otp"
+          >
             {sendLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Resend code
           </Button>
@@ -346,6 +359,7 @@ export default function LoginPage() {
               setStep("sent")
               setError(null)
             }}
+            data-testid="auth-login-otp-back-sent"
           >
             <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
             Back
@@ -422,6 +436,7 @@ export default function LoginPage() {
             setMagicLinkError(null)
             setStep("magic-link")
           }}
+          data-testid="auth-login-magic-link"
         >
           <Mail className="mr-2 h-4 w-4" aria-hidden />
           Magic link
@@ -447,6 +462,7 @@ export default function LoginPage() {
             <Label htmlFor="login-email">Email</Label>
             <Input
               id="login-email"
+              data-testid="auth-login-password-email"
               type="email"
               name="email"
               value={passwordEmail}
@@ -464,6 +480,7 @@ export default function LoginPage() {
             <Label htmlFor="login-password">Password</Label>
             <Input
               id="login-password"
+              data-testid="auth-login-password-field"
               type="password"
               name="password"
               value={password}
@@ -477,8 +494,12 @@ export default function LoginPage() {
               autoComplete="current-password"
             />
           </div>
-          {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
-          <Button type="submit" className="w-full" disabled={passwordLoading}>
+          {passwordError ? (
+            <p className="text-sm text-destructive" data-testid="auth-login-password-error">
+              {passwordError}
+            </p>
+          ) : null}
+          <Button type="submit" className="w-full" disabled={passwordLoading} data-testid="auth-login-password-submit">
             {passwordLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
             Sign in with password
           </Button>

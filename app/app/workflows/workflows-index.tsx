@@ -407,7 +407,7 @@ export function WorkflowsIndex({ workflows, className }: WorkflowsIndexProps) {
   }
 
   return (
-    <div className={cn("flex min-h-0 flex-col", className)}>
+    <div className={cn("flex min-h-0 flex-col", className)} data-testid="auth-app-shell">
       {/* ── Page title (fixed header row) ── */}
       <PageHeader title="Workflows" description="Build and automate your processes">
         <Button asChild size="sm" className="h-7 w-7 shrink-0 p-0" aria-label="New workflow">

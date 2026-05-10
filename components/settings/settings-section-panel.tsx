@@ -5,6 +5,8 @@ import type { LucideIcon } from "lucide-react"
 
 type SettingsSectionPanelProps = {
   id?: string
+  /** Optional Playwright hook on the outer card. */
+  dataTestId?: string
   icon: LucideIcon
   title: string
   subtitle: React.ReactNode
@@ -20,6 +22,7 @@ type SettingsSectionPanelProps = {
  */
 export function SettingsSectionPanel({
   id,
+  dataTestId,
   icon: Icon,
   title,
   subtitle,
@@ -30,7 +33,11 @@ export function SettingsSectionPanel({
   const showFooter = footerHint != null || footerActions != null
 
   return (
-    <div id={id} className="min-w-0 w-full overflow-hidden rounded-xl border border-border/80 bg-card/40">
+    <div
+      id={id}
+      data-testid={dataTestId}
+      className="min-w-0 w-full overflow-hidden rounded-xl border border-border/80 bg-card/40"
+    >
       {/* Header — matches InputSchemaBuilder / workflow panel shell */}
       <div className="flex items-start gap-3 border-b border-border/70 bg-muted/25 px-4 py-3">
         <span

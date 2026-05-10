@@ -21,7 +21,7 @@ export default async function ProfilePage() {
       <PageHeader title="Profile" description="Manage your account settings" />
 
       <div className="p-6 max-w-2xl mx-auto w-full space-y-6">
-        <ProfilePersonalInfoSection defaultName={name} defaultEmail={email} />
+        <ProfilePersonalInfoSection key={`${email}-${name}`} defaultName={name} defaultEmail={email} />
 
         {user ? <ProfilePasswordForm email={email} identityProviders={identityProviders} /> : null}
 

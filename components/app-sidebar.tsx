@@ -517,7 +517,7 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter>
-        <NavUser user={user} />
+        <NavUser key={`${user.email}-${user.name}-${user.avatar}`} user={user} />
       </SidebarFooter>
     </Sidebar>
   )

@@ -300,6 +300,8 @@ export function getResolvedAvatarUrl({
   return buildDicebearAvatarUrl({
     style: "bottts-neutral",
     seed: email || "user",
+    backgroundColor: "ff0073",
+    backgroundType: "gradientLinear",
   })
 }
 

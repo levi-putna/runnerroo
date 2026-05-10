@@ -34,6 +34,12 @@ export interface GatewayModel {
   outputPriceLabel: string | null;
 
   /**
+   * Formatted catalogue release date when the upstream API supplies `released` (UTC, medium date style).
+   * Omitted on static fallback rows in {@link import("@/lib/ai-gateway/models").GATEWAY_MODELS}.
+   */
+  releaseDateLabel?: string | null;
+
+  /**
    * Latency performance tier: 3 = fast (< 1s), 2 = medium (1–2.5s), 1 = slow (> 2.5s).
    * Null for model types where latency is not applicable (e.g. image/video).
    */

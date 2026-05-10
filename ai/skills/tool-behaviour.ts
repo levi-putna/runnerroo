@@ -22,6 +22,7 @@ export const toolBehaviourSkill = `
 
 - Use **showLocation** when the user wants addresses or places shown on a map.
 - Use **searchUserMemories** when long-term preferences or prior decisions stored in memory would change the answer.
+- Use **upsertUserMemory**, **patchUserMemory**, or **deleteUserMemory** only when the user clearly wants their saved memory store changed (explicit remember/forget/update). Never store secrets or one-off trivia.
 
 ## Asking the user to choose
 

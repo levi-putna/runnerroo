@@ -1,4 +1,34 @@
+import Image from "next/image"
+
 import { cn } from "@/lib/utils"
+
+const FULL_LOGO_SRC = "/logo/full-logo.svg" as const
+const FULL_LOGO_WIDTH = 179
+const FULL_LOGO_HEIGHT = 58
+
+/**
+ * Full Dailify logo (icon and wordmark) from `public/logo/full-logo.svg`.
+ */
+export function DailifyFullLogo({
+  className,
+  alt = "Dailify",
+  priority,
+}: {
+  className?: string
+  alt?: string
+  priority?: boolean
+}) {
+  return (
+    <Image
+      src={FULL_LOGO_SRC}
+      alt={alt}
+      width={FULL_LOGO_WIDTH}
+      height={FULL_LOGO_HEIGHT}
+      className={cn("block h-auto w-auto max-w-full shrink-0", className)}
+      priority={priority}
+    />
+  )
+}
 
 /**
  * Dailify logomark (icon) rendered inline so it inherits `text-foreground` and avoids filter halos from `invert` on rasterised SVGs.

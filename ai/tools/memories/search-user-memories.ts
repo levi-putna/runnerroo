@@ -3,6 +3,7 @@ import { tool } from "ai";
 import { z } from "zod";
 
 import { searchMemory } from "@/lib/memories/memory-service";
+import { recordAssistantMemoryTurnEvent } from "@/lib/memories/record-assistant-memory-turn-event";
 import { MEMORY_TYPES } from "@/lib/memories/types";
 
 /**
@@ -11,9 +12,11 @@ import { MEMORY_TYPES } from "@/lib/memories/types";
 export function createSearchUserMemoriesTool({
   supabase,
   userId,
+  conversationId,
 }: {
   supabase: SupabaseClient;
   userId: string;
+  conversationId?: string | null;
 }) {
   return tool({
     description:
@@ -39,9 +42,10 @@ export function createSearchUserMemoriesTool({
         query,
         types,
         limit: limit ?? 5,
+        ...(conversationId !== undefined ? { conversationId } : {}),
       });
 
-      return {
+      const payload = {
         memories: memories.map((memory) => ({
           id: memory.id,
           type: memory.type,
@@ -50,6 +54,16 @@ export function createSearchUserMemoriesTool({
           combinedScore: memory.combined_score,
         })),
       };
+
+      void recordAssistantMemoryTurnEvent({
+        supabase,
+        userId,
+        conversationId: conversationId ?? null,
+        kind: "tool_write",
+        payload: { tool: "searchUserMemories", query: query.slice(0, 500) },
+      }).catch(() => {});
+
+      return payload;
     },
   });
 }

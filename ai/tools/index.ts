@@ -1,7 +1,10 @@
 import { showDocumentDownload } from "@/ai/tools/documents/show-document-download";
 import { generateRandomNumber } from "@/ai/tools/example/generate-random-number";
 import { showLocation } from "@/ai/tools/geo-map/show-location";
+import { createDeleteUserMemoryTool } from "@/ai/tools/memories/delete-user-memory";
+import { createPatchUserMemoryTool } from "@/ai/tools/memories/patch-user-memory";
 import { createSearchUserMemoriesTool } from "@/ai/tools/memories/search-user-memories";
+import { createUpsertUserMemoryTool } from "@/ai/tools/memories/upsert-user-memory";
 import { askQuestion } from "@/ai/tools/utility/ask-question";
 import { tavilyCrawl } from "@/ai/tools/utility/tavily-crawl";
 import { tavilyExtract } from "@/ai/tools/utility/tavily-extract";
@@ -24,10 +27,13 @@ import type { WorkflowAssistantInvokeDescriptor } from "@/lib/workflows/assistan
 export async function createAssistantTools({
   supabase,
   userId,
+  conversationId,
   cachedInvokeDescriptors,
 }: {
   supabase: SupabaseClient;
   userId: string;
+  /** Active assistant thread for memory embedding tags and audit events. */
+  conversationId?: string | null;
   /** Optional listing reused after planning so invoke workflows are not queried twice in one turn. */
   cachedInvokeDescriptors?: WorkflowAssistantInvokeDescriptor[];
 }) {
@@ -48,7 +54,10 @@ export async function createAssistantTools({
       generateRandomNumber,
       showDocumentDownload,
       showLocation,
-      searchUserMemories: createSearchUserMemoriesTool({ supabase, userId }),
+      searchUserMemories: createSearchUserMemoriesTool({ supabase, userId, conversationId }),
+      upsertUserMemory: createUpsertUserMemoryTool({ supabase, userId, conversationId }),
+      patchUserMemory: createPatchUserMemoryTool({ supabase, userId, conversationId }),
+      deleteUserMemory: createDeleteUserMemoryTool({ supabase, userId, conversationId }),
       ...integrationTools,
       ...workflowInvoke.tools,
     },

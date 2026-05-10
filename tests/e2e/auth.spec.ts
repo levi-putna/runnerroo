@@ -28,6 +28,7 @@ test.describe("Authentication", () => {
     test.skip(!isLocalSupabaseUrlConfigured(), "Password fixture E2E targets local Supabase only")
     const fixture = readPasswordFixture()
     test.skip(!fixture, "Run with SUPABASE_SERVICE_ROLE_KEY so global-setup seeds playwright/.e2e-password-user.json")
+    if (!fixture) return
 
     await page.goto("/login")
     await page.getByTestId("auth-login-password-email").fill(fixture.email)
@@ -201,6 +202,7 @@ test.describe("Authentication @mailpit", () => {
   test("A12: wrong password for a different email is rejected", async ({ page }) => {
     const fixture = readPasswordFixture()
     test.skip(!fixture, "Requires seeded password user from global-setup")
+    if (!fixture) return
 
     const { email: emailC, fullName } = createEphemeralAuthIdentity({ parallelIndex: 1 })
     await page.goto("/signup")

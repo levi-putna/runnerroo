@@ -12,6 +12,9 @@ export const GATEWAY_USAGE_TAG_MEMORY_WRITE = "memory:write" as const;
 /** Embedding calls issued while hybrid memory search runs. */
 export const GATEWAY_USAGE_TAG_MEMORY_QUERY = "memory:query" as const;
 
+/** Spend-report tag for structured memory review LLM calls after a turn. */
+export const GATEWAY_USAGE_TAG_MEMORY_REVIEW = "memory:review" as const;
+
 /** Envelope key on each workflow `stepInput` carrying {@link RunnerGatewayExecutionContext}. */
 export const RUNNER_GATEWAY_EXECUTION_CONTEXT_KEY = "__dailify_gateway_context" as const;
 
@@ -120,16 +123,18 @@ export function gatewayUsageTagsForWorkflowRun({
 }
 
 /**
- * Gateway tags for memory embedding requests (write vs hybrid search).
+ * Gateway tags for memory embedding requests (write vs hybrid search), optionally
+ * scoped to the assistant conversation for spend attribution.
  */
 export function gatewayUsageTagsForMemoryEmbedding({
   purpose,
+  conversationId,
 }: {
   purpose: "memory_write" | "memory_query";
+  /** When set, adds `conversation:<id>` alongside memory purpose tags. */
+  conversationId?: string | null | undefined;
 }): string[] {
-  return [
-    purpose === "memory_query"
-      ? GATEWAY_USAGE_TAG_MEMORY_QUERY
-      : GATEWAY_USAGE_TAG_MEMORY_WRITE,
-  ];
+  const purposeTag =
+    purpose === "memory_query" ? GATEWAY_USAGE_TAG_MEMORY_QUERY : GATEWAY_USAGE_TAG_MEMORY_WRITE;
+  return [...gatewayUsageTagsForConversation({ conversationId: conversationId ?? null }), purposeTag];
 }

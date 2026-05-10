@@ -77,7 +77,9 @@ export async function runMemoryReviewAgent({
     id: string;
     type: string;
     key: string;
-    content: string;
+    /** Plain memory body; callers may pass `preview` from hybrid search instead. */
+    content?: string;
+    preview?: string;
   }>;
   conversationSummary?: string;
   providerOptions?: ProviderOptions;
@@ -85,7 +87,12 @@ export async function runMemoryReviewAgent({
   const prompt = [
     `Latest user message:\n${userMessageText || "(empty)"}`,
     `Assistant response:\n${assistantResponseText || "(empty)"}`,
-    `Retrieved memories:\n${JSON.stringify(retrievedMemories)}`,
+    `Retrieved memories:\n${JSON.stringify(
+      retrievedMemories.map((m) => ({
+        ...m,
+        content: m.content ?? m.preview ?? "",
+      })),
+    )}`,
     conversationSummary ? `Recent conversation summary:\n${conversationSummary}` : null,
     `Return shape:
 {
@@ -108,7 +115,7 @@ export async function runMemoryReviewAgent({
     .join("\n\n");
 
   const { object } = await generateObject({
-    model: gateway(MEMORY_REVIEW_MODEL),
+    model: gateway.languageModel(MEMORY_REVIEW_MODEL),
     system: MEMORY_REVIEW_SYSTEM_PROMPT,
     prompt,
     ...(providerOptions ? { providerOptions } : {}),

@@ -24,7 +24,7 @@ import {
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { DailifyMark, DailifyWordmark } from "@/components/brand/dailify-logos"
+import { DailifyFullLogo } from "@/components/brand/dailify-logos"
 import { NavUser } from "@/components/nav-user"
 import type { WorkflowListRow } from "@/lib/workflows/queries/queries"
 
@@ -228,7 +228,8 @@ export function AppSidebar({
           onClick={() => drillDown(item.id)}
           className={cn(
             "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+            isActive &&
+              "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground [&_svg]:text-primary-foreground"
           )}
         >
           {item.icon}
@@ -244,7 +245,8 @@ export function AppSidebar({
         href={item.url!}
         className={cn(
           "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+          isActive &&
+            "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground [&_svg]:text-primary-foreground"
         )}
       >
         {item.icon}
@@ -322,7 +324,8 @@ export function AppSidebar({
                       href={href}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                        isActive &&
+                          "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground [&_svg]:text-primary-foreground"
                       )}
                       title={w.name}
                     >
@@ -390,7 +393,8 @@ export function AppSidebar({
                 href={item.url}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors",
-                  isActive && "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                  isActive &&
+                    "bg-primary text-primary-foreground font-medium hover:bg-primary hover:text-primary-foreground [&_svg]:text-primary-foreground [&_.text-muted-foreground]:text-primary-foreground/80"
                 )}
               >
                 {item.icon}
@@ -414,17 +418,14 @@ export function AppSidebar({
       <SidebarHeader className="gap-0 p-0">
         <SidebarMenu>
           <SidebarMenuItem>
-            {/* Brand — mark + wordmark */}
+            {/* Brand — full logo */}
             <SidebarMenuButton
               size="lg"
               tooltip="Dailify"
               className="py-1.5"
               render={<Link href="/app/workflows" />}
             >
-              <DailifyMark className="!h-9 !w-auto shrink-0 text-sidebar-foreground" />
-              <div className="flex min-w-0 flex-1 items-center group-data-[collapsible=icon]:hidden">
-                <DailifyWordmark className="!h-6 !w-auto max-w-full text-sidebar-foreground" />
-              </div>
+              <DailifyFullLogo className="h-9 w-auto max-w-full" priority />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

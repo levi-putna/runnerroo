@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useFavouriteModelIds } from "@/hooks/use-favourite-model-ids";
+import { gatewayModelMatchesSearchQuery } from "@/lib/ai-gateway/gateway-model-search";
 import { DEFAULT_MODEL_ID, GATEWAY_MODELS } from "@/lib/ai-gateway/models";
 import type { GatewayModel, ModelType, ProviderBucket } from "@/lib/ai-gateway/types";
 import { MODEL_TYPE_LABELS } from "@/lib/ai-gateway/types";
@@ -204,21 +205,6 @@ function compareFeaturedModels({ a, b }: { a: GatewayModel; b: GatewayModel }): 
   return a.shortName.localeCompare(b.shortName);
 }
 
-function modelMatchesQuery({
-  model,
-  queryLower,
-}: {
-  model: GatewayModel;
-  queryLower: string;
-}): boolean {
-  if (!queryLower.length) return true;
-  return (
-    model.id.toLowerCase().includes(queryLower) ||
-    model.shortName.toLowerCase().includes(queryLower) ||
-    model.providerLabel.toLowerCase().includes(queryLower)
-  );
-}
-
 /** Builds an alphabetically-sorted array of provider buckets from a model list. */
 function buildProviderBuckets(models: GatewayModel[]): ProviderBucket[] {
   const map = new Map<string, ProviderBucket>();
@@ -343,7 +329,7 @@ export function ModelSelector({
 
   const filteredModels = useMemo<GatewayModel[]>(() => {
     if (!queryLower.length) return [];
-    return typeModels.filter((m) => modelMatchesQuery({ model: m, queryLower }));
+    return typeModels.filter((m) => gatewayModelMatchesSearchQuery({ model: m, queryLower }));
   }, [typeModels, queryLower]);
 
   // ── Trigger label ────────────────────────────────────────────────────────

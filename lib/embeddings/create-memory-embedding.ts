@@ -25,10 +25,13 @@ export async function createMemoryEmbedding({
   text,
   supabaseUserId,
   embeddingPurpose,
+  conversationId,
 }: {
   text: string;
   supabaseUserId: string;
   embeddingPurpose: "memory_write" | "memory_query";
+  /** Optional thread id for gateway spend tags. */
+  conversationId?: string | null;
 }): Promise<number[]> {
   const value = text.trim();
   if (!value) {
@@ -37,7 +40,10 @@ export async function createMemoryEmbedding({
 
   const providerOptions = buildRunnerGatewayProviderOptions({
     supabaseUserId,
-    tags: gatewayUsageTagsForMemoryEmbedding({ purpose: embeddingPurpose }),
+    tags: gatewayUsageTagsForMemoryEmbedding({
+      purpose: embeddingPurpose,
+      conversationId,
+    }),
   });
 
   try {

@@ -41,7 +41,6 @@ export type ToolUIComponent = React.ComponentType<ToolUIProps>;
 import { ShowDocumentDownloadUI } from "@/ai/tools/documents/show-document-download-ui";
 import { GenerateRandomNumberUI } from "@/ai/tools/example/generate-random-number-ui";
 import { ShowLocationUI } from "@/ai/tools/geo-map/show-location-ui";
-import { SearchUserMemoriesUI } from "@/ai/tools/memories/search-user-memories-ui";
 import { AskQuestionUI } from "@/ai/tools/utility/ask-question-ui";
 import { TavilyCrawlUI } from "@/ai/tools/utility/tavily-crawl-ui";
 import { TavilyExtractUI } from "@/ai/tools/utility/tavily-extract-ui";
@@ -59,8 +58,22 @@ const toolUIRegistry: Record<string, ToolUIComponent> = {
   generateRandomNumber: GenerateRandomNumberUI,
   showDocumentDownload: ShowDocumentDownloadUI,
   showLocation: ShowLocationUI,
-  searchUserMemories: SearchUserMemoriesUI,
+  // Memory tools (search / upsert / patch / delete) intentionally omit inline UI — results surface in the Context sidebar Memory section.
 };
+
+/**
+ * Returns whether the assistant should render an inline card for this tool part.
+ * Tools without a registry entry still run on the server; their outputs remain on the message for sidebar derivation.
+ */
+export function hasAssistantToolInlineUI({ toolName }: { toolName: string }): boolean {
+  if (
+    isWorkflowAssistantToolName({ toolName }) ||
+    toolName === WORKFLOW_APPROVAL_REQUEST_TOOL_NAME
+  ) {
+    return true;
+  }
+  return Boolean(toolUIRegistry[toolName]);
+}
 
 type ToolRendererProps = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,7 +106,9 @@ export function ToolRenderer({ part, addToolApprovalResponse, addToolOutput }: T
 
   const Component = toolUIRegistry[toolName];
 
-  if (!Component) return null;
+  if (!Component) {
+    return null;
+  }
 
   return (
     <div className="w-full min-w-0">

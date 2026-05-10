@@ -1,4 +1,4 @@
-import { DailifyMark, DailifyWordmark } from "@/components/brand/dailify-logos"
+import { DailifyFullLogo } from "@/components/brand/dailify-logos"
 
 /**
  * Centres auth flows with shared Dailify branding above the form.
@@ -11,12 +11,9 @@ export default function AuthLayout({
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/40 p-4">
       <div className="w-full max-w-sm">
-        {/* Logo — icon + wordmark */}
-        <div className="flex justify-center mb-6">
-          <div className="flex items-center gap-3">
-            <DailifyMark className="h-10 w-auto shrink-0" />
-            <DailifyWordmark className="h-7 w-auto max-w-[200px]" />
-          </div>
+        {/* Logo — full mark + wordmark */}
+        <div className="mb-6 flex justify-center">
+          <DailifyFullLogo className="h-10 w-auto max-w-[min(100%,260px)]" priority />
         </div>
         {children}
       </div>

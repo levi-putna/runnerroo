@@ -7,6 +7,7 @@ import {
   hydrateSidebarPreviewWithRemoteMerge,
   mergeSidebarMemoryPreviewRows,
   parseSidebarPreviewPayload,
+  type SidebarMemoryPreviewItem,
 } from "@/lib/conversations/sidebar-memory-preview";
 import { stripMemoryIdFromUIMessages } from "@/lib/conversations/strip-memory-id-from-stored-messages";
 import type { FileUIPart, UIMessage } from "ai";
@@ -16,7 +17,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -186,6 +186,18 @@ type AssistantContextValue = {
   stripTargetMemoryIdRef: MutableRefObject<string | null>;
   chatMemoryStripNonce: number;
   applyMemoryRemovalAfterDelete: ({ memoryId }: { memoryId: string }) => void;
+  /** Merges retrieval hits streamed before the assistant finishes (keyed by {@link conversationKey}). */
+  mergeStreamingMemoryContextFromChat: ({
+    sessionKey,
+    items,
+  }: {
+    sessionKey: string;
+    items: SidebarMemoryPreviewItem[];
+  }) => void;
+  /** Clears the live retrieval overlay (e.g. when streaming ends or the thread changes). */
+  clearStreamingMemoryOverlay: () => void;
+  /** Live retrieval rows for the active chat session (see {@link mergeStreamingMemoryContextFromChat}). */
+  streamingMemoryOverlay: { sessionKey: string; items: SidebarMemoryPreviewItem[] } | null;
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -294,6 +306,24 @@ export function AssistantContextProvider({
   const stripTargetMemoryIdRef = useRef<string | null>(null);
   const [chatMemoryStripNonce, setChatMemoryStripNonce] = useState(0);
 
+  // ── Live memory preview (streamed before assistant message completes) ─────
+  const [streamingMemoryOverlay, setStreamingMemoryOverlay] = useState<{
+    sessionKey: string;
+    items: SidebarMemoryPreviewItem[];
+  } | null>(null);
+
+  const mergeStreamingMemoryContextFromChat = useCallback(
+    ({ sessionKey, items }: { sessionKey: string; items: SidebarMemoryPreviewItem[] }) => {
+      // Replace per turn so retrieval rows do not accumulate across assistant replies on the same thread.
+      setStreamingMemoryOverlay({ sessionKey, items: [...items] });
+    },
+    []
+  );
+
+  const clearStreamingMemoryOverlay = useCallback(() => {
+    setStreamingMemoryOverlay(null);
+  }, []);
+
   // ── Conversation key (remount signal) ─────────────────────────────────────
   // Always starts as a fresh nanoid — even for URL deep-links.
   // The initial-load effect swaps it to initialConversationId once messages are fetched,
@@ -348,6 +378,7 @@ export function AssistantContextProvider({
         if (!row) return;
         const messages = row.messages ?? [];
         setActiveConversationMessages(messages);
+        setStreamingMemoryOverlay(null);
         // Flip conversationKey to trigger RunnerChat remount with loaded messages
         setConversationKey(initialConversationId);
         // Surface the persisted title in the header immediately
@@ -536,11 +567,13 @@ export function AssistantContextProvider({
     setArtifacts([]);
     setPlanState(null);
     setConversationUsageAggregateState(null);
+    setStreamingMemoryOverlay(null);
     setConversationKey(nanoid());
   }, []);
 
   const loadConversation = useCallback(
     (id: string) => {
+      setStreamingMemoryOverlay(null);
       setActiveConversationId(id);
       const record = conversationHistory.find((r) => r.id === id);
       if (record && record.messages.length > 0) {
@@ -583,6 +616,7 @@ export function AssistantContextProvider({
       queuedSend: { text: string; files?: FileUIPart[] };
     }) => {
       pendingForkSendRef.current = queuedSend;
+      setStreamingMemoryOverlay(null);
       setActiveConversationMessages(initialMessages);
       setConversationKey(nanoid());
     },
@@ -639,6 +673,9 @@ export function AssistantContextProvider({
       stripTargetMemoryIdRef,
       chatMemoryStripNonce,
       applyMemoryRemovalAfterDelete,
+      mergeStreamingMemoryContextFromChat,
+      clearStreamingMemoryOverlay,
+      streamingMemoryOverlay,
     }),
     [
       artifacts,
@@ -671,6 +708,9 @@ export function AssistantContextProvider({
       setConversationUsageAggregate,
       chatMemoryStripNonce,
       applyMemoryRemovalAfterDelete,
+      mergeStreamingMemoryContextFromChat,
+      clearStreamingMemoryOverlay,
+      streamingMemoryOverlay,
     ]
   );
 

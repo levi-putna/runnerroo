@@ -11,6 +11,18 @@ interface User {
   avatar: string
 }
 
+/**
+ * Client shell for the authenticated app layout.
+ *
+ * `SidebarProvider` receives `h-full` so it resolves to the definite `h-dvh`
+ * set by the server `AppLayout` wrapper — giving the entire height chain a
+ * concrete size. `AppSidebar` and `SidebarInset` are direct children of
+ * `SidebarProvider` as the shadcn sidebar layout requires.
+ *
+ * `SidebarInset` uses `overflow-y-auto` so regular content pages scroll
+ * naturally within the inset. Full-height pages (e.g. chat) use `min-h-full`
+ * on their outermost div to fill the viewport instead of scrolling.
+ */
 export function AppLayoutClient({
   children,
   user,
@@ -23,17 +35,13 @@ export function AppLayoutClient({
   pendingApprovalCount?: number
 }) {
   return (
-    <SidebarProvider>
-      <div className="flex h-full min-h-0 w-full overflow-hidden">
-        <AppSidebar pendingApprovalCount={pendingApprovalCount} recentWorkflows={recentWorkflows} user={user} />
+    <SidebarProvider className="h-full overflow-hidden">
+      <AppSidebar pendingApprovalCount={pendingApprovalCount} recentWorkflows={recentWorkflows} user={user} />
 
-        <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Content — each page defines its own header via PageHeader */}
-          <main className="flex min-h-0 flex-1 flex-col overflow-auto">
-            {children}
-          </main>
-        </SidebarInset>
-      </div>
+      {/* SidebarInset is the <main> element — no extra wrapper needed */}
+      <SidebarInset className="overflow-y-auto">
+        {children}
+      </SidebarInset>
     </SidebarProvider>
   )
 }

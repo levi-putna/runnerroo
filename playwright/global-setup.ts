@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
 import { randomUUID } from "node:crypto"
 import { resolve } from "node:path"
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
 function applyEnvFile({ path, overwrite = false }: { path: string; overwrite?: boolean }) {
   const full = resolve(process.cwd(), path)
@@ -34,7 +34,7 @@ async function deleteAuthUserByEmailIfPresent({
   admin,
   email,
 }: {
-  admin: ReturnType<typeof createClient>
+  admin: SupabaseClient
   email: string
 }) {
   const target = email.trim().toLowerCase()

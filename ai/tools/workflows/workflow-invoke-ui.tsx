@@ -834,7 +834,7 @@ export function WorkflowInvokeToolUI({
               Approval required
             </div>
             <p className="text-xs text-violet-900/90 dark:text-violet-100/90">
-              {pendingApproval.title?.trim() ||
+              {pendingApproval?.title?.trim() ||
                 awaitingApprovalEnvelope?.approval_title?.trim() ||
                 "This workflow run is paused for approval."}
             </p>

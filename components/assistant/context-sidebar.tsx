@@ -10,6 +10,7 @@ import {
   type AssistantArtifact,
   type ContextArtefact,
 } from "@/components/assistant/assistant-context";
+import { mergeSidebarMemoryPreviewRows } from "@/lib/conversations/sidebar-memory-preview";
 import { ContextUsageSection } from "@/components/assistant/context-usage-section";
 import { ProgressTracker } from "@/components/tool-ui/progress-tracker";
 import { Button } from "@/components/ui/button";
@@ -144,6 +145,7 @@ export function ContextSidebar() {
     conversationHistory,
     conversationKey,
     applyMemoryRemovalAfterDelete,
+    streamingMemoryOverlay,
   } = useAssistantContext();
 
   const [focusedMemoryId, setFocusedMemoryId] = useState<string | null>(null);
@@ -164,8 +166,15 @@ export function ContextSidebar() {
   };
 
   /** Preview rows for whichever thread the chat is showing (defaults to []). */
-  const activeMemoryPreview =
+  const persistedMemoryPreview =
     conversationHistory.find((row) => row.id === conversationKey)?.memoriesPreview ?? [];
+
+  const liveMemoryItems =
+    streamingMemoryOverlay?.sessionKey === conversationKey
+      ? streamingMemoryOverlay.items
+      : [];
+
+  const activeMemoryPreview = mergeSidebarMemoryPreviewRows(persistedMemoryPreview, liveMemoryItems);
 
   const hasEntities = artefacts.length > 0;
   const hasArtifacts = artifacts.length > 0;
@@ -344,7 +353,7 @@ export function ContextSidebar() {
               {activeMemoryPreview.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-col gap-1.5">
-                    {activeMemoryPreview.slice(0, 6).map((memory) => (
+                    {activeMemoryPreview.slice(0, 8).map((memory) => (
                       <button
                         key={memory.id}
                         type="button"
@@ -358,20 +367,24 @@ export function ContextSidebar() {
                         }}
                         className="group flex w-full max-w-full cursor-pointer items-start gap-2 rounded-md border border-border/40 bg-background px-2 py-1.5 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:bg-muted/40"
                       >
+                        {/* Memory icon (left) */}
                         <BrainIcon
-                          className="mt-0.5 size-3 shrink-0 text-muted-foreground/65 group-hover:text-muted-foreground"
+                          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/55 group-hover:text-muted-foreground"
                           aria-hidden
                         />
-                        <span className="flex min-w-0 flex-1 items-start gap-1.5">
-                          <span className="line-clamp-2 min-w-0 flex-1 break-words text-[11px] leading-snug text-muted-foreground/80">
-                            {memory.preview || memory.type}
-                          </span>
-                          {memory.isNew ? (
-                            <span className="mt-px shrink-0 rounded bg-secondary px-1 py-0 text-[9px] font-medium uppercase tracking-wide text-secondary-foreground">
-                              New
-                            </span>
-                          ) : null}
+                        {/* Memory text */}
+                        <span className="line-clamp-2 min-w-0 flex-1 text-[11px] leading-snug text-muted-foreground/90">
+                          {memory.preview?.trim() ? memory.preview : "—"}
                         </span>
+                        {/* New badge (right — compact label, icon-like weight) */}
+                        {memory.isNew ? (
+                          <span
+                            className="mt-[3px] shrink-0 text-[9px] font-semibold leading-none tracking-wide text-blue-600 dark:text-blue-400"
+                            title="New this turn"
+                          >
+                            NEW
+                          </span>
+                        ) : null}
                       </button>
                     ))}
                   </div>

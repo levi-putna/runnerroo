@@ -4,10 +4,11 @@
  * Pipeline:
  * 1. Authenticate the Supabase user.
  * 2. Parse JSON body (`messages`, `modelId`, `conversationId`).
- * 3. On the first turn, generate a short conversation title via a fast model and stream it as
+ * 3. Run hybrid memory retrieval once, then emit `data-assistant-memory-context` when wrapping the stream.
+ * 4. On the first turn, generate a short conversation title via a fast model and stream it as
  *    a `data-conversation-title` chunk so the UI can display it immediately.
- * 4. Delegate to {@link runAssistantChatTurn} (memory appendix, optional planning, tools, `streamText`).
- * 5. Return a UI message stream for {@link @ai-sdk/react.useChat}.
+ * 5. Delegate to {@link runAssistantChatTurn} (optional planning, tools, `streamText`) with the precomputed memory turn.
+ * 6. Return a UI message stream for {@link @ai-sdk/react.useChat}.
  */
 
 import {
@@ -15,15 +16,26 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   type UIMessage,
+  type UIMessageStreamOnFinishCallback,
 } from "ai";
 import { gateway } from "@ai-sdk/gateway";
+import { after } from "next/server";
 
-import { runAssistantChatTurn } from "@/ai/agents/chat-agent";
+import { isAssistantPingShortcutMessage, runAssistantChatTurn } from "@/ai/agents/chat-agent";
+import { runMemoryReviewAgent } from "@/ai/agents/memory-review-agent";
+import {
+  runAssistantMemoryRetrieval,
+  type RunAssistantMemoryRetrievalResult,
+} from "@/ai/agents/memory-retrieval-agent";
+import { applyMemoryReviewActions } from "@/lib/memories/apply-memory-review-actions";
+import { recordAssistantMemoryTurnEvent } from "@/lib/memories/record-assistant-memory-turn-event";
 import {
   buildRunnerGatewayProviderOptions,
+  GATEWAY_USAGE_TAG_MEMORY_REVIEW,
   gatewayUsageTagsForConversation,
 } from "@/lib/ai-gateway/runner-gateway-tracking";
 import { DEFAULT_MODEL_ID } from "@/lib/ai-gateway/models";
+import { memoryRetrievedRowsToSidebarPreviewItems } from "@/lib/conversations/sidebar-memory-preview";
 import { createClient } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
@@ -82,6 +94,54 @@ async function generateConversationTitle({
   }
 }
 
+/**
+ * Builds the HTTP response, optionally prepending UI data chunks before the merged model stream.
+ */
+function createAssistantChatStreamResponse({
+  memoryContextData,
+  generatedTitle,
+  streamResult,
+  messageMetadata,
+  onFinish,
+}: {
+  memoryContextData: { items: ReturnType<typeof memoryRetrievedRowsToSidebarPreviewItems> } | null;
+  generatedTitle: string | null;
+  streamResult: Awaited<ReturnType<typeof runAssistantChatTurn>>["streamResult"];
+  messageMetadata: Awaited<ReturnType<typeof runAssistantChatTurn>>["messageMetadata"];
+  onFinish?: UIMessageStreamOnFinishCallback<UIMessage>;
+}): Response {
+  const shouldWrap = Boolean(generatedTitle) || Boolean(memoryContextData?.items.length);
+
+  const streamOptions = {
+    messageMetadata,
+    ...(onFinish ? { onFinish } : {}),
+  };
+
+  if (!shouldWrap) {
+    return streamResult.toUIMessageStreamResponse(streamOptions);
+  }
+
+  const stream = createUIMessageStream({
+    execute: ({ writer }) => {
+      if (memoryContextData && memoryContextData.items.length > 0) {
+        writer.write({
+          type: "data-assistant-memory-context",
+          data: { items: memoryContextData.items },
+        });
+      }
+      if (generatedTitle) {
+        writer.write({
+          type: "data-conversation-title",
+          data: { title: generatedTitle },
+        });
+      }
+      writer.merge(streamResult.toUIMessageStream(streamOptions));
+    },
+  });
+
+  return createUIMessageStreamResponse({ stream });
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient();
   const {
@@ -125,13 +185,57 @@ export async function POST(req: Request) {
     tags: gatewayUsageTagsForConversation({ conversationId }),
   });
 
+  const lastUserMessage = [...uiMessages].reverse().find((m) => m.role === "user");
+  const latestUserText = lastUserMessage ? getMessageText(lastUserMessage) : "";
+  const skipShortcutPath = isAssistantPingShortcutMessage({ queryText: latestUserText });
+
+  const emptyMemoryTurn: RunAssistantMemoryRetrievalResult = {
+    retrievedMemories: [],
+    memoryFactsBlock: "",
+    memoriesRetrieved: [],
+  };
+
+  const memoryTurn = skipShortcutPath
+    ? emptyMemoryTurn
+    : await runAssistantMemoryRetrieval({
+        supabase,
+        userId: user.id,
+        uiMessages,
+        conversationId,
+        limit: 8,
+        gatewayProviderOptions,
+      });
+
+  const memoryContextData =
+    memoryTurn.memoriesRetrieved.length > 0
+      ? {
+          items: memoryRetrievedRowsToSidebarPreviewItems({
+            rows: memoryTurn.memoriesRetrieved,
+          }),
+        }
+      : null;
+
+  void recordAssistantMemoryTurnEvent({
+    supabase,
+    userId: user.id,
+    conversationId,
+    kind: "retrieval",
+    payload: {
+      retrievedIds: memoryTurn.memoriesRetrieved.map((m) => m.id),
+    },
+  }).catch(() => {});
+
   // Detect first turn: exactly one user message means we can generate a meaningful title.
   const userMessages = uiMessages.filter((m) => m.role === "user");
   const isFirstTurn = userMessages.length === 1;
+  /** `ping` mock path skips real LLM entirely — do not call the title model for that turn. */
+  const skipTitleForPingMock =
+    isFirstTurn &&
+    isAssistantPingShortcutMessage({ queryText: getMessageText(userMessages[0]) });
 
   // Run title generation and the main chat turn concurrently to minimise TTFB.
   const [generatedTitle, chatTurn] = await Promise.all([
-    isFirstTurn
+    isFirstTurn && !skipTitleForPingMock
       ? generateConversationTitle({
           firstUserMessage: userMessages[0],
           gatewayProviderOptions,
@@ -144,31 +248,64 @@ export async function POST(req: Request) {
       modelId,
       conversationId,
       gatewayProviderOptions,
+      memoryTurn,
     }),
   ]);
 
   const { streamResult, messageMetadata } = chatTurn;
 
-  // If a title was generated, prepend it as a data chunk before the main message stream
-  // so the client can update the header immediately without waiting for the full response.
-  if (generatedTitle) {
-    const stream = createUIMessageStream({
-      execute: ({ writer }) => {
-        writer.write({
-          type: "data-conversation-title",
-          data: { title: generatedTitle },
-        });
-        writer.merge(
-          streamResult.toUIMessageStream({
-            messageMetadata,
-          })
-        );
-      },
-    });
-    return createUIMessageStreamResponse({ stream });
-  }
+  const reviewProviderOptions = buildRunnerGatewayProviderOptions({
+    supabaseUserId: user.id,
+    tags: [...gatewayUsageTagsForConversation({ conversationId }), GATEWAY_USAGE_TAG_MEMORY_REVIEW],
+  });
 
-  return streamResult.toUIMessageStreamResponse({
+  const onFinish: UIMessageStreamOnFinishCallback<UIMessage> | undefined = skipShortcutPath
+    ? undefined
+    : async ({ responseMessage, isAborted }) => {
+    if (isAborted) return;
+    if (process.env.RUNNER_ASSISTANT_MEMORY_REVIEW === "false") return;
+
+    const assistantResponseText = getMessageText(responseMessage);
+
+    after(async () => {
+      try {
+        const { actions } = await runMemoryReviewAgent({
+          userMessageText: latestUserText,
+          assistantResponseText,
+          retrievedMemories: memoryTurn.memoriesRetrieved,
+          providerOptions: reviewProviderOptions,
+        });
+
+        const applied = await applyMemoryReviewActions({
+          supabase,
+          userId: user.id,
+          userMessageText: latestUserText,
+          actions,
+          conversationId,
+        });
+
+        await recordAssistantMemoryTurnEvent({
+          supabase,
+          userId: user.id,
+          conversationId,
+          kind: "review",
+          payload: {
+            actionKinds: applied.appliedActionKinds,
+            createdIds: applied.memoriesNewlyCreated.map((m) => m.id),
+            retrievedIds: memoryTurn.memoriesRetrieved.map((m) => m.id),
+          },
+        }).catch(() => {});
+      } catch (error) {
+        console.error("assistant memory review failed", error);
+      }
+    });
+  };
+
+  return createAssistantChatStreamResponse({
+    memoryContextData,
+    generatedTitle,
+    streamResult,
     messageMetadata,
+    onFinish,
   });
 }

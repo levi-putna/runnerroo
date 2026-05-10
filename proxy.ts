@@ -2,6 +2,19 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 /**
+ * Returns true when `pathname` maps to the public `(site)` route group (marketing, docs, blog, legal).
+ */
+function isPublicSitePath({ pathname }: { pathname: string }): boolean {
+  if (pathname === "/") return true
+  if (pathname.startsWith("/features")) return true
+  if (pathname.startsWith("/learn")) return true
+  if (pathname.startsWith("/blog")) return true
+  if (pathname.startsWith("/contact")) return true
+  if (pathname.startsWith("/legal")) return true
+  return false
+}
+
+/**
  * Next.js 16 request proxy (successor to `middleware.ts`): runs before route handlers on matched paths.
  * Refreshes the Supabase session from cookies and redirects unauthenticated browser traffic to `/login`.
  *
@@ -43,12 +56,13 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Redirect unauthenticated users to login
+  // Redirect unauthenticated users to login (public site + auth routes bypass)
   if (
     !user &&
     !pathname.startsWith("/login") &&
     !pathname.startsWith("/signup") &&
-    !pathname.startsWith("/auth")
+    !pathname.startsWith("/auth") &&
+    !isPublicSitePath({ pathname })
   ) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"

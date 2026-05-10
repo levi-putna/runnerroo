@@ -6,7 +6,7 @@ import { AssistantShell } from "@/components/assistant/assistant-shell";
  */
 export default function ChatPage() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-full flex-col">
       <AssistantContextProvider>
         <AssistantShell />
       </AssistantContextProvider>

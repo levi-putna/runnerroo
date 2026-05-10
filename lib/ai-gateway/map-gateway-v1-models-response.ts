@@ -6,6 +6,8 @@ type GatewayV1ModelsApiRow = {
   id: string;
   name?: string;
   owned_by?: string;
+  /** Unix epoch seconds or milliseconds from the gateway catalogue, when present. */
+  released?: number;
   context_window?: number;
   max_tokens?: number;
   type?: string;
@@ -108,6 +110,17 @@ function outputPerMillionToCostTier({ outPerM }: { outPerM: number | null }): Co
 }
 
 /**
+ * Formats the gateway `released` field for display (Australian English locale, UTC calendar date).
+ */
+function formatModelReleaseDateLabel({ released }: { released: number | undefined }): string | null {
+  if (released == null || !Number.isFinite(released)) return null;
+  const asMs = released > 10_000_000_000 ? released : released * 1000;
+  const d = new Date(asMs);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeZone: "UTC" }).format(d);
+}
+
+/**
  * Resolves display name for the provider segment of a model id (`owner/slug`).
  */
 function providerLabelForKey({ key }: { key: string }): string {
@@ -177,6 +190,8 @@ export function gatewayV1ModelsResponseToGatewayModels({ body }: { body: unknown
       contextLabel = null;
     }
 
+    const releaseDateLabel = formatModelReleaseDateLabel({ released: row.released });
+
     out.push({
       id: row.id,
       shortName,
@@ -186,6 +201,7 @@ export function gatewayV1ModelsResponseToGatewayModels({ body }: { body: unknown
       contextLabel,
       inputPriceLabel,
       outputPriceLabel,
+      releaseDateLabel,
       latencyLevel: speed?.latencyLevel ?? null,
       throughputLevel: speed?.throughputLevel ?? null,
       costDollarTier,

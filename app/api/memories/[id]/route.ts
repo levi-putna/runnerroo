@@ -96,7 +96,13 @@ export async function DELETE(
 
   const { id } = await params;
 
-  await deleteMemory({ supabase, userId: user.id, memoryId: id, reason: "api_delete" });
+  await deleteMemory({
+    supabase,
+    userId: user.id,
+    memoryId: id,
+    reason: "api_delete",
+    permanent: true,
+  });
 
   await purgeMemoryReferencesFromUserConversations({
     supabase,

@@ -68,6 +68,16 @@ ${planning.skill.body}`;
 
 ## Relevant user memories
 
+The bullets below are retrieved from this user’s saved memory store. Each line includes a stable \`id=\` you must not invent or change.
+
+How to use them:
+- Treat them as hints, not ground truth. If anything conflicts with the user’s latest message, prefer the message and clarify if needed.
+- Do not mention memory ids or the existence of a memory system unless the user asks about saved preferences.
+- Respect ephemeral rows: lines marked with \`(expires …)\` apply only until that time.
+- If the list is empty or nothing fits, do not fabricate preferences or history.
+
+Facts:
+
 ${memoryContext}`;
   }
 

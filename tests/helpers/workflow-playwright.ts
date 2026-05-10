@@ -124,7 +124,7 @@ export async function addWorkflowStepByLabel({
   await searchInput.fill("")
   await searchInput.fill(search)
   const row = sheet.getByRole("button").filter({
-    has: page.locator("p.text-sm.font-medium", { hasText: label, exact: true }),
+    has: page.locator("p.text-sm.font-medium").getByText(label, { exact: true }),
   })
   await row.first().click()
   await expect(page.getByRole("heading", { name: "Add step" })).toHaveCount(0, { timeout: 10_000 })

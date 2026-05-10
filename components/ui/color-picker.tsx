@@ -61,6 +61,7 @@ type ColorPickerProps = {
   align?: PopoverContentProps['align'];
   side?: PopoverContentProps['side'];
   sideOffset?: PopoverContentProps['sideOffset'];
+  children?: React.ReactNode;
 };
 
 /**

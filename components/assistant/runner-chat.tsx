@@ -8,6 +8,7 @@ import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
   type UIMessage,
+  getToolOrDynamicToolName,
   isReasoningUIPart,
   lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai";
@@ -54,7 +55,12 @@ import {
 } from "react";
 import type { ChatAddToolApproveResponseFunction, ChatAddToolOutputFunction, ChatStatus } from "ai";
 
-import { isToolOrDynamicToolUIPart, ToolRenderer } from "@/ai/tools/tool-ui-registry";
+import {
+  hasAssistantToolInlineUI,
+  isToolOrDynamicToolUIPart,
+  ToolRenderer,
+} from "@/ai/tools/tool-ui-registry";
+import { parseSidebarPreviewPayload } from "@/lib/conversations/sidebar-memory-preview";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -199,6 +205,11 @@ function MessageList({
                     );
                   }
                   if (isToolOrDynamicToolUIPart(part)) {
+                    const toolName = getToolOrDynamicToolName(part);
+                    // Memory and other headless tools: no inline card — outputs still live on the message for the Context sidebar.
+                    if (!hasAssistantToolInlineUI({ toolName })) {
+                      return null;
+                    }
                     return (
                       <div key={`${message.id}-part-${i}`} className="not-prose w-full min-w-0">
                         <ToolRenderer
@@ -397,6 +408,8 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
     setConversationTitle,
     stripTargetMemoryIdRef,
     chatMemoryStripNonce,
+    mergeStreamingMemoryContextFromChat,
+    clearStreamingMemoryOverlay,
   } = useAssistantContext();
 
   const { modelId, setModelId } = useSelectedChatModel();
@@ -453,8 +466,20 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
           setConversationTitle({ id: conversationId, title: data.title.trim() });
         }
       }
+      if (part.type === "data-assistant-memory-context") {
+        const data = part.data as { items?: unknown };
+        const items = parseSidebarPreviewPayload(data?.items);
+        mergeStreamingMemoryContextFromChat({ sessionKey: conversationId, items });
+      }
     },
   });
+
+  // Clear the live retrieval overlay when a new user turn starts so stale rows do not linger.
+  useEffect(() => {
+    if (status === "submitted") {
+      clearStreamingMemoryOverlay();
+    }
+  }, [status, clearStreamingMemoryOverlay]);
 
   // ── Memory strip on nonce change ──────────────────────────────────────────
   useEffect(() => {
@@ -488,6 +513,12 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
     if (wasStreaming && isNowReady) {
       flushSave(conversationId);
       syncConversationFromRemoteDetail({ conversationId });
+      // Do not clear streaming memory here — finish metadata may apply to the assistant message
+      // one tick after `ready`, and clearing early removed chips from the sidebar.
+      const delayedSync = window.setTimeout(() => {
+        void syncConversationFromRemoteDetail({ conversationId });
+      }, 1200);
+      return () => window.clearTimeout(delayedSync);
     }
     prevStatusRef.current = status;
   }, [status, conversationId, flushSave, syncConversationFromRemoteDetail]);

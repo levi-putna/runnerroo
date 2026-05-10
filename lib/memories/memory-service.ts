@@ -49,6 +49,7 @@ export async function saveMemory({
   sourceMessageId,
   expiresAt,
   metadata,
+  conversationId,
 }: {
   supabase: SupabaseClient;
   userId: string;
@@ -61,12 +62,14 @@ export async function saveMemory({
   sourceMessageId: string | null;
   expiresAt: string | null;
   metadata: Record<string, unknown>;
+  conversationId?: string | null;
 }): Promise<MemoryRecord> {
   const stableKey = toMemoryKeySlug({ value: key });
   const embedding = await createMemoryEmbedding({
     text: `${stableKey}\n${content.trim()}`,
     supabaseUserId: userId,
     embeddingPurpose: "memory_write",
+    ...(conversationId !== undefined ? { conversationId } : {}),
   });
 
   const { data: existing, error: existingError } = await supabase
@@ -140,24 +143,32 @@ export async function searchMemory({
   supabase,
   userId,
   query,
+  embeddingSourceText,
   types,
   limit,
+  conversationId,
 }: {
   supabase: SupabaseClient;
   userId: string;
   query: string;
+  /** Richer text for the vector leg only; `query` stays the keyword leg when omitted. */
+  embeddingSourceText?: string | null;
   types?: MemoryType[];
   limit?: number;
-  /** Reserved for threading assistant context into hybrid search (RPC unchanged). */
+  /** Thread id for embedding gateway tags (hybrid RPC unchanged). */
   conversationId?: string | null;
 }): Promise<MemoryHybridMatch[]> {
   const queryText = query.trim();
   if (!queryText) return [];
 
+  const embedText = (embeddingSourceText ?? queryText).trim();
+  if (!embedText) return [];
+
   const queryEmbedding = await createMemoryEmbedding({
-    text: queryText,
+    text: embedText,
     supabaseUserId: userId,
     embeddingPurpose: "memory_query",
+    ...(conversationId !== undefined ? { conversationId } : {}),
   });
   const { data, error } = await supabase.rpc("match_memories_hybrid", {
     query_text: queryText,
@@ -195,6 +206,7 @@ export async function updateMemory({
   importance,
   confidence,
   reason,
+  conversationId,
 }: {
   supabase: SupabaseClient;
   userId: string;
@@ -210,6 +222,7 @@ export async function updateMemory({
     text: `${existing.key}\n${content.trim()}`,
     supabaseUserId: userId,
     embeddingPurpose: "memory_write",
+    ...(conversationId !== undefined ? { conversationId } : {}),
   });
 
   const { data, error } = await supabase

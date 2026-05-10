@@ -415,7 +415,7 @@ export function InputSchemaEditor({
     const sheetOwnsSubHeaderActions =
       visualNavigationMode === "stack" &&
       sheetChromeOwnsStackBack &&
-      workflowOutputStackForSubHeader.enabled === true
+      workflowOutputStackForSubHeader?.enabled === true
 
     if (!sheetOwnsSubHeaderActions || stackPanel.view === "list") {
       register(null)

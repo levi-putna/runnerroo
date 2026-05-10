@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { saveMemory } from "@/lib/memories/memory-service";
-import { MEMORY_TYPES } from "@/lib/memories/types";
+import { MEMORY_TYPES, type MemoryType } from "@/lib/memories/types";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -16,6 +16,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const status = url.searchParams.get("status")?.trim() ?? "";
   const query = url.searchParams.get("q")?.trim() ?? "";
+  const typeParam = url.searchParams.get("type")?.trim() ?? "";
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "50"), 1), 200);
 
   let requestBuilder = supabase
@@ -27,6 +28,10 @@ export async function GET(request: Request) {
 
   if (status) {
     requestBuilder = requestBuilder.eq("status", status);
+  }
+
+  if (typeParam && (MEMORY_TYPES as readonly string[]).includes(typeParam)) {
+    requestBuilder = requestBuilder.eq("type", typeParam as MemoryType);
   }
 
   if (query) {

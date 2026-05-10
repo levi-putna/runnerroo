@@ -554,3 +554,105 @@
   white-space: nowrap;
   font-size: 0.875em;
 }
+
+/* Public site (`data-site`) — diagram backdrop + Magic UI–style motion tokens */
+[data-site] {
+  --site-grid: color-mix(in oklch, var(--foreground) 5.5%, transparent);
+}
+
+[data-site] .site-hero-grid {
+  background-image:
+    linear-gradient(to right, var(--site-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--site-grid) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 45%, transparent 100%);
+}
+
+@keyframes site-shine-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes site-beam-dash {
+  to {
+    stroke-dashoffset: -80;
+  }
+}
+
+@keyframes site-orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer utilities {
+  .animate-site-shine-spin {
+    animation: site-shine-spin var(--site-shine-duration, 14s) linear infinite;
+  }
+
+  .animate-site-beam-dash {
+    animation: site-beam-dash 2.4s ease-in-out infinite;
+  }
+
+  .animate-site-orbit-spin {
+    animation: site-orbit-spin 18s linear infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-site-shine-spin,
+  .animate-site-beam-dash,
+  .animate-site-orbit-spin {
+    animation: none !important;
+  }
+}
+
+/* Blog / learn article body — lightweight typography without @tailwindcss/typography */
+[data-site] .site-markdown {
+  @apply text-[0.95rem] leading-relaxed text-muted-foreground;
+}
+
+[data-site] .site-markdown h1 {
+  @apply mb-4 text-3xl font-semibold tracking-tight text-foreground;
+}
+
+[data-site] .site-markdown h2 {
+  @apply mb-3 mt-10 text-xl font-semibold tracking-tight text-foreground;
+}
+
+[data-site] .site-markdown h3 {
+  @apply mb-2 mt-8 text-lg font-semibold text-foreground;
+}
+
+[data-site] .site-markdown p {
+  @apply mb-4;
+}
+
+[data-site] .site-markdown a {
+  @apply font-medium text-primary underline-offset-4 hover:underline;
+}
+
+[data-site] .site-markdown ul {
+  @apply mb-4 list-disc space-y-2 pl-6;
+}
+
+[data-site] .site-markdown ol {
+  @apply mb-4 list-decimal space-y-2 pl-6;
+}
+
+[data-site] .site-markdown code {
+  @apply rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground;
+}
+
+[data-site] .site-markdown pre {
+  @apply mb-4 overflow-x-auto rounded-lg border border-border bg-muted/40 p-4 font-mono text-sm text-foreground;
+}
+
+[data-site] .site-markdown pre code {
+  @apply bg-transparent p-0;
+}
+
+[data-site] .site-markdown blockquote {
+  @apply border-l-2 border-primary/40 pl-4 italic text-foreground/90;
+}

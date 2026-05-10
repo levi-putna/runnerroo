@@ -71,6 +71,10 @@ export function validateMemoryActions({
     }
 
     if (candidate.action === "SAVE" || candidate.action === "UPDATE") {
+      if (candidate.action === "UPDATE" && !candidate.memoryId) {
+        dropped.push({ reason: "missing_memory_id_for_update", action: candidate });
+        continue;
+      }
       const content = candidate.content?.trim() ?? "";
       if (!content) {
         dropped.push({ reason: "empty_content_after_trim", action: candidate });

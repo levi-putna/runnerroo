@@ -768,7 +768,7 @@ export function WorkflowsIndex({ workflows, className }: WorkflowsIndexProps) {
                               <DropdownMenuItem disabled>Duplicate</DropdownMenuItem>
                               <DropdownMenuItem disabled>View runs</DropdownMenuItem>
                               <DropdownMenuItem
-                                variant="destructive"
+                                className="text-destructive focus:text-destructive"
                                 disabled={deletingId === workflow.id}
                                 onClick={() =>
                                   void handleDeleteWorkflow({ workflowId: workflow.id })

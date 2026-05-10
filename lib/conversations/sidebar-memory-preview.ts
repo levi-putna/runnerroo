@@ -10,14 +10,34 @@ export type SidebarMemoryPreviewItem = {
 
 export const SEARCH_USER_MEMORIES_TOOL_NAME = "searchUserMemories";
 
+/** Tool name key for upserting a memory from the assistant. */
+export const UPSERT_USER_MEMORY_TOOL_NAME = "upsertUserMemory";
+
 type AssistantMemoryMetadata = {
   memoriesRetrieved?: Array<{ id: string; type: string; key?: string; preview: string }>;
   memoriesNewlyCreated?: Array<{ id: string; type: string; key?: string; preview: string }>;
 };
 
-function toSidebarPreviewSnippet({ text }: { text: string }): string {
+export function toSidebarPreviewSnippet({ text }: { text: string }): string {
   const compact = text.trim().replace(/\s+/g, " ");
   return compact.length > 120 ? `${compact.slice(0, 119)}…` : compact;
+}
+
+/**
+ * Maps retrieval rows from the chat API into sidebar preview chips (stable ids, trimmed preview text).
+ */
+export function memoryRetrievedRowsToSidebarPreviewItems({
+  rows,
+}: {
+  rows: Array<{ id: string; type: string; key: string; preview: string }>;
+}): SidebarMemoryPreviewItem[] {
+  return rows.map((row) => ({
+    id: row.id,
+    type: row.type,
+    key: row.key,
+    preview: toSidebarPreviewSnippet({ text: row.preview }),
+    isNew: false,
+  }));
 }
 
 function unwrapPossibleToolJsonEnvelope(output: unknown): unknown {
@@ -63,6 +83,33 @@ function sidebarItemsFromSearchUserMemoriesExecuteOutput(output: unknown): Sideb
   return items;
 }
 
+function sidebarItemsFromUpsertUserMemoryOutput(output: unknown): SidebarMemoryPreviewItem[] {
+  const resolved = unwrapPossibleToolJsonEnvelope(output);
+  if (!resolved || typeof resolved !== "object") return [];
+  const object = resolved as Record<string, unknown>;
+  const id = typeof object.id === "string" ? object.id : "";
+  const type = typeof object.type === "string" ? object.type : "";
+  const rawContent = object.content;
+  const content =
+    typeof rawContent === "string"
+      ? rawContent
+      : rawContent !== undefined && rawContent !== null
+        ? String(rawContent)
+        : "";
+  const keyRaw = object.key;
+  if (!id || !type || content.trim().length === 0) return [];
+
+  return [
+    {
+      id,
+      type,
+      key: typeof keyRaw === "string" ? keyRaw : undefined,
+      preview: toSidebarPreviewSnippet({ text: content }),
+      isNew: true,
+    },
+  ];
+}
+
 export function collectSidebarMemoryPreviewItemsFromAssistantMessage(
   message: UIMessage,
 ): SidebarMemoryPreviewItem[] {
@@ -73,28 +120,46 @@ export function collectSidebarMemoryPreviewItemsFromAssistantMessage(
   if (metadata && Array.isArray(metadata.memoriesRetrieved)) {
     for (const row of metadata.memoriesRetrieved) {
       if (!row?.id || !row?.type || typeof row.preview !== "string") continue;
-      fromStreaming.push({ id: row.id, type: row.type, key: row.key, preview: row.preview, isNew: false });
+      fromStreaming.push({
+        id: row.id,
+        type: row.type,
+        key: row.key,
+        preview: toSidebarPreviewSnippet({ text: row.preview }),
+        isNew: false,
+      });
     }
   }
 
   if (metadata && Array.isArray(metadata.memoriesNewlyCreated)) {
     for (const row of metadata.memoriesNewlyCreated) {
       if (!row?.id || !row?.type || typeof row.preview !== "string") continue;
-      fromStreaming.push({ id: row.id, type: row.type, key: row.key, preview: row.preview, isNew: true });
+      fromStreaming.push({
+        id: row.id,
+        type: row.type,
+        key: row.key,
+        preview: toSidebarPreviewSnippet({ text: row.preview }),
+        isNew: true,
+      });
     }
   }
 
   if (fromStreaming.length > 0) buckets.push(fromStreaming);
 
-  const fromSearchTool: SidebarMemoryPreviewItem[] = [];
+  const fromMemoryTools: SidebarMemoryPreviewItem[] = [];
   for (const part of message.parts) {
     if (!isToolOrDynamicToolUIPart(part)) continue;
     if (part.state !== "output-available") continue;
-    if (getToolOrDynamicToolName(part) !== SEARCH_USER_MEMORIES_TOOL_NAME) continue;
-    fromSearchTool.push(...sidebarItemsFromSearchUserMemoriesExecuteOutput(part.output));
+    const toolName = getToolOrDynamicToolName(part);
+    if (toolName === SEARCH_USER_MEMORIES_TOOL_NAME) {
+      fromMemoryTools.push(...sidebarItemsFromSearchUserMemoriesExecuteOutput(part.output));
+      continue;
+    }
+    if (toolName === UPSERT_USER_MEMORY_TOOL_NAME) {
+      fromMemoryTools.push(...sidebarItemsFromUpsertUserMemoryOutput(part.output));
+    }
   }
 
-  if (fromSearchTool.length > 0) buckets.push(fromSearchTool);
+  if (fromMemoryTools.length > 0) buckets.push(fromMemoryTools);
 
   let merged: SidebarMemoryPreviewItem[] = [];
   for (const batch of buckets) {

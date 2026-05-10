@@ -36,7 +36,7 @@ Automated regressions live in **[Playwright](https://playwright.dev/)** **end-to
 ### Prerequisites
 
 1. **`yarn`** (not npm — project convention).
-2. **Environment** — duplicate **`.env.local`** from your normal dev setup; copy `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, plus any vars the app expects. Tests also read **`.env.playwright.example`** (see repo root after implementation) — add local overrides in **`.env.playwright.local`** (gitignored): point **`NEXT_PUBLIC_*`** keys at **`http://127.0.0.1:<api-port>`** from `yarn sb:status`; set **`MAILPIT_BASE_URL`** to the SMTP capture UI (**default `http://127.0.0.1:54324`** unless `[inbucket]` is reconfigured).
+2. **Environment** — duplicate **`.env.local`** from your normal dev setup; copy `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, plus any vars the app expects. See **`.env.playwright.example`** at the repo root for Playwright-only variables; add overrides in **`.env.playwright.local`** (gitignored): point **`NEXT_PUBLIC_*`** keys at **`http://127.0.0.1:<api-port>`** from `yarn sb:status`; set **`MAILPIT_BASE_URL`** to the SMTP capture UI (**default `http://127.0.0.1:54324`** unless `[inbucket]` is reconfigured).
 3. **Supabase CLI** running — **`yarn sb:start`** (or **`supabase start`**) against this repo [`supabase/config.toml`](supabase/config.toml).
 4. **Development server** — **`yarn dev`** serves on **port 80** by default (**`next dev --port 80`**). Playwright uses **`reuseExistingServer`** locally so leaving dev running separately is OK.
 5. **Browsers once** — after adding Playwright dependency: **`yarn playwright install`** (Chromium suffices for Phase 1).
@@ -47,6 +47,13 @@ Automated regressions live in **[Playwright](https://playwright.dev/)** **end-to
 - Mail flows (**magic link OTP**, signup PIN, optional password **`reauthenticate`**) — polls Mailpit **`/api/v1`** REST helpers under **`tests/`**; specs never scrape production inboxes.
 - **Identity collisions** prevented via **`createEphemeralAuthIdentity()`** (cryptographic random slug + worker index) so **`auth.users`** and Mailpit stay isolated across repeated runs **without running `yarn sb:reset`.**
 - **Tags / projects**: auth smoke (**default** profile) vs **`@profile-secondary`** gated suites exercising [`/app/settings/profile`](app/app/settings/profile/page.tsx).
+
+### Assistant chat (`@assistant`)
+
+- Spec: [`tests/e2e/assistant-chat.spec.ts`](tests/e2e/assistant-chat.spec.ts) — real `POST /api/chat`, optional **LLM-as-judge** (`tests/helpers/assistant-reply-judge.ts`), and **Session usage** in the context sidebar.
+- **Gateway**: set `AI_GATEWAY_API_KEY` in **`.env.playwright.local`** (for the judge process) and in **`.env.local`** for **`yarn dev`** so `/api/chat` can stream.
+- **Judge**: optional `PLAYWRIGHT_ASSISTANT_JUDGE_MODEL` (defaults to `openai/gpt-5.4-nano`); set `PLAYWRIGHT_ASSISTANT_JUDGE=0` to skip the judge assertion only.
+- Run: `yarn test:e2e --grep "@assistant"`
 
 ### Commands
 
@@ -62,6 +69,8 @@ yarn test:e2e:ui                 # Playwright Inspector / trace-friendly
 yarn test:e2e --grep "@oauth"    # OAuth placeholders (`test.fixme`)
 
 yarn test:e2e --grep "A1:"       # Single auth scenario (colon avoids matching A10/A11/A12)
+
+yarn test:e2e --grep "@assistant"   # Assistant chat + judge + model routing
 ```
 
 ### Layout (after implementation)

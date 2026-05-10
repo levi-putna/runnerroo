@@ -1,13 +1,16 @@
 import { gateway } from "@ai-sdk/gateway";
+import type { LanguageModelV3Usage } from "@ai-sdk/provider";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import {
   convertToModelMessages,
   streamText,
   stepCountIs,
+  type LanguageModelUsage,
   type TextStreamPart,
   type ToolSet,
   type UIMessage,
 } from "ai";
+import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { runPlanningAgent, resolvePlanningModelId } from "@/ai/agents/planning-agent";
@@ -19,21 +22,14 @@ import {
   formatInvokeWorkflowDescriptorsForPlanningPrompt,
   listWorkflowAssistantInvokeDescriptors,
 } from "@/lib/workflows/assistant-workflow-invoke-support";
+import {
+  runAssistantMemoryRetrieval,
+  type RunAssistantMemoryRetrievalResult,
+} from "@/ai/agents/memory-retrieval-agent";
 import { getAiGatewayModelListCached } from "@/lib/ai-gateway/gateway-raw-models";
-import { searchMemory } from "@/lib/memories/memory-service";
-import type { MemoryHybridMatch } from "@/lib/memories/types";
+import { memoryRetrievedRowsToSidebarPreviewItems } from "@/lib/conversations/sidebar-memory-preview";
 
 const PLANNING_ENV = "RUNNER_ASSISTANT_PLANNING";
-
-/**
- * Formats retrieved memories for the system prompt appendix.
- */
-function buildMemoryContextAppendixFromMatches(memories: MemoryHybridMatch[]): string {
-  if (memories.length === 0) return "";
-  return `\n\n## Relevant memories about this user\n${memories
-    .map((m) => `- [${m.type}] ${m.key}: ${m.content}`)
-    .join("\n")}`;
-}
 
 export type RunAssistantChatTurnParams = {
   supabase: SupabaseClient;
@@ -42,7 +38,111 @@ export type RunAssistantChatTurnParams = {
   modelId: string;
   conversationId: string | null;
   gatewayProviderOptions: ProviderOptions | undefined;
+  /** When set, skips in-turn retrieval (caller already ran {@link runAssistantMemoryRetrieval}). */
+  memoryTurn?: RunAssistantMemoryRetrievalResult;
 };
+
+/** V3 stream `finish.usage` shape for the mock model stream (matches provider contract). */
+const ASSISTANT_PING_MOCK_V3_USAGE: LanguageModelV3Usage = {
+  inputTokens: { total: 1000, noCache: 1000, cacheRead: undefined, cacheWrite: undefined },
+  outputTokens: { total: 2000, text: 2000, reasoning: undefined },
+};
+
+/**
+ * Rounded synthetic token counts for the `ping` → `pong` mock path (no real LLM call).
+ * Chosen as round thousands so session usage is easy to spot as mock data.
+ */
+export const ASSISTANT_PING_MOCK_USAGE: LanguageModelUsage = {
+  inputTokens: 1000,
+  outputTokens: 2000,
+  totalTokens: 3000,
+  inputTokenDetails: {
+    noCacheTokens: 1000,
+    cacheReadTokens: undefined,
+    cacheWriteTokens: undefined,
+  },
+  outputTokenDetails: {
+    textTokens: 2000,
+    reasoningTokens: undefined,
+  },
+};
+
+/**
+ * When the latest user turn is exactly `ping` (trimmed), the route skips real models and returns `pong`.
+ */
+export function isAssistantPingShortcutMessage({ queryText }: { queryText: string }): boolean {
+  return queryText === "ping";
+}
+
+/**
+ * Streams a fixed `pong` assistant reply with {@link ASSISTANT_PING_MOCK_USAGE} attributed to `modelId`.
+ */
+async function runAssistantPingMockStreamTurn({
+  uiMessages,
+  modelId,
+  catalogue,
+}: {
+  uiMessages: UIMessage[];
+  modelId: string;
+  catalogue: Awaited<ReturnType<typeof getAiGatewayModelListCached>>;
+}) {
+  const modelMessages = await convertToModelMessages(uiMessages);
+
+  const mockModel = new MockLanguageModelV3({
+    provider: "dailify-mock",
+    modelId,
+    doStream: async () => ({
+      stream: simulateReadableStream({
+        initialDelayInMs: null,
+        chunkDelayInMs: null,
+        chunks: [
+          { type: "text-start", id: "dailify-ping" },
+          { type: "text-delta", id: "dailify-ping", delta: "pong" },
+          { type: "text-end", id: "dailify-ping" },
+          {
+            type: "finish",
+            finishReason: { unified: "stop", raw: undefined },
+            logprobs: undefined,
+            usage: ASSISTANT_PING_MOCK_V3_USAGE,
+          },
+        ],
+      }),
+    }),
+  });
+
+  const streamResult = streamText({
+    model: mockModel,
+    messages: modelMessages,
+    stopWhen: stepCountIs(1),
+  });
+
+  const messageMetadata = ({
+    part,
+  }: {
+    part: TextStreamPart<ToolSet>;
+  }): AssistantMessageMetadata | undefined => {
+    if (part.type !== "finish") return undefined;
+    const assistantUsage = part.totalUsage ?? ASSISTANT_PING_MOCK_USAGE;
+    return buildRunnerAssistantUsageMetadata({
+      planningUsage: undefined,
+      planningModelId: resolvePlanningModelId(),
+      assistantUsage,
+      assistantModelId: modelId,
+      catalogue,
+      memoriesRetrieved: [],
+    });
+  };
+
+  return {
+    streamResult,
+    messageMetadata,
+    memoryTurn: {
+      retrievedMemories: [],
+      memoryFactsBlock: "",
+      memoriesRetrieved: [],
+    },
+  };
+}
 
 /**
  * Single entry point for the HTTP chat route: memory retrieval, optional planning pass,
@@ -55,6 +155,7 @@ export async function runAssistantChatTurn({
   modelId,
   conversationId,
   gatewayProviderOptions,
+  memoryTurn: memoryTurnBootstrap,
 }: RunAssistantChatTurnParams) {
   const lastUserMessage = [...uiMessages].reverse().find((m) => m.role === "user");
   const queryText =
@@ -64,35 +165,37 @@ export async function runAssistantChatTurn({
       .join(" ")
       .trim() ?? "";
 
-  let retrievedMemories: MemoryHybridMatch[] = [];
-  if (queryText.length > 0) {
-    try {
-      retrievedMemories = await searchMemory({
-        supabase,
-        userId,
-        query: queryText,
-        conversationId,
-        limit: 8,
-      });
-    } catch {
-      retrievedMemories = [];
-    }
-  }
-
-  const memoryContext = buildMemoryContextAppendixFromMatches(retrievedMemories);
-  const memoriesRetrieved = retrievedMemories.slice(0, 10).map((m) => ({
-    id: m.id,
-    type: m.type,
-    key: m.key,
-    preview: m.content,
-  }));
-
   let catalogue: Awaited<ReturnType<typeof getAiGatewayModelListCached>> = [];
   try {
     catalogue = await getAiGatewayModelListCached();
   } catch {
     catalogue = [];
   }
+
+  if (isAssistantPingShortcutMessage({ queryText })) {
+    return runAssistantPingMockStreamTurn({ uiMessages, modelId, catalogue });
+  }
+
+  const memoryTurn =
+    memoryTurnBootstrap ??
+    (await runAssistantMemoryRetrieval({
+      supabase,
+      userId,
+      uiMessages,
+      conversationId,
+      limit: 8,
+      gatewayProviderOptions,
+    }));
+  const memoryContext =
+    memoryTurn.memoryFactsBlock.trim().length > 0 ? memoryTurn.memoryFactsBlock : "";
+  const memoriesRetrieved = memoryRetrievedRowsToSidebarPreviewItems({
+    rows: memoryTurn.memoriesRetrieved,
+  }).map((row) => ({
+    id: row.id,
+    type: row.type,
+    key: row.key ?? row.type,
+    preview: row.preview,
+  }));
 
   const planningEnabled = process.env[PLANNING_ENV] === "true";
 
@@ -115,6 +218,7 @@ export async function runAssistantChatTurn({
   const { tools, integrationsBrief, workflowsInvokeBrief } = await createAssistantTools({
     supabase,
     userId,
+    conversationId,
     ...(invokeDescriptorsForPlanningTurn !== undefined
       ? { cachedInvokeDescriptors: invokeDescriptorsForPlanningTurn }
       : {}),
@@ -122,7 +226,7 @@ export async function runAssistantChatTurn({
 
   const system = buildRunnerAssistantInstructions({
     planning,
-    memoryContext: memoryContext || undefined,
+    memoryContext: memoryContext.length > 0 ? memoryContext : undefined,
     integrationsContext:
       integrationsBrief.summaryLines.length > 0
         ? integrationsBrief.summaryLines.map((l) => `- ${l}`).join("\n")
@@ -160,5 +264,5 @@ export async function runAssistantChatTurn({
     });
   };
 
-  return { streamResult, messageMetadata };
+  return { streamResult, messageMetadata, memoryTurn };
 }

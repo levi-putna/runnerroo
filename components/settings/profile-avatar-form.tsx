@@ -31,7 +31,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Loader2, ImageIcon } from "lucide-react"
+import { Check, Loader2, ImageIcon } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const AUTO_VALUE = "__auto__"
 
@@ -49,6 +50,18 @@ function toHexForPicker({
   if (/^[a-f0-9]{6}$/.test(n)) return `#${n}` as `#${string}`
   return fallback
 }
+
+/** Eight vivid preset colours for the avatar background — bright enough to pop on both light and dark themes. */
+const BACKGROUND_COLOUR_PRESETS = [
+  { hex: "#ff0073", label: "Pink" },
+  { hex: "#ff2d55", label: "Red" },
+  { hex: "#ff6b00", label: "Orange" },
+  { hex: "#ffcc00", label: "Yellow" },
+  { hex: "#30d158", label: "Green" },
+  { hex: "#0a84ff", label: "Blue" },
+  { hex: "#bf5af2", label: "Purple" },
+  { hex: "#32ade6", label: "Cyan" },
+] as const
 
 type ProfileAvatarFormProps = {
   email: string
@@ -85,7 +98,7 @@ function formStateFromMetadata({
         : "#ffffff",
       backgroundColor: stored.backgroundColor
         ? `#${String(stored.backgroundColor).replace(/^#/, "")}`
-        : "#b6e3f4",
+        : "#ff0073",
       backgroundType: stored.backgroundType ?? "gradientLinear",
       flip: stored.flip ?? false,
       rotate: typeof stored.rotate === "number" ? stored.rotate : 0,
@@ -97,7 +110,7 @@ function formStateFromMetadata({
     mouth: AUTO_VALUE,
     eyebrows: AUTO_VALUE,
     textColor: "#ffffff",
-    backgroundColor: "#b6e3f4",
+    backgroundColor: "#ff0073",
     backgroundType: "gradientLinear",
     flip: false,
     rotate: 0,
@@ -445,69 +458,88 @@ export function ProfileAvatarForm({ email, userMetadata }: ProfileAvatarFormProp
             </div>
           ) : null}
 
-          {/* Background and transform */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* Background colour and transform */}
+          <div className="space-y-4">
+            {/* Colour swatch picker — 4 wide × 2 high */}
             <div className="space-y-1.5">
-              <Label htmlFor="avatar-bg-type">Background</Label>
-              <Select
-                value={backgroundType}
-                onValueChange={(v) => setBackgroundType(v as "gradientLinear" | "solid")}
+              <Label>Background colour</Label>
+              <div
+                className="grid grid-cols-4 gap-2"
+                role="radiogroup"
+                aria-label="Background colour"
               >
-                <SelectTrigger id="avatar-bg-type" className="w-full min-w-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gradientLinear">Gradient</SelectItem>
-                  <SelectItem value="solid">Solid</SelectItem>
-                </SelectContent>
-              </Select>
+                {BACKGROUND_COLOUR_PRESETS.map(({ hex, label }) => {
+                  const isSelected = backgroundColor.toLowerCase() === hex.toLowerCase()
+                  return (
+                    <button
+                      key={hex}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      aria-label={label}
+                      title={label}
+                      onClick={() => setBackgroundColor(hex)}
+                      className={cn(
+                        "relative h-10 w-full rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        isSelected
+                          ? "ring-2 ring-foreground ring-offset-2 ring-offset-background"
+                          : "hover:scale-105 hover:shadow-md"
+                      )}
+                      style={{ backgroundColor: hex }}
+                    >
+                      {/* Selected checkmark */}
+                      {isSelected ? (
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <Check className="size-4 text-white drop-shadow-sm" strokeWidth={3} />
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="avatar-bg-colour-trigger">Background colour</Label>
-              <ColorPicker
-                value={toHexForPicker({ hex: backgroundColor, fallback: "#b6e3f4" })}
-                onValueChange={({ hex }) => setBackgroundColor(hex.toLowerCase())}
-                hideContrastRatio
-              >
-                <Button
-                  type="button"
-                  id="avatar-bg-colour-trigger"
-                  variant="outline"
-                  className="h-9 w-full min-w-0 justify-start gap-2 font-mono text-xs"
+
+            {/* Background type and transform controls */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="avatar-bg-type">Background style</Label>
+                <Select
+                  value={backgroundType}
+                  onValueChange={(v) => setBackgroundType(v as "gradientLinear" | "solid")}
                 >
-                  {/* Swatch */}
-                  <span
-                    className="size-4 shrink-0 rounded border border-border"
-                    style={{ backgroundColor: backgroundColor }}
-                    aria-hidden
-                  />
-                  {backgroundColor}
-                </Button>
-              </ColorPicker>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="avatar-rotate">Rotation</Label>
-              <Select value={String(rotate)} onValueChange={(v) => setRotate(Number(v))}>
-                <SelectTrigger id="avatar-rotate" className="w-full min-w-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">0°</SelectItem>
-                  <SelectItem value="90">90°</SelectItem>
-                  <SelectItem value="180">180°</SelectItem>
-                  <SelectItem value="270">270°</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end gap-2 pb-1">
-              <Checkbox
-                id="avatar-flip"
-                checked={flip}
-                onCheckedChange={(c) => setFlip(c === true)}
-              />
-              <Label htmlFor="avatar-flip" className="font-normal">
-                Flip horizontally
-              </Label>
+                  <SelectTrigger id="avatar-bg-type" className="w-full min-w-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gradientLinear">Gradient</SelectItem>
+                    <SelectItem value="solid">Solid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="avatar-rotate">Rotation</Label>
+                <Select value={String(rotate)} onValueChange={(v) => setRotate(Number(v))}>
+                  <SelectTrigger id="avatar-rotate" className="w-full min-w-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">0°</SelectItem>
+                    <SelectItem value="90">90°</SelectItem>
+                    <SelectItem value="180">180°</SelectItem>
+                    <SelectItem value="270">270°</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end gap-2 pb-1">
+                <Checkbox
+                  id="avatar-flip"
+                  checked={flip}
+                  onCheckedChange={(c) => setFlip(c === true)}
+                />
+                <Label htmlFor="avatar-flip" className="font-normal">
+                  Flip horizontally
+                </Label>
+              </div>
             </div>
           </div>
         </>

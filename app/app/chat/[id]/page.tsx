@@ -13,7 +13,7 @@ export default async function ChatConversationPage({
   const { id } = await params;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-full flex-col">
       <AssistantContextProvider initialConversationId={id}>
         <AssistantShell />
       </AssistantContextProvider>

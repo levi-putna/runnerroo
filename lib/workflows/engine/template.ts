@@ -205,6 +205,11 @@ export function buildResolutionContext({
 /**
  * Reads the immediate predecessor's emitted output from a runner execution envelope.
  * Returns an empty record for the entry node (no predecessor) or for malformed envelopes.
+ *
+ * When the emitted payload includes a plain-object `outputs` map (declared output-schema fields),
+ * those keys are shallow-merged onto the top-level object so `{{input.<field>}}` resolves without
+ * an `outputs.` segment. The nested `outputs` property is kept for back-compat with older
+ * templates that still reference `{{input.outputs.<field>}}`.
  */
 export function readPredecessorOutputFromEnvelope({
   envelope,
@@ -214,10 +219,19 @@ export function readPredecessorOutputFromEnvelope({
   const pred = envelope.predecessor
   if (!pred || typeof pred !== "object") return {}
   const p = pred as Record<string, unknown>
-  if (p.step_output_emitted && typeof p.step_output_emitted === "object") {
-    return p.step_output_emitted as Record<string, unknown>
+  if (!p.step_output_emitted || typeof p.step_output_emitted !== "object") return {}
+
+  const emitted = p.step_output_emitted as Record<string, unknown>
+  const nestedOutputs = emitted.outputs
+  if (
+    nestedOutputs != null &&
+    typeof nestedOutputs === "object" &&
+    !Array.isArray(nestedOutputs)
+  ) {
+    return { ...emitted, ...(nestedOutputs as Record<string, unknown>) }
   }
-  return {}
+
+  return { ...emitted }
 }
 
 /**

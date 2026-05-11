@@ -82,7 +82,7 @@ function WorkflowHeroStageCard({
 }
 
 /**
- * Learn hub hero — linear “run spine” showing how a workflow moves from trigger to completion.
+ * Learn hub hero: linear run spine showing how a workflow moves from trigger to completion.
  *
  * @param variant - `standalone` includes the intro block; `embedded` is a slimmer shell for cards (e.g. marketing bento).
  */
@@ -106,7 +106,7 @@ export function LearnWorkflowsHero({
       aria-label={embedded ? "How a workflow run moves from trigger to completion" : undefined}
       aria-labelledby={embedded ? undefined : "learn-workflows-hero-heading"}
     >
-      {/* Intro copy — full marketing / learn header only in standalone */}
+      {/* Intro copy: full marketing / learn header only in standalone */}
       {embedded ? null : (
         <div className="border-b border-border/50 bg-muted/20 px-4 py-4 sm:px-6">
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
@@ -122,7 +122,7 @@ export function LearnWorkflowsHero({
         </div>
       )}
 
-      {/* Mobile — stacked with chevrons */}
+      {/* Mobile: stacked with chevrons */}
       <div
         className={cn(
           "flex flex-col gap-1 md:hidden",
@@ -141,7 +141,7 @@ export function LearnWorkflowsHero({
         ))}
       </div>
 
-      {/* Desktop — horizontal spine with animated beam */}
+      {/* Desktop: horizontal spine with animated beam */}
       <div
         className={cn(
           "relative hidden md:block",

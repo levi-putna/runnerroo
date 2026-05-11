@@ -195,6 +195,34 @@ export function buildDefaultGenerateTextOutputSchemaFields(): NodeInputField[] {
 }
 
 /**
+ * Default outbound mappings for **Run code** steps (`{{exe.result}}`, `{{exe.execution_ms}}`).
+ */
+export function buildDefaultCodeStepOutputSchemaFields(): NodeInputField[] {
+  return [
+    createEmptyNodeInputField({
+      partial: {
+        key: "result",
+        label: "Result",
+        type: "string",
+        required: false,
+        description: "Coerced return value from the sandbox snippet.",
+        value: "{{exe.result}}",
+      },
+    }),
+    createEmptyNodeInputField({
+      partial: {
+        key: "execution_ms",
+        label: "Execution time (ms)",
+        type: "number",
+        required: false,
+        description: "Total execution time in milliseconds for the code run.",
+        value: "{{exe.execution_ms}}",
+      },
+    }),
+  ]
+}
+
+/**
  * Default outbound mappings for **Classify** AI steps (`exe.classifier_*` structured output fields).
  */
 export function buildDefaultClassifyOutputSchemaFields(): NodeInputField[] {

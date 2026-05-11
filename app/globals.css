@@ -485,46 +485,46 @@
   max-height: 14px;
 }
 
-/* ─── Function input (TipTap editor) ─────────────────────────────────────── */
+/* ─── Expression input (TipTap editor) ─────────────────────────────────────── */
 
 /*
- * The `.function-input-editor-content` div wraps TipTap's EditorContent. TipTap renders
+ * The `.expression-input-editor-content` div wraps TipTap's EditorContent. TipTap renders
  * a `.ProseMirror` contenteditable inside it. We size it to match a textarea.
  *
- * `.function-input-editor-focus-surface` wraps EditorContent — clicks outside ProseMirror
+ * `.expression-input-editor-focus-surface` wraps EditorContent — clicks outside ProseMirror
  * focus the editor; making the viewport a flex stack lets `.ProseMirror` grow into empty
  * space so it stays contenteditable-sized (aligned with TipTap “style the editor surface” docs).
  */
-.function-input-editor-focus-surface {
+.expression-input-editor-focus-surface {
   @apply flex min-h-full w-full min-w-0 flex-1 flex-col;
 }
 
-.function-input-editor-focus-surface .function-input-editor-content {
+.expression-input-editor-focus-surface .expression-input-editor-content {
   @apply flex min-h-0 flex-1 flex-col;
 }
 
-.function-input-editor-focus-surface .function-input-editor-content .ProseMirror {
+.expression-input-editor-focus-surface .expression-input-editor-content .ProseMirror {
   flex: 1 1 auto;
 }
 
-.function-input-editor-content {
+.expression-input-editor-content {
   @apply w-full;
 }
 
-.function-input-editor-content .ProseMirror {
+.expression-input-editor-content .ProseMirror {
   @apply text-sm text-foreground outline-none;
   font-family: inherit;
   line-height: 1.5;
   word-break: break-word;
-  min-height: var(--function-input-min-height);
+  min-height: var(--expression-input-min-height);
 }
 
 /* Reset paragraph margins — ProseMirror adds browser defaults */
-.function-input-editor-content .ProseMirror p {
+.expression-input-editor-content .ProseMirror p {
   margin: 0;
 }
 
-.function-input-editor-content .ProseMirror p + p {
+.expression-input-editor-content .ProseMirror p + p {
   margin-top: 0.2em;
 }
 
@@ -532,7 +532,7 @@
  * Placeholder — TipTap's Placeholder extension adds `data-placeholder` to the
  * first paragraph and `is-editor-empty` to the root when the editor is empty.
  */
-.function-input-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+.expression-input-editor-content .ProseMirror p.is-editor-empty:first-child::before {
   color: var(--muted-foreground);
   content: attr(data-placeholder);
   float: left;
@@ -544,7 +544,7 @@
  * Mention chip — scoped under `.ProseMirror` so `text-foreground` on the editor
  * root does not win via specificity on nested rules; tag copy must read as purple.
  */
-.function-input-editor-content .ProseMirror .prompt-mention-chip {
+.expression-input-editor-content .ProseMirror .prompt-mention-chip {
   background-color: var(--purple-light);
   border-radius: 0.4rem;
   -webkit-box-decoration-break: clone;
@@ -629,7 +629,8 @@
   @apply mb-4;
 }
 
-[data-site] .site-markdown a {
+/* Only style in-flow prose links — avoid overriding primary `Button asChild` links (e.g. Learn hub CTAs). */
+[data-site] .site-markdown :where(p, li, blockquote, td, th, h1, h2, h3, h4, h5, h6) a {
   @apply font-medium text-primary underline-offset-4 hover:underline;
 }
 
@@ -655,4 +656,33 @@
 
 [data-site] .site-markdown blockquote {
   @apply border-l-2 border-primary/40 pl-4 italic text-foreground/90;
+}
+
+/* sugar-high — syntax colours for static JS in learn docs (https://github.com/huozhi/sugar-high) */
+.sh-code-block {
+  --sh-class: oklch(0.42 0.12 264);
+  --sh-identifier: oklch(0.32 0.04 264);
+  --sh-sign: oklch(0.45 0 0);
+  --sh-property: oklch(0.42 0.12 250);
+  --sh-entity: oklch(0.42 0.1 195);
+  --sh-jsxliterals: oklch(0.48 0.16 280);
+  --sh-string: oklch(0.42 0.12 165);
+  --sh-keyword: oklch(0.52 0.2 25);
+  --sh-comment: oklch(0.52 0.02 280);
+  --sh-space: transparent;
+  --sh-regexp: oklch(0.45 0.14 35);
+}
+
+.dark .sh-code-block {
+  --sh-class: oklch(0.78 0.1 264);
+  --sh-identifier: oklch(0.9 0.02 264);
+  --sh-sign: oklch(0.72 0 0);
+  --sh-property: oklch(0.78 0.1 250);
+  --sh-entity: oklch(0.78 0.08 195);
+  --sh-jsxliterals: oklch(0.78 0.12 280);
+  --sh-string: oklch(0.78 0.1 165);
+  --sh-keyword: oklch(0.72 0.16 25);
+  --sh-comment: oklch(0.62 0.02 280);
+  --sh-space: transparent;
+  --sh-regexp: oklch(0.78 0.12 35);
 }

@@ -12,6 +12,7 @@ import {
   isReasoningUIPart,
   lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import {
   Conversation,
   ConversationContent,
@@ -25,11 +26,7 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
+import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton } from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -39,6 +36,7 @@ import {
   PencilIcon,
   SparklesIcon,
   SquareIcon,
+  XIcon,
 } from "lucide-react";
 import { flushSync } from "react-dom";
 import {
@@ -60,21 +58,59 @@ import {
   isToolOrDynamicToolUIPart,
   ToolRenderer,
 } from "@/ai/tools/tool-ui-registry";
+import { ASSISTANT_PLANNING_AWAITING_HEADLINES } from "@/lib/assistant/assistant-planning-awaiting-headline";
+import { isRunnerAssistantStreamChromePart } from "@/lib/assistant/assistant-ui-stream-chrome";
 import { parseSidebarPreviewPayload } from "@/lib/conversations/sidebar-memory-preview";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Plain text from a UI message for editing and copy. Prefers `parts`; some stored rows only
+ * expose a legacy `content` string.
+ */
 function getTextFromMessage(message: UIMessage): string {
-  return message.parts
-    .filter((p) => p.type === "text")
-    .map((p) => (p as { type: "text"; text: string }).text)
-    .join("");
+  const fromParts =
+    message.parts
+      ?.filter((p) => p.type === "text")
+      .map((p) => (p as { type: "text"; text: string }).text)
+      .join("") ?? "";
+  if (fromParts.trim().length > 0) {
+    return fromParts;
+  }
+  const legacy = (message as { content?: unknown }).content;
+  if (typeof legacy === "string") {
+    return legacy;
+  }
+  return "";
+}
+
+const AWAITING_ROTATE_MS_MIN = 3000;
+const AWAITING_ROTATE_MS_MAX = 6000;
+
+/**
+ * Returns a delay in milliseconds between {@link AWAITING_ROTATE_MS_MIN} and {@link AWAITING_ROTATE_MS_MAX} inclusive.
+ */
+function randomAwaitingRotateDelayMs(): number {
+  return AWAITING_ROTATE_MS_MIN + Math.floor(Math.random() * (AWAITING_ROTATE_MS_MAX - AWAITING_ROTATE_MS_MIN + 1));
+}
+
+/**
+ * Picks a random index into {@link ASSISTANT_PLANNING_AWAITING_HEADLINES} that differs from the current line.
+ */
+function pickRandomAwaitingLineIndexExcluding({ excludeIndex }: { excludeIndex: number }): number {
+  const len = ASSISTANT_PLANNING_AWAITING_HEADLINES.length;
+  if (len <= 1) return 0;
+  let next = excludeIndex;
+  while (next === excludeIndex) {
+    next = Math.floor(Math.random() * len);
+  }
+  return next;
 }
 
 /**
  * Whether an assistant {@link UIMessage} already shows streamed output users can see
- * (text, reasoning chrome, or an inline tool card). When false during streaming, we
- * show a skeleton so the gap before the first token is not mistaken for an error.
+ * (text or an inline tool card). When false during streaming, we show a skeleton so the gap
+ * before the first token is not mistaken for an error.
  */
 function assistantMessageHasRenderableBody({ message }: { message: UIMessage }): boolean {
   if (message.role !== "assistant") {
@@ -82,7 +118,7 @@ function assistantMessageHasRenderableBody({ message }: { message: UIMessage }):
   }
   for (const part of message.parts) {
     if (isReasoningUIPart(part)) {
-      return true;
+      continue;
     }
     if (part.type === "text" && part.text.trim().length > 0) {
       return true;
@@ -99,17 +135,45 @@ function assistantMessageHasRenderableBody({ message }: { message: UIMessage }):
 
 /**
  * Skeleton and status copy shown while the assistant message exists but no body yet,
- * or while the request is submitted before streaming begins.
+ * or while the request is submitted before streaming begins. Status copy rotates on a 3–6s cadence.
  */
 function AssistantAwaitingResponsePlaceholder() {
+  const [lineIndex, setLineIndex] = useState(() =>
+    Math.floor(Math.random() * ASSISTANT_PLANNING_AWAITING_HEADLINES.length),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const scheduleNext = () => {
+      timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        setLineIndex((prev) => pickRandomAwaitingLineIndexExcluding({ excludeIndex: prev }));
+        scheduleNext();
+      }, randomAwaitingRotateDelayMs());
+    };
+
+    scheduleNext();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  const line = ASSISTANT_PLANNING_AWAITING_HEADLINES[lineIndex];
+
   return (
     <div
       className="flex w-full flex-col gap-2.5 py-0.5"
       aria-busy="true"
       aria-label="Assistant is preparing a response"
     >
-      {/* Status line — explains we are waiting, not failed */}
-      <p className="text-xs text-muted-foreground">Preparing a response…</p>
+      {/* Status line — client-side rotating copy while waiting for streamed body */}
+      <Shimmer as="p" className="text-xs text-muted-foreground">
+        {line}
+      </Shimmer>
       {/* Skeleton lines — approximate message shape */}
       <div className="flex flex-col gap-2" aria-hidden>
         <Skeleton className="h-3.5 w-[min(100%,28rem)]" />
@@ -135,8 +199,8 @@ function RunnerChatEmptyState() {
 // ─── Message list ─────────────────────────────────────────────────────────────
 
 /**
- * Renders chat messages; assistant reasoning uses {@link Reasoning} with all reasoning
- * parts merged into one block (see AI Elements reasoning guidance).
+ * Renders chat messages; model reasoning is kept server-side — the thread only shows streamed
+ * text, tools, and the awaiting placeholder until the answer body begins.
  */
 function MessageList({
   messages,
@@ -196,10 +260,8 @@ function MessageList({
                 <MessageActions
                   className={cn(
                     "self-end",
-                    "transition-opacity",
-                    "pointer-events-none opacity-0",
-                    "group-hover:pointer-events-auto group-hover:opacity-100",
-                    "group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                    // Always allow taps — `pointer-events-none` until hover breaks touch and some trackpads.
+                    "text-muted-foreground opacity-80 transition-opacity hover:opacity-100"
                   )}
                 >
                   <MessageAction
@@ -224,27 +286,13 @@ function MessageList({
           const hasRenderableBody = assistantMessageHasRenderableBody({ message });
           const showAwaitingSkeleton = isLastMessage && isStreaming && !hasRenderableBody;
 
-          const reasoningParts = message.parts.filter((p) => isReasoningUIPart(p));
-          const reasoningText = reasoningParts.map((p) => p.text).join("\n\n");
-          const hasReasoning = reasoningParts.length > 0;
-          const lastPart = message.parts.at(-1);
-          const isReasoningStreaming =
-            isLastMessage &&
-            isStreaming &&
-            !!lastPart &&
-            isReasoningUIPart(lastPart);
-
           return (
             <Message key={message.id} from="assistant">
               <MessageContent>
-                {/* Single Reasoning block — matches AI Elements guidance for models that emit multiple reasoning parts. */}
-                {hasReasoning ? (
-                  <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
-                    <ReasoningTrigger />
-                    <ReasoningContent>{reasoningText}</ReasoningContent>
-                  </Reasoning>
-                ) : null}
                 {message.parts.map((part, i) => {
+                  if (isRunnerAssistantStreamChromePart(part)) {
+                    return null;
+                  }
                   if (isReasoningUIPart(part)) {
                     return null;
                   }
@@ -274,16 +322,15 @@ function MessageList({
                   return null;
                 })}
                 {/* Placeholder while streamed body has not started — avoids a blank assistant row */}
-                {showAwaitingSkeleton ? <AssistantAwaitingResponsePlaceholder /> : null}
+                {showAwaitingSkeleton ? (
+                  <AssistantAwaitingResponsePlaceholder key={`awaiting-${message.id}`} />
+                ) : null}
               </MessageContent>
               {!isStreaming && canEditOrCopy && (
                 <MessageActions
                   className={cn(
-                    // Copy control only on hover/focus so rows are not cluttered.
-                    "transition-opacity",
-                    "pointer-events-none opacity-0",
-                    "group-hover:pointer-events-auto group-hover:opacity-100",
-                    "group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                    // Match user row: must stay interactive without hover (touch).
+                    "text-muted-foreground opacity-80 transition-opacity hover:opacity-100"
                   )}
                 >
                   <MessageAction
@@ -305,13 +352,13 @@ function MessageList({
         return null;
       })}
 
-      {status === "submitted" && (
+      {status === "submitted" && messages.at(-1)?.role !== "assistant" ? (
         <Message from="assistant">
           <MessageContent>
-            <AssistantAwaitingResponsePlaceholder />
+            <AssistantAwaitingResponsePlaceholder key="awaiting-submitted" />
           </MessageContent>
         </Message>
-      )}
+      ) : null}
     </>
   );
 }
@@ -322,6 +369,9 @@ function MessageList({
  * Prompt area: height follows content (not a tall empty panel). The textarea uses
  * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/field-sizing | field-sizing}
  * to grow with text up to ~five lines, then scrolls.
+ * The textarea stays enabled while a run is in flight so focus can return after send and users
+ * can draft the next message; send remains gated until the run finishes.
+ * When {@link pendingEditResend} is true, shows a banner so the user can cancel edit mode.
  */
 function Composer({
   status,
@@ -352,9 +402,8 @@ function Composer({
   const textareaRef = textareaRefProp ?? fallbackTextareaRef;
 
   const focusPrompt = useCallback(() => {
-    if (isActive) return;
     textareaRef.current?.focus();
-  }, [isActive, textareaRef]);
+  }, [textareaRef]);
 
   const handleInputGroupSurfaceClick = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
@@ -401,6 +450,33 @@ function Composer({
         className="h-auto flex-col items-stretch py-1"
         onClick={handleInputGroupSurfaceClick}
       >
+        {/* Edit-from-thread mode — explains truncation on send and offers cancel. */}
+        {pendingEditResend ? (
+          <InputGroupAddon
+            align="block-start"
+            className="border-b border-input bg-muted/50 px-3 py-2"
+          >
+            <div className="flex w-full min-w-0 items-start justify-between gap-2">
+              <p
+                className="min-w-0 text-left text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                Editing an earlier message. Sending replaces that message and everything after
+                it.
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="h-7 shrink-0 gap-1 px-2 text-xs"
+                onClick={onCancelPendingEditResend}
+              >
+                <XIcon className="size-3.5" aria-hidden />
+                Clear
+              </Button>
+            </div>
+          </InputGroupAddon>
+        ) : null}
         <textarea
           ref={textareaRef}
           id={promptInputId}
@@ -408,7 +484,6 @@ function Composer({
           onChange={(e) => onPromptChange({ value: e.target.value })}
           onKeyDown={handleKeyDown}
           placeholder="Message Dailify…"
-          disabled={isActive}
           rows={1}
           className="field-sizing-content max-h-[calc(5lh+1rem)] min-h-[2.5rem] w-full overflow-y-auto resize-none rounded-none border-0 bg-transparent px-3 py-2 text-sm shadow-none ring-0 outline-none focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent"
           data-slot="input-group-control"
@@ -584,7 +659,9 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
   useEffect(() => {
     const payload = takePendingForkSend();
     if (!payload) return;
-    void sendMessage({ text: payload.text });
+    queueMicrotask(() => {
+      void sendMessage({ text: payload.text });
+    });
   }, [takePendingForkSend, sendMessage]);
 
   const handlePromptChange = useCallback(({ value }: { value: string }) => {
@@ -592,6 +669,10 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
     setEditTruncateFromIndex((idx) => (idx !== null && value === "" ? null : idx));
   }, []);
 
+  /**
+   * Loads a user turn into the composer and arms truncation so the next send removes that
+   * message and all following turns before posting again.
+   */
   const beginEditUserMessage = useCallback(
     ({
       messageIndex,
@@ -607,11 +688,16 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
     []
   );
 
+  /** Leaves edit mode and clears the composer without changing the thread. */
   const cancelPendingEditResend = useCallback(() => {
     setEditTruncateFromIndex(null);
     setPromptInput("");
   }, []);
 
+  /**
+   * Sends the composer text; if editing an earlier turn, truncates the thread first so the
+   * API only sees messages before that index, then appends the new user message.
+   */
   const handleSend = useCallback(
     ({ text }: { text: string }) => {
       const truncateBeforeIndex = editTruncateFromIndex;
@@ -623,6 +709,12 @@ export function RunnerChat({ conversationId }: RunnerChatProps) {
         });
       }
       void sendMessage({ text });
+      // Composer stays enabled during a run so users can draft; move focus back after send.
+      queueMicrotask(() => {
+        requestAnimationFrame(() => {
+          promptTextareaRef.current?.focus();
+        });
+      });
     },
     [editTruncateFromIndex, sendMessage, setMessages]
   );

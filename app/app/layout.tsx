@@ -36,6 +36,7 @@ export default async function AppLayout({
         pendingApprovalCount={pendingApprovalCount}
         recentSidebarEntries={recentSidebarEntries}
         user={userData}
+        userId={user.id}
       >
         {children}
       </AppLayoutClient>

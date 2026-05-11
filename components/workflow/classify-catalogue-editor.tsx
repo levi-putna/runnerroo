@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import { FunctionInput } from "@/components/workflow/function-input"
+import { ExpressionInput } from "@/components/workflow/expression-input"
 import { clipWorkflowFieldKeyInput } from "@/lib/workflows/engine/input-schema"
 import type { PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 import {
@@ -397,7 +397,7 @@ export function ClassifyCatalogueEditor({ data, set, nodeId, promptTags }: Class
           </TabsContent>
 
           <TabsContent value="expression" className="mt-0 space-y-3 outline-none">
-            <FunctionInput
+            <ExpressionInput
               tags={promptTags}
               value={String(data.classifyLabelsExpression ?? "")}
               onChange={({ value }) => set("classifyLabelsExpression", value)}

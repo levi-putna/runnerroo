@@ -59,7 +59,9 @@ export interface InferPreviousStepOutputFieldsParams {
 
 /**
  * Best-effort shape of a predecessor step's runtime output for wiring the next step's `inputSchema` values.
- * Entry nodes prefer `inputSchema` rows (same keys the trigger exposes downstream); legacy graphs may only have `outputSchema`. AI steps prefer `outputSchema` keys when set, otherwise default to `prev.text`; other kinds default to the whole body.
+ * Entry nodes prefer `inputSchema` rows (same keys the trigger exposes downstream); legacy graphs may only have `outputSchema`.
+ * AI and document steps use declared `outputSchema` keys as `{{input.<key>}}` (aligned with {@link readPredecessorOutputFromEnvelope}, which flattens emitted `outputs` onto the `input` namespace for the next hop).
+ * Other kinds follow the same flat `input.<key>` convention where a single key applies; otherwise default to `{{input}}` for the whole payload.
  */
 export function inferPreviousStepOutputFields({
   previousNode,
@@ -98,7 +100,7 @@ export function inferPreviousStepOutputFields({
         key: f.key,
         label: f.label,
         type: f.type,
-        suggestedValue: templatePrevPath({ path: `outputs.${f.key}` }),
+        suggestedValue: templatePrevPath({ path: f.key }),
       }))
     }
     return [
@@ -243,7 +245,7 @@ export function inferPreviousStepOutputFields({
         key: f.key,
         label: f.label,
         type: f.type,
-        suggestedValue: templatePrevPath({ path: `outputs.${f.key}` }),
+        suggestedValue: templatePrevPath({ path: f.key }),
       }))
     }
     // Fallback to the known default document output keys
@@ -252,13 +254,13 @@ export function inferPreviousStepOutputFields({
         key: "file_name",
         label: "File name",
         type: "text" as NodeInputFieldType,
-        suggestedValue: templatePrevPath({ path: "outputs.file_name" }),
+        suggestedValue: templatePrevPath({ path: "file_name" }),
       },
       {
         key: "document_url",
         label: "Document URL",
         type: "text" as NodeInputFieldType,
-        suggestedValue: templatePrevPath({ path: "outputs.document_url" }),
+        suggestedValue: templatePrevPath({ path: "document_url" }),
       },
     ]
   }

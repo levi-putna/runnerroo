@@ -35,6 +35,10 @@ export default function LearnWorkflowsPage() {
         <li>
           <Link href="/learn/workflows/runs">Runs and schedules</Link>
         </li>
+        <li>
+          <Link href="/learn/workflows/steps">Steps and behaviour</Link> — step types, execution settings, expression
+          variables, and the Code guide
+        </li>
       </ul>
     </LearnArticle>
   )

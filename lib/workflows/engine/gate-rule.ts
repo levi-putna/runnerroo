@@ -114,7 +114,7 @@ export function createEmptyGateGroup(): GateGroup {
 // ─── Compiler: GateGroup → JavaScript expression ────────────────────────────
 
 /**
- * Converts a FunctionInput value (literals + `{{tag.id}}`) to a JavaScript expression fragment.
+ * Converts an expression input value (literals + `{{tag.id}}`) to a JavaScript expression fragment.
  *
  * Mapping:
  * - `{{tag.id}}` → `tag.id`  (bare JS identifier path)

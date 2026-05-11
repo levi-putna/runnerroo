@@ -3,6 +3,7 @@
 import * as React from "react"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
+import { usePendingApprovalsRealtime } from "@/hooks/use-pending-approvals-realtime"
 import type { SidebarRecentEntry } from "@/lib/app/sidebar-recent-entries"
 
 interface User {
@@ -28,21 +29,29 @@ export function AppLayoutClient({
   user,
   recentSidebarEntries,
   pendingApprovalCount = 0,
+  userId,
 }: {
   children: React.ReactNode
   user: User
   recentSidebarEntries: SidebarRecentEntry[]
   pendingApprovalCount?: number
+  userId: string
 }) {
+  const { pendingCount } = usePendingApprovalsRealtime({
+    userId,
+    initialCount: pendingApprovalCount,
+  })
+
   return (
     <SidebarProvider className="h-full overflow-hidden">
+      {/* Navigation rail — badge count reflects Realtime approval updates */}
       <AppSidebar
-        pendingApprovalCount={pendingApprovalCount}
+        pendingApprovalCount={pendingCount}
         recentSidebarEntries={recentSidebarEntries}
         user={user}
       />
 
-      {/* SidebarInset is the <main> element — no extra wrapper needed */}
+      {/* Main scroll region for authenticated routes */}
       <SidebarInset className="overflow-y-auto">
         {children}
       </SidebarInset>

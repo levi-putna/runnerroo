@@ -270,7 +270,7 @@ export function WorkflowRunDetailClient({ run }: WorkflowRunDetailClientProps) {
                 Workflow editor
               </Link>
               <Link
-                href={`/app/workflows/${workflowId}/history`}
+                href={`/app/run?workflow=${encodeURIComponent(workflowId)}`}
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9")}
               >
                 Workflow history

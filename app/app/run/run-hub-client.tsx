@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { PageHeader } from "@/components/page-header"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   CalendarIcon,
   ChevronDownIcon,
@@ -133,8 +135,31 @@ function statusFilterTriggerLabel({ statusFilter }: { statusFilter: RunStatusFil
   )
 }
 
+type WorkflowFilter = "all" | string
+
+/**
+ * Label shown on the workflow filter control.
+ */
+function workflowFilterTriggerLabel({
+  workflowFilter,
+  workflows,
+}: {
+  workflowFilter: WorkflowFilter
+  workflows: { id: string; name: string }[]
+}): string {
+  if (workflowFilter === "all") {
+    return "All workflows"
+  }
+  const row = workflows.find((w) => w.id === workflowFilter)
+  return row?.name?.trim() || "Untitled workflow"
+}
+
 export interface WorkflowRunHubClientProps {
   runs: WorkflowRunListItem[]
+  /** All workflows the user can scope runs to (dropdown source). */
+  workflows: { id: string; name: string }[]
+  /** When set, the workflow filter starts on this id (must exist in {@link workflows}). */
+  initialWorkflowId: string | null
   /** Extra classes on the outer wrapper (matches workflows / usage pages). */
   className?: string
 }
@@ -142,12 +167,37 @@ export interface WorkflowRunHubClientProps {
 /**
  * Run hub: Usage-style filters and overview tiles, bordered detail table, links into run detail.
  */
-export function WorkflowRunHubClient({ runs, className }: WorkflowRunHubClientProps) {
+function WorkflowRunHubClientInner({
+  runs,
+  workflows,
+  initialWorkflowId,
+  className,
+}: WorkflowRunHubClientProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const today = React.useMemo(() => new Date(), [])
 
+  const workflowsSorted = React.useMemo(() => {
+    return [...workflows].sort((a, b) =>
+      (a.name?.trim() || "Untitled workflow").localeCompare(
+        b.name?.trim() || "Untitled workflow",
+        undefined,
+        { sensitivity: "base" },
+      ),
+    )
+  }, [workflows])
+
   const [nameSearch, setNameSearch] = React.useState("")
+  const [workflowFilter, setWorkflowFilter] = React.useState<WorkflowFilter>(() => {
+    if (initialWorkflowId != null && workflows.some((w) => w.id === initialWorkflowId)) {
+      return initialWorkflowId
+    }
+    return "all"
+  })
   const [triggerFilter, setTriggerFilter] = React.useState<RunTriggerFilter>("all")
   const [statusFilter, setStatusFilter] = React.useState<RunStatusFilter>("all")
+  const [workflowPickerOpen, setWorkflowPickerOpen] = React.useState(false)
   const [triggerPickerOpen, setTriggerPickerOpen] = React.useState(false)
   const [statusPickerOpen, setStatusPickerOpen] = React.useState(false)
   const [startedPickerOpen, setStartedPickerOpen] = React.useState(false)
@@ -163,6 +213,23 @@ export function WorkflowRunHubClient({ runs, className }: WorkflowRunHubClientPr
   const resetPagination = React.useCallback(() => {
     setPage(1)
   }, [])
+
+  const applyWorkflowFilter = React.useCallback(
+    ({ next }: { next: WorkflowFilter }) => {
+      setWorkflowFilter(next)
+      resetPagination()
+      setWorkflowPickerOpen(false)
+      const params = new URLSearchParams(searchParams.toString())
+      if (next === "all") {
+        params.delete("workflow")
+      } else {
+        params.set("workflow", next)
+      }
+      const qs = params.toString()
+      router.replace(qs.length > 0 ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [pathname, resetPagination, router, searchParams],
+  )
 
   const startedRangeActive = startedStartIso !== null && startedEndIso !== null
 
@@ -247,6 +314,9 @@ export function WorkflowRunHubClient({ runs, className }: WorkflowRunHubClientPr
           return false
         }
       }
+      if (workflowFilter !== "all" && run.workflow_id !== workflowFilter) {
+        return false
+      }
       if (triggerFilter !== "all" && run.trigger_type !== triggerFilter) {
         return false
       }
@@ -264,6 +334,7 @@ export function WorkflowRunHubClient({ runs, className }: WorkflowRunHubClientPr
   }, [
     runs,
     nameSearch,
+    workflowFilter,
     triggerFilter,
     statusFilter,
     startedRangeActive,
@@ -288,9 +359,14 @@ export function WorkflowRunHubClient({ runs, className }: WorkflowRunHubClientPr
 
   const hasNonDefaultFilters =
     nameSearch.trim().length > 0 ||
+    workflowFilter !== "all" ||
     triggerFilter !== "all" ||
     statusFilter !== "all" ||
     startedRangeActive
+
+  const workflowOptionCount = workflows.length + 1
+  const workflowScopeBadge =
+    workflowFilter === "all" ? `${workflowOptionCount}/${workflowOptionCount}` : `1/${workflowOptionCount}`
 
   const completedCount = filteredRuns.filter((r) => r.status === "success").length
   const failedCount = filteredRuns.filter((r) => r.status === "failed").length
@@ -379,6 +455,54 @@ export function WorkflowRunHubClient({ runs, className }: WorkflowRunHubClientPr
                     }
                   }}
                 />
+              </PopoverContent>
+            </Popover>
+
+            {/* Workflow scope */}
+            <Popover open={workflowPickerOpen} onOpenChange={setWorkflowPickerOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" className={FILTER_TRIGGER_CLASS}>
+                  <Workflow className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="text-muted-foreground">Workflow</span>
+                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground">
+                    {workflowScopeBadge}
+                  </span>
+                  <span className="max-w-[12rem] truncate font-medium text-foreground">
+                    {workflowFilterTriggerLabel({ workflowFilter, workflows })}
+                  </span>
+                  <ChevronDownIcon className="size-4 shrink-0 opacity-60" aria-hidden />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[min(100vw-2rem,22rem)] p-0">
+                <Command>
+                  <CommandInput placeholder="Search workflows…" />
+                  <CommandList>
+                    <CommandEmpty>No workflow found.</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem
+                        value="__all_workflows__"
+                        keywords={["All workflows", "all"]}
+                        onSelect={() => {
+                          applyWorkflowFilter({ next: "all" })
+                        }}
+                      >
+                        All workflows
+                      </CommandItem>
+                      {workflowsSorted.map((wf) => (
+                        <CommandItem
+                          key={wf.id}
+                          value={wf.id}
+                          keywords={[wf.name?.trim() || "Untitled workflow", wf.id]}
+                          onSelect={() => {
+                            applyWorkflowFilter({ next: wf.id })
+                          }}
+                        >
+                          {wf.name?.trim() || "Untitled workflow"}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
               </PopoverContent>
             </Popover>
 
@@ -551,7 +675,8 @@ export function WorkflowRunHubClient({ runs, className }: WorkflowRunHubClientPr
                   <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
                     <p className="font-medium text-foreground">No runs match your filters</p>
                     <p className="mt-1 text-sm">
-                      Try clearing search, widening the started date range, or resetting trigger and status filters.
+                      Try clearing search, widening the started date range, or resetting workflow, trigger, and status
+                      filters.
                     </p>
                   </td>
                 </tr>
@@ -677,5 +802,36 @@ export function WorkflowRunHubClient({ runs, className }: WorkflowRunHubClientPr
         ) : null}
       </div>
     </div>
+  )
+}
+
+/**
+ * Runs hub entry: wraps the interactive client in a React `Suspense` boundary for `useSearchParams`.
+ */
+export function WorkflowRunHubClient(props: WorkflowRunHubClientProps) {
+  return (
+    <React.Suspense
+      fallback={
+        <div className={cn("flex min-h-0 flex-col bg-background", props.className)}>
+          {/* Loading shell — matches Runs layout */}
+          <PageHeader
+            title="Runs"
+            description="Recent executions stored for your workflows. Open a row for the waterfall, trigger payload, and per-step payloads."
+          />
+          <div className="flex flex-col gap-6 p-6">
+            <Skeleton className="h-9 w-full max-w-md" />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+            <Skeleton className="h-64 w-full min-w-0" />
+          </div>
+        </div>
+      }
+    >
+      <WorkflowRunHubClientInner {...props} />
+    </React.Suspense>
   )
 }

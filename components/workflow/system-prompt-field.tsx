@@ -3,7 +3,7 @@
 import * as React from "react"
 
 import { Label } from "@/components/ui/label"
-import { FunctionInput } from "@/components/workflow/function-input"
+import { ExpressionInput } from "@/components/workflow/expression-input"
 import type { PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 import { cn } from "@/lib/utils"
 
@@ -19,7 +19,7 @@ export type SystemPromptFieldProps = {
   label?: string
   className?: string
 } & Omit<
-  React.ComponentProps<typeof FunctionInput>,
+  React.ComponentProps<typeof ExpressionInput>,
   "tags" | "value" | "onChange" | "fieldInstanceId" | "className"
 >
 
@@ -46,7 +46,7 @@ export function SystemPromptField({
         </Label>
       ) : null}
 
-      <FunctionInput
+      <ExpressionInput
         tags={tags}
         value={value}
         onChange={onChange}

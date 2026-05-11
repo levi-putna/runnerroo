@@ -7,7 +7,8 @@
  * 3. Run hybrid memory retrieval once, then emit `data-assistant-memory-context` when wrapping the stream.
  * 4. On the first turn, generate a short conversation title via a fast model and stream it as
  *    a `data-conversation-title` chunk so the UI can display it immediately.
- * 5. Delegate to {@link runAssistantChatTurn} (optional planning, tools, `streamText`) with the precomputed memory turn.
+ * 5. Delegate to {@link runAssistantChatTurn} (optional planning on the server, tools, `streamText`)
+ *    with the precomputed memory turn. Reasoning is not forwarded to the client.
  * 6. Return a UI message stream for {@link @ai-sdk/react.useChat}.
  */
 
@@ -36,6 +37,7 @@ import {
 } from "@/lib/ai-gateway/runner-gateway-tracking";
 import { DEFAULT_MODEL_ID } from "@/lib/ai-gateway/models";
 import { memoryRetrievedRowsToSidebarPreviewItems } from "@/lib/conversations/sidebar-memory-preview";
+import { RUNNER_UI_STREAM_PART_IDS } from "@/lib/assistant/assistant-ui-stream-chrome";
 import { createClient } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
@@ -97,45 +99,64 @@ async function generateConversationTitle({
 /**
  * Builds the HTTP response, optionally prepending UI data chunks before the merged model stream.
  */
-function createAssistantChatStreamResponse({
+async function createAssistantChatStreamResponse({
   memoryContextData,
-  generatedTitle,
-  streamResult,
-  messageMetadata,
+  generatedTitlePromise,
+  expectConversationTitleChunk,
+  resolveStreamArtifacts,
   onFinish,
 }: {
   memoryContextData: { items: ReturnType<typeof memoryRetrievedRowsToSidebarPreviewItems> } | null;
-  generatedTitle: string | null;
-  streamResult: Awaited<ReturnType<typeof runAssistantChatTurn>>["streamResult"];
-  messageMetadata: Awaited<ReturnType<typeof runAssistantChatTurn>>["messageMetadata"];
+  generatedTitlePromise: Promise<string | null>;
+  expectConversationTitleChunk: boolean;
+  resolveStreamArtifacts: () => Promise<{
+    streamResult: Awaited<ReturnType<typeof runAssistantChatTurn>>["streamResult"];
+    messageMetadata: Awaited<ReturnType<typeof runAssistantChatTurn>>["messageMetadata"];
+  }>;
   onFinish?: UIMessageStreamOnFinishCallback<UIMessage>;
-}): Response {
-  const shouldWrap = Boolean(generatedTitle) || Boolean(memoryContextData?.items.length);
+}): Promise<Response> {
+  const useWrappedStream =
+    Boolean(memoryContextData?.items.length) || expectConversationTitleChunk;
 
-  const streamOptions = {
-    messageMetadata,
+  const streamOptionsBase = {
     ...(onFinish ? { onFinish } : {}),
+    sendReasoning: false as const,
   };
 
-  if (!shouldWrap) {
-    return streamResult.toUIMessageStreamResponse(streamOptions);
+  if (!useWrappedStream) {
+    const { streamResult, messageMetadata } = await resolveStreamArtifacts();
+    return streamResult.toUIMessageStreamResponse({
+      ...streamOptionsBase,
+      messageMetadata,
+    });
   }
 
   const stream = createUIMessageStream({
-    execute: ({ writer }) => {
+    execute: async ({ writer }) => {
       if (memoryContextData && memoryContextData.items.length > 0) {
         writer.write({
           type: "data-assistant-memory-context",
+          id: RUNNER_UI_STREAM_PART_IDS.memoryContext,
           data: { items: memoryContextData.items },
+          transient: true,
         });
       }
+      const generatedTitle = await generatedTitlePromise;
       if (generatedTitle) {
         writer.write({
           type: "data-conversation-title",
+          id: RUNNER_UI_STREAM_PART_IDS.conversationTitle,
           data: { title: generatedTitle },
+          transient: true,
         });
       }
-      writer.merge(streamResult.toUIMessageStream(streamOptions));
+      const { streamResult, messageMetadata } = await resolveStreamArtifacts();
+      writer.merge(
+        streamResult.toUIMessageStream({
+          ...streamOptionsBase,
+          messageMetadata,
+        })
+      );
     },
   });
 
@@ -233,14 +254,31 @@ export async function POST(req: Request) {
     isFirstTurn &&
     isAssistantPingShortcutMessage({ queryText: getMessageText(userMessages[0]) });
 
-  // Run title generation and the main chat turn concurrently to minimise TTFB.
-  const [generatedTitle, chatTurn] = await Promise.all([
-    isFirstTurn && !skipTitleForPingMock
-      ? generateConversationTitle({
-          firstUserMessage: userMessages[0],
-          gatewayProviderOptions,
-        })
-      : Promise.resolve(null),
+  const expectConversationTitleChunk = isFirstTurn && !skipTitleForPingMock;
+  const generatedTitlePromise = expectConversationTitleChunk
+    ? generateConversationTitle({
+        firstUserMessage: userMessages[0],
+        gatewayProviderOptions,
+      })
+    : Promise.resolve(null as string | null);
+
+  if (skipShortcutPath) {
+    const chatTurn = await runAssistantChatTurn({
+      supabase,
+      userId: user.id,
+      uiMessages,
+      modelId,
+      conversationId,
+      gatewayProviderOptions,
+      memoryTurn,
+    });
+    return chatTurn.streamResult.toUIMessageStreamResponse({
+      messageMetadata: chatTurn.messageMetadata,
+      sendReasoning: false,
+    });
+  }
+
+  const resolveStreamArtifacts = () =>
     runAssistantChatTurn({
       supabase,
       userId: user.id,
@@ -249,10 +287,7 @@ export async function POST(req: Request) {
       conversationId,
       gatewayProviderOptions,
       memoryTurn,
-    }),
-  ]);
-
-  const { streamResult, messageMetadata } = chatTurn;
+    });
 
   const reviewProviderOptions = buildRunnerGatewayProviderOptions({
     supabaseUserId: user.id,
@@ -301,11 +336,11 @@ export async function POST(req: Request) {
     });
   };
 
-  return createAssistantChatStreamResponse({
+  return await createAssistantChatStreamResponse({
     memoryContextData,
-    generatedTitle,
-    streamResult,
-    messageMetadata,
+    generatedTitlePromise,
+    expectConversationTitleChunk,
+    resolveStreamArtifacts,
     onFinish,
   });
 }

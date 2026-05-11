@@ -902,7 +902,7 @@ export function WorkflowEditorClient({ workflowId, initialWorkflow }: WorkflowEd
           title="Run history"
           aria-label="Run history"
           disabled={isNew}
-          onClick={() => router.push(`/app/workflows/${workflowId}/history`)}
+          onClick={() => router.push(`/app/run?workflow=${encodeURIComponent(workflowId)}`)}
         >
           <History className="size-4" />
         </Button>

@@ -25,7 +25,7 @@ import {
   sanitiseInputFieldKey,
 } from "@/lib/workflows/engine/input-schema"
 import { mergePromptTagDefinitions, type PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
-import { FunctionInput } from "@/components/workflow/function-input"
+import { ExpressionInput } from "@/components/workflow/expression-input"
 import { WorkflowEditableListRow } from "@/components/workflow/workflow-editable-list-row"
 import {
   WorkflowSchemaRowsSortableList,
@@ -115,7 +115,7 @@ function draftFromField({ field }: { field: NodeInputField }): DraftField {
 /** Sentinel id while the “add field” draft has no persisted row yet — sibling tags include every saved row. */
 const SCHEMA_ADD_FIELD_ROW_ID = "__schema-add-draft__"
 
-interface SchemaValueFunctionInputProps {
+interface SchemaValueExpressionInputProps {
   /** Stable row id or {@link SCHEMA_ADD_FIELD_ROW_ID} for the add form. */
   fieldId: string
   fields: NodeInputField[]
@@ -137,7 +137,7 @@ interface SchemaValueFunctionInputProps {
  * Schema field default value editor: literals plus globals, inbound `{{input.*}}` from the
  * previous step, and sibling output rows referenced as `{{input.other_field}}`.
  */
-function SchemaValueFunctionInput({
+function SchemaValueExpressionInput({
   fieldId,
   fields,
   upstreamPromptTags = [],
@@ -148,7 +148,7 @@ function SchemaValueFunctionInput({
   placeholder,
   rows = 2,
   id,
-}: SchemaValueFunctionInputProps) {
+}: SchemaValueExpressionInputProps) {
   const contextualTags = React.useMemo((): PromptTagDefinition[] => {
     const sibling = fields
       .filter((f) => f.id !== fieldId)
@@ -178,7 +178,7 @@ function SchemaValueFunctionInput({
         : "Mix literals with workflow tags — for example {{now.iso}}, {{input.text}} from the previous step, or {{trigger_inputs.*}} for the original invoke payload. Boolean rows accept true/false literals or tags that resolve to booleans at runtime. Resolution order is defined by the runner."
 
   return (
-    <FunctionInput
+    <ExpressionInput
       tags={mergedTags}
       value={value}
       onChange={onChange}
@@ -755,7 +755,7 @@ export function InputSchemaEditor({
                       <Label htmlFor="stack-add-schema-value-tagged" className="font-normal">
                         Value
                       </Label>
-                      <SchemaValueFunctionInput
+                      <SchemaValueExpressionInput
                         fieldId={SCHEMA_ADD_FIELD_ROW_ID}
                         fields={fields}
                         upstreamPromptTags={upstreamPromptTags}
@@ -898,7 +898,7 @@ export function InputSchemaEditor({
                           <Label htmlFor={`stack-edit-schema-value-${activeStackField.id}`} className="font-normal">
                             Value
                           </Label>
-                          <SchemaValueFunctionInput
+                          <SchemaValueExpressionInput
                             fieldId={activeStackField.id}
                             fields={fields}
                             upstreamPromptTags={upstreamPromptTags}
@@ -1013,7 +1013,7 @@ export function InputSchemaEditor({
                             <Label htmlFor={`stack-edit-schema-value-${activeStackField.id}`} className="font-normal">
                               Value
                             </Label>
-                            <SchemaValueFunctionInput
+                            <SchemaValueExpressionInput
                               fieldId={activeStackField.id}
                               fields={fields}
                               upstreamPromptTags={upstreamPromptTags}
@@ -1239,7 +1239,7 @@ export function InputSchemaEditor({
                     <Label htmlFor={`edit-schema-value-${field.id}`} className="font-normal">
                       Value
                     </Label>
-                    <SchemaValueFunctionInput
+                    <SchemaValueExpressionInput
                       fieldId={field.id}
                       fields={fields}
                       upstreamPromptTags={upstreamPromptTags}
@@ -1443,7 +1443,7 @@ export function InputSchemaEditor({
               <Label htmlFor="add-schema-value-tagged" className="font-normal">
                 Value
               </Label>
-              <SchemaValueFunctionInput
+              <SchemaValueExpressionInput
                 fieldId={SCHEMA_ADD_FIELD_ROW_ID}
                 fields={fields}
                 upstreamPromptTags={upstreamPromptTags}

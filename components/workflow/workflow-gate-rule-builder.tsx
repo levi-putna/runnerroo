@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { FunctionInput } from "@/components/workflow/function-input"
+import { ExpressionInput } from "@/components/workflow/expression-input"
 import { PromptTagFieldSelect } from "@/components/workflow/prompt-tag-field-select"
 import { mergePromptTagDefinitions, type PromptTagDefinition } from "@/lib/workflows/engine/prompt-tags"
 import {
@@ -228,14 +228,14 @@ function GateRuleRow({
         {needsValue ? (
           <div className="space-y-1">
             <Label className={labelClass}>Value</Label>
-            <FunctionInput
+            <ExpressionInput
               tags={mergedTags}
               value={rule.value}
               onChange={({ value }) => onChangeValue({ ruleId: rule.id, value })}
               fieldInstanceId={`gate-val-${rule.id}`}
               placeholder="literal or {{tag}}"
               rows={1}
-              className="[&_.function-input-editor-focus-surface]:min-h-0"
+              className="[&_.expression-input-editor-focus-surface]:min-h-0"
             />
           </div>
         ) : (

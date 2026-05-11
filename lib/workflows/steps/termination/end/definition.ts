@@ -8,7 +8,7 @@ export const endDefinition: StepDefinition = {
   group: "termination",
   label: "End",
   description:
-    "Stop the workflow — accepts connections in, none out. Declare an Output schema to publish a filtered object for tool callers.",
+    "Stop the workflow: accepts connections in, none out. Declare an Output schema to publish a filtered object for tool callers.",
   defaultData: {
     label: "End",
     description: "Execution stops here when this branch is reached.",

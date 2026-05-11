@@ -1,3 +1,4 @@
+import { buildDefaultCodeStepOutputSchemaFields } from "@/lib/workflows/engine/input-schema"
 import { WORKFLOW_NODE_CORE_META } from "@/lib/workflows/engine/node-type-registry"
 import type { StepDefinition } from "@/lib/workflows/engine/step-definition"
 
@@ -7,12 +8,15 @@ export const codeRunDefinition: StepDefinition = {
   type: "code",
   group: "code",
   label: "Run code",
-  description: "Execute TypeScript in a Vercel Sandbox",
+  description: "Execute JavaScript code in a sandbox environment and return a single result.",
   defaultData: {
     label: "Run code",
-    language: "typescript",
-    description: "Execute custom code",
-    code: "export default async function run(input: unknown) {\n  return input\n}",
+    language: "javascript",
+    description: "Execute JavaScript code in a sandbox environment and return a single result.",
+    code: "return input\n",
+    codeTimeoutMs: 15_000,
+    codeOutputType: "string",
+    outputSchema: buildDefaultCodeStepOutputSchemaFields(),
   },
   Icon: meta.Icon,
   accentBg: meta.accentBg,

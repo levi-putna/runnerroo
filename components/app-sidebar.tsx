@@ -119,12 +119,13 @@ const navItems: NavItem[] = [
 const ASSISTANT_SECTION_NAV_IDS = new Set(["assistant", "history"])
 
 /** Nav item ids grouped under the Workflow heading. */
-const WORKFLOW_SECTION_NAV_IDS = new Set(["workflows", "runs", "inbox"])
+const WORKFLOW_SECTION_NAV_IDS = new Set(["workflows", "runs"])
 
-/** All ids rendered in structured Assistant / Workflow blocks (excluded from core nav). */
+/** All ids rendered in structured blocks (excluded from core nav). Inbox is solo at the top. */
 const SIDEBAR_STRUCTURED_NAV_IDS = new Set<string>([
   ...ASSISTANT_SECTION_NAV_IDS,
   ...WORKFLOW_SECTION_NAV_IDS,
+  "inbox",
 ])
 
 /**
@@ -222,6 +223,11 @@ export function AppSidebar({
       : false
     const hasDrilldown = !!item.subItems
 
+    const inboxInactivePrimary =
+      item.id === "inbox" &&
+      !isActive &&
+      "text-primary [&_svg]:text-primary hover:bg-sidebar-accent hover:text-primary hover:[&_svg]:text-primary"
+
     if (hasDrilldown) {
       return (
         <button
@@ -229,6 +235,7 @@ export function AppSidebar({
           onClick={() => drillDown(item.id)}
           className={cn(
             "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            inboxInactivePrimary,
             isActive &&
               "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground [&_svg]:text-primary-foreground"
           )}
@@ -246,6 +253,7 @@ export function AppSidebar({
         href={item.url!}
         className={cn(
           "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          inboxInactivePrimary,
           isActive &&
             "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground [&_svg]:text-primary-foreground"
         )}
@@ -259,6 +267,7 @@ export function AppSidebar({
 
   function renderPanel(panelId: string) {
     if (panelId === "root") {
+      const inboxItem = navItemsEffective.find((i) => i.id === "inbox")
       return (
         <div className="flex flex-col gap-1 p-2">
           {/* Search trigger */}
@@ -272,6 +281,13 @@ export function AppSidebar({
               ⌘K
             </kbd>
           </button>
+
+          {/* Inbox — below search, no section heading */}
+          {inboxItem ? (
+            <div className="mb-1">
+              {renderRootNavLinkOrDrilldown(inboxItem)}
+            </div>
+          ) : null}
 
           {/* Assistant — composer and conversation history */}
           <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
@@ -328,15 +344,26 @@ export function AppSidebar({
                       href={href}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        // Active recent row — muted surface + primary text (softer than main nav solid primary).
                         isActive &&
-                          "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground [&_svg]:text-primary-foreground"
+                          "bg-muted font-normal text-primary hover:bg-muted/80 hover:text-primary"
                       )}
                       title={entry.label}
                     >
                       {entry.kind === "conversation" ? (
-                        <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                        <MessageSquareIcon
+                          className={cn(
+                            "size-3.5 shrink-0",
+                            isActive ? "text-primary" : "text-muted-foreground"
+                          )}
+                        />
                       ) : (
-                        <Workflow className="size-3.5 shrink-0 text-muted-foreground" />
+                        <Workflow
+                          className={cn(
+                            "size-3.5 shrink-0",
+                            isActive ? "text-primary" : "text-muted-foreground"
+                          )}
+                        />
                       )}
                       <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                     </Link>

@@ -165,7 +165,7 @@ function SuggestionList({ items, selectedIndex, rect, onSelect }: SuggestionList
 
 // ─── Single editor instance ────────────────────────────────────────────────────
 
-interface FunctionInputEditorProps {
+interface ExpressionInputEditorProps {
   value: string
   onChange: (plain: string) => void
   tags: PromptTagDefinition[]
@@ -184,7 +184,7 @@ interface FunctionInputEditorProps {
  * A single TipTap editor that reads/writes plain text with `{{tag}}` placeholders.
  * Used both for the inline field and for the expanded expression dialog.
  */
-function FunctionInputEditor({
+function ExpressionInputEditor({
   value,
   onChange,
   tags,
@@ -195,7 +195,7 @@ function FunctionInputEditor({
   rows = 4,
   insertTagRef,
   editorRef,
-}: FunctionInputEditorProps) {
+}: ExpressionInputEditorProps) {
   /**
    * Latest tag catalogue for drag-drop and imperative insert — avoids stale lookups when the
    * editor instance was created against an older `tags` prop snapshot.
@@ -422,7 +422,7 @@ function FunctionInputEditor({
     () =>
       ({
         minHeight,
-        "--function-input-min-height": minHeight,
+        "--expression-input-min-height": minHeight,
       }) as React.CSSProperties,
     [minHeight],
   )
@@ -450,13 +450,13 @@ function FunctionInputEditor({
   return (
     <>
       <div
-        className="function-input-editor-focus-surface cursor-text"
+        className="expression-input-editor-focus-surface cursor-text"
         style={shellStyle}
         onPointerDown={handleFocusSurfacePointerDown}
       >
         <EditorContent
           editor={editor}
-          className={cn("function-input-editor-content", className)}
+          className={cn("expression-input-editor-content", className)}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
         />
@@ -480,7 +480,7 @@ function FunctionInputEditor({
 
 // ─── Public component ──────────────────────────────────────────────────────────
 
-export type FunctionInputProps = {
+export type ExpressionInputProps = {
   /** Available tag tokens with id, label, and description. */
   tags: PromptTagDefinition[]
   /** Plain-text value including `{{tag_id}}` placeholders. */
@@ -501,12 +501,12 @@ export type FunctionInputProps = {
 }
 
 /**
- * Multi-line “function” input built on TipTap: literals plus `{{tag}}` expressions,
+ * Multi-line expression input built on TipTap: literals plus `{{tag}}` expressions,
  * autocomplete, chips, and an expanded expression dialog with a tag palette.
  * The dialog edits a draft; only **Apply** writes through to {@link onChange}. Closing
  * or **Cancel** discards dialog edits so the inline field stays unchanged.
  */
-export function FunctionInput({
+export function ExpressionInput({
   tags,
   value,
   onChange,
@@ -519,7 +519,7 @@ export function FunctionInput({
   id,
   expressionDialogTitle,
   expressionDialogDescription,
-}: FunctionInputProps) {
+}: ExpressionInputProps) {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   /** Draft text while the expression dialog is open; commits to {@link value} only when Apply is used. */
   const [dialogDraft, setDialogDraft] = React.useState("")
@@ -559,7 +559,7 @@ export function FunctionInput({
       >
         {/* Inline editor */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <FunctionInputEditor
+          <ExpressionInputEditor
             key={`inline-${fieldInstanceId}`}
             value={value}
             onChange={handleChange}
@@ -618,7 +618,7 @@ export function FunctionInput({
               <ScrollArea className="min-h-0 flex-1">
                 {dialogOpen ? (
                   /* Mount only while open so the inline editor is the sole TipTap instance for mentions. */
-                  <FunctionInputEditor
+                  <ExpressionInputEditor
                     key={`dialog-${fieldInstanceId}`}
                     value={dialogDraft}
                     onChange={setDialogDraft}

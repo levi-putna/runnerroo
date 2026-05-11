@@ -80,6 +80,67 @@ export function mergeEntryOutputSchemaFromInputFields({
   return [...mergedLeading, ...tail]
 }
 
+export interface MergeGlobalsSchemaFromOutputSchemaParams {
+  existingGlobalsFields: NodeInputField[]
+  outputFields: NodeInputField[]
+}
+
+/**
+ * Mirrors declared output-schema rows into workflow globals: aligns keys, labels, types,
+ * required flags, and descriptions with the output list. New rows copy each output mapping when
+ * that cell is populated; otherwise the globals value stays blank until you author one. Globals
+ * resolve in the same template pass as outputs (`outputContext`), so expressions such as
+ * `{{exe.*}}` or `{{input.*}}` behave the same in both panels.
+ */
+export function mergeGlobalsSchemaFromOutputSchemaFields({
+  existingGlobalsFields,
+  outputFields,
+}: MergeGlobalsSchemaFromOutputSchemaParams): NodeInputField[] {
+  const existingByKey = new Map(existingGlobalsFields.map((field) => [field.key, field]))
+  const consumedKeys = new Set<string>()
+
+  const mergedLeading: NodeInputField[] = outputFields.map((src) => {
+    consumedKeys.add(src.key)
+    const prev = existingByKey.get(src.key)
+
+    if (!prev) {
+      const initialValue: string | undefined =
+        src.value !== undefined && !isUnsetSchemaText({ value: src.value }) ? src.value : undefined
+      return createEmptyNodeInputField({
+        partial: {
+          key: src.key,
+          label: src.label,
+          type: src.type,
+          required: src.required,
+          description: src.description,
+          ...(initialValue !== undefined ? { value: initialValue } : {}),
+        },
+      })
+    }
+
+    let nextValue: string | undefined
+    if (!isUnsetSchemaText({ value: prev.value })) {
+      nextValue = prev.value
+    } else if (!isUnsetSchemaText({ value: src.value })) {
+      nextValue = src.value
+    } else {
+      nextValue = undefined
+    }
+
+    return {
+      ...prev,
+      label: src.label,
+      type: src.type,
+      required: src.required,
+      description: src.description,
+      value: nextValue,
+    }
+  })
+
+  const tail = existingGlobalsFields.filter((field) => !consumedKeys.has(field.key))
+  return [...mergedLeading, ...tail]
+}
+
 export interface MergeExtractOutputFromFieldsParams {
   existingOutputFields: NodeInputField[]
   extractFields: ExtractFieldRow[]
@@ -402,3 +463,21 @@ export function buildNumericStepExecutionImportSpecs({
     },
   ]
 }
+
+/** Canonical **Run code** step execution outputs for "Import from execution" (`{{exe.result}}`, `{{exe.execution_ms}}`). */
+export const CODE_STEP_EXECUTION_IMPORT_SPECS: readonly DocumentGenerateExecutionOutputSpecRow[] = [
+  {
+    key: "result",
+    label: "Result",
+    type: "string",
+    description: "Coerced return value from the sandbox snippet (`exe.result`).",
+    mappingValue: "{{exe.result}}",
+  },
+  {
+    key: "execution_ms",
+    label: "Execution time (ms)",
+    type: "number",
+    description: "Total execution time in milliseconds for the code run (`exe.execution_ms`).",
+    mappingValue: "{{exe.execution_ms}}",
+  },
+]

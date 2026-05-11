@@ -275,6 +275,30 @@ export function prevPromptTagsFromPredecessorNode({
   })
 }
 
+export interface UpstreamPromptTagsFromInboundPredecessorsParams {
+  /** All graph nodes that send an edge into the current step (immediate predecessors only). */
+  predecessorNodes: Node[]
+}
+
+/**
+ * Merges {@link prevPromptTagsFromPredecessorNode} across every inbound predecessor and drops
+ * duplicate token ids so convergent graphs do not repeat the same `{{input.*}}` suggestion.
+ */
+export function upstreamPromptTagsFromInboundPredecessors({
+  predecessorNodes,
+}: UpstreamPromptTagsFromInboundPredecessorsParams): PromptTagDefinition[] {
+  const seen = new Set<string>()
+  const out: PromptTagDefinition[] = []
+  for (const n of predecessorNodes) {
+    for (const t of prevPromptTagsFromPredecessorNode({ previousNode: n })) {
+      if (seen.has(t.id)) continue
+      seen.add(t.id)
+      out.push(t)
+    }
+  }
+  return out
+}
+
 /**
  * Prompt tags for Webhook steps — expose the HTTP status code from `exe.*` after the call completes.
  */
@@ -323,6 +347,39 @@ export function numericExeNumberPromptTags(): PromptTagDefinition[] {
       label: "Execution · number",
       description:
         "Numeric result from this step’s execution: a random draw between resolved bounds, or starting value plus increment.",
+    },
+  ]
+}
+
+/**
+ * Prompt tags for **Run code** steps — values available on `exe` after the sandbox finishes.
+ */
+export function codeStepExePromptTags(): PromptTagDefinition[] {
+  return [
+    {
+      id: "exe.result",
+      label: "Execution · result",
+      description: "Coerced return value from the JavaScript snippet (stdout protocol).",
+    },
+    {
+      id: "exe.execution_ms",
+      label: "Execution · wall clock (ms)",
+      description: "Total execution time in milliseconds for the code run.",
+    },
+    {
+      id: "exe.exit_code",
+      label: "Execution · exit code",
+      description: "Process exit code from the Node runner inside the sandbox.",
+    },
+    {
+      id: "exe.active_cpu_ms",
+      label: "Execution · active CPU (ms)",
+      description: "Sandbox-reported active CPU milliseconds when the platform exposes it after the VM stops.",
+    },
+    {
+      id: "exe.stderr",
+      label: "Execution · stderr",
+      description: "Captured stderr from the snippet (truncated in the payload when very long).",
     },
   ]
 }

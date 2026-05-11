@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import * as React from "react"
 import type { Edge, Node } from "@xyflow/react"
 import {
@@ -29,6 +30,8 @@ import {
   ArrowDownFromLine,
   ArrowDownToLine,
   ArrowLeft,
+  ArrowUpFromLine,
+  ExternalLink,
   GitBranch,
   Plus,
   Trash2,
@@ -61,7 +64,11 @@ import {
   readGateGroupFromNodeData,
 } from "@/lib/workflows/engine/gate-rule"
 import { SystemPromptField } from "@/components/workflow/system-prompt-field"
-import { createEmptyNodeInputField, readInputSchemaFromNodeData } from "@/lib/workflows/engine/input-schema"
+import {
+  createEmptyNodeInputField,
+  readInputSchemaFromNodeData,
+  type NodeInputField,
+} from "@/lib/workflows/engine/input-schema"
 import {
   WORKFLOW_DOCUMENT_TEMPLATE_PROMPT_IMPORT,
   WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT,
@@ -74,10 +81,11 @@ import {
   classifyObjectExecutionPromptTags,
   extractObjectExecutionPromptTags,
   numericExeNumberPromptTags,
+  codeStepExePromptTags,
   approvalExePromptTags,
   webhookCallExePromptTags,
   nodeInputFieldsToPromptTags,
-  prevPromptTagsFromPredecessorNode,
+  upstreamPromptTagsFromInboundPredecessors,
   workflowGlobalsPromptTagsFromNodes,
   workflowConstantsPromptTags,
   type PromptTagDefinition,
@@ -96,16 +104,20 @@ import {
 import {
   mergeEntryOutputSchemaFromInputFields,
   mergeExtractOutputSchemaFromExtractFields,
+  mergeGlobalsSchemaFromOutputSchemaFields,
   mergeOutputSchemaFromExecutionSpecs,
   buildApprovalExecutionImportSpecs,
   buildGenerateTextExecutionImportSpecs,
   buildClassifyExecutionImportSpecs,
   buildNumericStepExecutionImportSpecs,
+  CODE_STEP_EXECUTION_IMPORT_SPECS,
   WEBHOOK_CALL_EXECUTION_IMPORT_SPECS,
   DOCUMENT_GENERATE_EXECUTION_IMPORT_SPECS,
   DOCUMENT_XML_EXECUTION_IMPORT_SPECS,
 } from "@/lib/workflows/engine/schema-mapping-merge"
-import { FunctionInput } from "@/components/workflow/function-input"
+import { ExpressionInput } from "@/components/workflow/expression-input"
+import { WorkflowCodeEditor } from "@/components/workflow/workflow-code-editor"
+import { normaliseCodeStepTimeoutMs } from "@/lib/workflows/steps/code/code/code-step-config"
 import { WorkflowRunContext } from "@/lib/workflows/engine/run-context"
 import {
   CronExpressionBuilder,
@@ -114,7 +126,10 @@ import {
 import { RunStepDetailSheetBody } from "@/components/workflow/run-step-detail-sheet-body"
 import { resolveRunStepTimelineLabel } from "@/lib/workflows/engine/run-timeline"
 import { DocumentTemplateUploadField } from "@/components/workflow/document-template-upload-field"
-import type { WorkflowSchemaImportApplyMode } from "@/components/workflow/workflow-schema-builder-toolbar"
+import type {
+  WorkflowSchemaConfirmableImport,
+  WorkflowSchemaImportApplyMode,
+} from "@/components/workflow/workflow-schema-builder-toolbar"
 
 /** Stable lists for output "Import from execution" on generate-text-shaped AI steps (generate / transform / summarise). */
 const GENERATE_TEXT_STEP_EXECUTION_IMPORT_SPECS = buildGenerateTextExecutionImportSpecs()
@@ -129,6 +144,89 @@ function randomBranchIdSuffix(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID().slice(0, 8)
     : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 8)
+}
+
+/**
+ * Builds the schema-actions menu entries for workflow globals panels: always offers mirroring
+ * from the Input tab; optionally adds mirroring from this step's output schema (omitted on entry
+ * triggers, which do not publish an output schema).
+ */
+function buildWorkflowGlobalsSchemaConfirmableImports({
+  inputSchemaFields,
+  outputSchemaFields,
+  globalsSchemaFields,
+  set,
+  includeImportFromOutput,
+}: {
+  inputSchemaFields: NodeInputField[]
+  outputSchemaFields: NodeInputField[]
+  globalsSchemaFields: NodeInputField[]
+  set: (k: string, v: unknown) => void
+  includeImportFromOutput: boolean
+}): WorkflowSchemaConfirmableImport[] {
+  const canSyncFromInput = inputSchemaFields.length > 0
+  const canSyncFromOutput = outputSchemaFields.length > 0
+
+  const importFromInput: WorkflowSchemaConfirmableImport = {
+    id: "globals_import_input",
+    label: "Import from input schema",
+    TriggerIcon: ArrowDownToLine,
+    disabled: !canSyncFromInput,
+    alertTitle: "Import globals rows from the input schema?",
+    alertDescription: (
+      <span className="text-pretty leading-relaxed">
+        Mirrors Input tab keys into this globals list with{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{input.*}}"}</code> placeholders. Rows
+        that already have a mapping value stay as they are when using append unless you clear the cell first.
+      </span>
+    ),
+    confirmLabel: "Import fields",
+    offerApplyModeChoice: true,
+    onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => {
+      const base = params?.applyMode === "replace" ? [] : globalsSchemaFields
+      set(
+        "globalsSchema",
+        mergeEntryOutputSchemaFromInputFields({
+          existingOutputFields: base,
+          inputFields: inputSchemaFields,
+        }),
+      )
+    },
+  }
+
+  if (!includeImportFromOutput) {
+    return [importFromInput]
+  }
+
+  const importFromOutput: WorkflowSchemaConfirmableImport = {
+    id: "globals_import_output",
+    label: "Import from output schema",
+    TriggerIcon: ArrowUpFromLine,
+    disabled: !canSyncFromOutput,
+    alertTitle: "Import globals rows from the output schema?",
+    alertDescription: (
+      <span className="text-pretty leading-relaxed">
+        Aligns globals keys with your Output schema and copies each row&apos;s mapping expression when that cell is
+        filled. Blank output mappings stay blank on new globals rows. Globals and outputs resolve together, so{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{exe.*}}"}</code> and other tags behave
+        the same here as on the Output panel.
+      </span>
+    ),
+    confirmLabel: "Import fields",
+    offerApplyModeChoice: true,
+    onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => {
+      const base = params?.applyMode === "replace" ? [] : globalsSchemaFields
+      set(
+        "globalsSchema",
+        mergeGlobalsSchemaFromOutputSchemaFields({
+          existingGlobalsFields: base,
+          outputFields: outputSchemaFields,
+        }),
+      )
+    },
+  }
+
+  return [importFromInput, importFromOutput]
 }
 
 interface NodeSheetProps {
@@ -281,7 +379,8 @@ function getNodeSheetTabVisibility({
     showNumericComputationOutput ||
     showWebhookCallOutput ||
     showEndOutput ||
-    nodeType === "approval"
+    nodeType === "approval" ||
+    nodeType === "code"
 
   return { showInput, showBranchTab, showGate, showExecution, showOutput }
 }
@@ -502,6 +601,71 @@ export function NodeSheet({
     setLocalData({ ...node.data })
   }, [node?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Latest drafts for persisting when the sheet dismisses without using Cancel. */
+  const localDataRef = React.useRef(localData)
+  React.useEffect(() => {
+    localDataRef.current = localData
+  }, [localData])
+
+  /** Node id in scope for dismiss handlers (stable when `node` is briefly null during unmount). */
+  const sheetNodeIdRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    sheetNodeIdRef.current = node?.id ?? null
+  }, [node?.id])
+
+  /**
+   * Snapshot of persisted `node.data` when the sheet is open; Cancel restores drafts to this shape.
+   */
+  const sheetDataBaselineRef = React.useRef<Record<string, unknown>>({})
+
+  /**
+   * When true, the next sheet `onOpenChange(false)` close is from Cancel — skip persisting to the graph.
+   */
+  const cancelSheetCloseRef = React.useRef(false)
+
+  /**
+   * When true, the next sheet `onOpenChange(false)` close follows Delete — skip persisting drafts for the removed step.
+   */
+  const deleteSheetCloseRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!open || node == null) return
+    sheetDataBaselineRef.current = { ...(node.data as Record<string, unknown>) }
+    cancelSheetCloseRef.current = false
+    deleteSheetCloseRef.current = false
+  }, [open, node?.id])
+
+  /**
+   * Handles controlled sheet visibility: overlay / Escape / built-in close persist drafts; Cancel and Delete do not.
+   */
+  const handleStepSheetOpenChange = React.useCallback(({ nextOpen }: { nextOpen: boolean }) => {
+    if (nextOpen) return
+    if (cancelSheetCloseRef.current) {
+      cancelSheetCloseRef.current = false
+      onClose()
+      return
+    }
+    if (deleteSheetCloseRef.current) {
+      deleteSheetCloseRef.current = false
+      onClose()
+      return
+    }
+    const id = sheetNodeIdRef.current
+    if (id != null) {
+      onUpdate(id, { ...localDataRef.current })
+    }
+    onClose()
+  }, [onClose, onUpdate])
+
+  /**
+   * Closes the step sheet and drops in-memory edits back to the last opened baseline (Cancel only).
+   */
+  const handleStepSheetCancel = React.useCallback(() => {
+    cancelSheetCloseRef.current = true
+    setLocalData({ ...sheetDataBaselineRef.current })
+    onClose()
+  }, [onClose])
+
   /** Land on General when switching nodes; drop Run if this step no longer has run data. */
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- tab strip should reset with selected node id
@@ -527,10 +691,10 @@ export function NodeSheet({
 
   const upstreamPromptTags = React.useMemo(
     () =>
-      prevPromptTagsFromPredecessorNode({
-        previousNode: inboundPick.selectedPredecessor,
+      upstreamPromptTagsFromInboundPredecessors({
+        predecessorNodes: inboundPick.predecessorNodes,
       }),
-    [inboundPick.selectedPredecessor],
+    [inboundPick.predecessorNodes],
   )
 
   const workflowGlobalPromptTags = React.useMemo(
@@ -696,6 +860,7 @@ export function NodeSheet({
 
   function handleSave() {
     onUpdate(sheetNode.id, localData)
+    sheetDataBaselineRef.current = { ...localData }
     onClose()
   }
 
@@ -724,7 +889,7 @@ export function NodeSheet({
   const persistedRunIdForIo = liveRunId?.trim() ?? ""
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+    <Sheet open={open} onOpenChange={(nextOpen) => handleStepSheetOpenChange({ nextOpen })}>
       <SheetContent className="flex h-full max-h-[100dvh] min-h-0 w-full flex-col gap-0 p-0 sm:min-w-[600px] sm:max-w-[600px]">
         <SheetHeader className="px-5 pt-5 pb-4 border-b">
           {/* Large type icon left; title + type tag stacked beside it; vertical centre alignment */}
@@ -921,7 +1086,7 @@ export function NodeSheet({
                   {sheetNode.type === "approval" ? (
                     <div className="space-y-1.5">
                       <Label htmlFor="approval-message-fn">Approval message</Label>
-                      <FunctionInput
+                      <ExpressionInput
                         id="approval-message-fn"
                         tags={approvalMessagePromptTags}
                         value={String(
@@ -1038,7 +1203,15 @@ export function NodeSheet({
                         workflowGlobalPromptTags={workflowGlobalPromptTags}
                       />
                     ) : null}
-                    {sheetNode.type === "code" ? <CodeExecutionConfig data={localData} set={set} /> : null}
+                    {sheetNode.type === "code" ? (
+                      <CodeExecutionConfig
+                        data={localData}
+                        set={set}
+                        nodeId={sheetNode.id}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
                     {sheetNode.type === "iteration" ? (
                       <IterationIncrementExecutionConfig
                         data={localData}
@@ -1130,6 +1303,14 @@ export function NodeSheet({
                     ) : null}
                     {sheetNode.type === "split" ? (
                       <SplitOutputConfig
+                        data={localData}
+                        set={set}
+                        upstreamPromptTags={upstreamPromptTags}
+                        workflowGlobalPromptTags={workflowGlobalPromptTags}
+                      />
+                    ) : null}
+                    {sheetNode.type === "code" ? (
+                      <CodeStepOutputConfig
                         data={localData}
                         set={set}
                         upstreamPromptTags={upstreamPromptTags}
@@ -1228,6 +1409,7 @@ export function NodeSheet({
               size="icon"
               className="text-destructive hover:text-destructive hover:bg-destructive/10"
               onClick={() => {
+                deleteSheetCloseRef.current = true
                 onDelete(sheetNode.id)
                 onClose()
               }}
@@ -1235,7 +1417,7 @@ export function NodeSheet({
               <Trash2 className="size-4" />
             </Button>
             <div className="flex-1" />
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={handleStepSheetCancel}>
               Cancel
             </Button>
             <Button onClick={handleSave}>Save</Button>
@@ -1278,6 +1460,18 @@ function AiGenerateOutputConfig({
       ...contextualPromptTags,
     ],
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
   )
 
   const canSyncFromInput = inputSchemaFields.length > 0
@@ -1358,6 +1552,7 @@ function AiGenerateOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -1392,6 +1587,18 @@ function AiClassifyOutputConfig({
       ...contextualPromptTags,
     ],
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
   )
 
   const canSyncFromInput = inputSchemaFields.length > 0
@@ -1471,6 +1678,7 @@ function AiClassifyOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -1513,6 +1721,18 @@ function AiExtractOutputConfig({
       ...contextualPromptTags,
     ],
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
   )
 
   const canSyncFromFields = extractFields.length > 0
@@ -1604,6 +1824,7 @@ function AiExtractOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -1734,6 +1955,105 @@ function EndOutputConfig({
   )
 }
 
+/** Outbound mappings for **Run code** — `{{exe.result}}`, `{{exe.execution_ms}}`, and related execution fields. */
+function CodeStepOutputConfig({
+  data,
+  set,
+  upstreamPromptTags,
+  workflowGlobalPromptTags,
+}: {
+  data: Record<string, unknown>
+  set: (k: string, v: unknown) => void
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
+}) {
+  const outputSchemaFields = readInputSchemaFromNodeData({ value: data.outputSchema })
+  const globalsSchemaFields = readInputSchemaFromNodeData({ value: data.globalsSchema })
+  const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
+
+  const contextualPromptTags = React.useMemo(
+    () => [...codeStepExePromptTags(), ...upstreamPromptTags],
+    [upstreamPromptTags],
+  )
+
+  const globalsContextualTags = React.useMemo(
+    () => [
+      ...workflowGlobalPromptTags,
+      ...nodeInputFieldsToPromptTags({ fields: outputSchemaFields }),
+      ...contextualPromptTags,
+    ],
+    [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
+  )
+
+  const codeOutputConfirmables = React.useMemo(
+    () => [
+      {
+        id: "import_execution",
+        label: "Import from execution",
+        TriggerIcon: ArrowDownFromLine,
+        alertTitle: "Import output fields from execution?",
+        alertDescription: (
+          <span className="text-pretty leading-relaxed">
+            Adds or refreshes rows bound to{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{exe.result}}"}</code> and{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-[11px] font-mono">{"{{exe.execution_ms}}"}</code>.
+          </span>
+        ),
+        confirmLabel: "Import fields",
+        offerApplyModeChoice: true,
+        onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => {
+          const base = params?.applyMode === "replace" ? [] : outputSchemaFields
+          set(
+            "outputSchema",
+            mergeOutputSchemaFromExecutionSpecs({
+              existingOutputFields: base,
+              specs: CODE_STEP_EXECUTION_IMPORT_SPECS,
+            }),
+          )
+        },
+      },
+    ],
+    [outputSchemaFields, set],
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Step outputs keyed for {{input.*}} on downstream inbound mapping */}
+      <InputSchemaBuilder
+        fields={outputSchemaFields}
+        onChange={({ fields }) => set("outputSchema", fields)}
+        usageContext="output"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={contextualPromptTags}
+        confirmableImports={codeOutputConfirmables}
+        promptImport={WORKFLOW_OUTPUT_SCHEMA_PROMPT_IMPORT}
+      />
+      {/* Optional workflow globals */}
+      <InputSchemaBuilder
+        fields={globalsSchemaFields}
+        onChange={({ fields }) => set("globalsSchema", fields)}
+        usageContext="globals"
+        upstreamPromptTags={upstreamPromptTags}
+        contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
+        promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
+      />
+    </div>
+  )
+}
+
 /** Outbound mappings for Random number / Iteration steps — template cells resolve `{{exe.number}}`. */
 function NumericComputationOutputConfig({
   data,
@@ -1764,6 +2084,18 @@ function NumericComputationOutputConfig({
       ...contextualPromptTags,
     ],
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
   )
 
   const numericExecutionSpecs = React.useMemo(
@@ -1851,6 +2183,7 @@ function NumericComputationOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -1919,7 +2252,7 @@ function WebhookCallExecutionConfig({
         {/* URL — function input so tag variables resolve at runtime */}
         <div className="space-y-1.5">
           <Label>URL</Label>
-          <FunctionInput
+          <ExpressionInput
             tags={promptTags}
             value={typeof data.url === "string" ? data.url : ""}
             onChange={({ value }) => set("url", value)}
@@ -1944,7 +2277,7 @@ function WebhookCallExecutionConfig({
         {showBody ? (
           <div className="space-y-1.5">
             <Label>Body</Label>
-            <FunctionInput
+            <ExpressionInput
               tags={promptTags}
               value={typeof data.bodyTemplate === "string" ? data.bodyTemplate : ""}
               onChange={({ value }) => set("bodyTemplate", value)}
@@ -2001,6 +2334,18 @@ function WebhookCallOutputConfig({
       ...contextualPromptTags,
     ],
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
   )
 
   const canSyncFromInput = inputSchemaFields.length > 0
@@ -2095,6 +2440,7 @@ function WebhookCallOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -2131,6 +2477,18 @@ function ApprovalOutputConfig({
       ...contextualPromptTags,
     ],
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
+  )
+
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
   )
 
   const canSyncFromInput = inputSchemaFields.length > 0
@@ -2220,6 +2578,7 @@ function ApprovalOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -2257,7 +2616,7 @@ function IterationIncrementExecutionConfig({
       {/* Starting number — defaults to {{input.starting_number}} so the previous step feeds it directly */}
       <div className="space-y-3">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Starting number</p>
-        <FunctionInput
+        <ExpressionInput
           tags={promptTags}
           value={String(data.iterationStartingNumberExpression ?? "{{input.starting_number}}")}
           onChange={({ value }) => set("iterationStartingNumberExpression", value)}
@@ -2277,7 +2636,7 @@ function IterationIncrementExecutionConfig({
       {/* Increment — added to Starting number after tags resolve */}
       <div className="space-y-3">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Increment</p>
-        <FunctionInput
+        <ExpressionInput
           tags={promptTags}
           value={String(data.iterationIncrement ?? "1")}
           onChange={({ value }) => set("iterationIncrement", value)}
@@ -2367,7 +2726,7 @@ function RandomNumberBoundsExecutionConfig({
       {/* Lower bound expression */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Minimum</p>
-        <FunctionInput
+        <ExpressionInput
           tags={promptTags}
           value={String(data.randomMinExpression ?? "0")}
           onChange={({ value }) => set("randomMinExpression", value)}
@@ -2387,7 +2746,7 @@ function RandomNumberBoundsExecutionConfig({
       {/* Upper bound expression */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Maximum</p>
-        <FunctionInput
+        <ExpressionInput
           tags={promptTags}
           value={String(data.randomMaxExpression ?? "100")}
           onChange={({ value }) => set("randomMaxExpression", value)}
@@ -2463,6 +2822,18 @@ function EntryTriggerGlobalsConfig({
     [workflowGlobalPromptTags, inputSchemaFields],
   )
 
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields: [],
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: false,
+      }),
+    [globalsSchemaFields, inputSchemaFields, set],
+  )
+
   return (
     <div className="space-y-6">
       {/* Workflow globals — merged on the runner envelope for downstream {{global.*}} */}
@@ -2471,6 +2842,7 @@ function EntryTriggerGlobalsConfig({
         onChange={({ fields }) => set("globalsSchema", fields)}
         usageContext="globals"
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -2749,7 +3121,7 @@ function AiExecutionConfig({
               pretty-printed; otherwise it is sent as plain text). Leave blank to send the previous step&apos;s
               output as JSON.
             </p>
-            <FunctionInput
+            <ExpressionInput
               tags={promptTags}
               value={String(data.classifyContentExpression ?? "")}
               onChange={({ value }) => set("classifyContentExpression", value)}
@@ -2777,7 +3149,7 @@ function AiExecutionConfig({
               pretty-printed; otherwise it is sent as plain text). Leave blank to send the previous step&apos;s
               output as JSON.
             </p>
-            <FunctionInput
+            <ExpressionInput
               tags={promptTags}
               value={String(data.extractContentExpression ?? "")}
               onChange={({ value }) => set("extractContentExpression", value)}
@@ -2804,7 +3176,7 @@ function AiExecutionConfig({
             pretty-printed; otherwise it is sent as plain text). Leave blank to send the previous step&apos;s
             output as JSON.
           </p>
-          <FunctionInput
+          <ExpressionInput
             tags={promptTags}
             value={String(data.transformContentExpression ?? "")}
             onChange={({ value }) => set("transformContentExpression", value)}
@@ -2825,7 +3197,7 @@ function AiExecutionConfig({
             pretty-printed; otherwise it is sent as plain text). Leave blank to send the previous step&apos;s
             output as JSON.
           </p>
-          <FunctionInput
+          <ExpressionInput
             tags={promptTags}
             value={String(data.summarizeContentExpression ?? "")}
             onChange={({ value }) => set("summarizeContentExpression", value)}
@@ -2841,137 +3213,105 @@ function AiExecutionConfig({
   )
 }
 
-/** Expected step inputs for a code, document, random, or iteration node; runnable source or templates live on the Execution tab. */
-function CodeInputConfig({
-  data,
-  set,
-  upstreamPromptTags,
-  workflowGlobalPromptTags,
-  inboundPick,
-}: {
-  data: Record<string, unknown>
-  set: (k: string, v: unknown) => void
-  upstreamPromptTags: PromptTagDefinition[]
-  workflowGlobalPromptTags: PromptTagDefinition[]
-  inboundPick: ReturnType<typeof useInboundPredecessorSelection>
-}) {
-  const inputSchemaFields = readInputSchemaFromNodeData({ value: data.inputSchema })
-  const { predecessorNodes, setPickedSourceId, selectedPredecessor } = inboundPick
-  const hasUpstream = predecessorNodes.length > 0
-  const canImport = hasUpstream && selectedPredecessor != null
-
-  function applyPreviousStepMappings(params?: { applyMode: WorkflowSchemaImportApplyMode }) {
-    if (!selectedPredecessor) return
-    const inferred = inferPreviousStepOutputFields({ previousNode: selectedPredecessor })
-    const existing = readInputSchemaFromNodeData({ value: data.inputSchema })
-    const next =
-      params?.applyMode === "replace"
-        ? replaceInputSchemaWithPreviousStepImport({ inferred })
-        : mergeInputSchemaWithPreviousStepImport({ existingFields: existing, inferred })
-    set("inputSchema", next)
-  }
-
-  return (
-    <div className="space-y-6">
-      {hasUpstream ? (
-        <div className="space-y-3">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upstream mapping</p>
-          {predecessorNodes.length > 1 ? (
-            <div className="space-y-1.5">
-              <Label>Use output from</Label>
-              <Select value={inboundPick.resolvedSourceId ?? ""} onValueChange={(v) => setPickedSourceId(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select upstream step" />
-                </SelectTrigger>
-                <SelectContent>
-                  {predecessorNodes.map((n) => {
-                    const label = String((n.data as Record<string, unknown>)?.label ?? n.id)
-                    return (
-                      <SelectItem key={n.id} value={n.id}>
-                        {label}
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Expected step inputs; same schema model as AI steps for a consistent experience */}
-      <InputSchemaBuilder
-        fields={inputSchemaFields}
-        onChange={({ fields }) => set("inputSchema", fields)}
-        usageContext="code"
-        upstreamPromptTags={upstreamPromptTags}
-        contextualPromptTags={workflowGlobalPromptTags}
-        confirmableImports={
-          hasUpstream
-            ? [
-                {
-                  id: "previous_step",
-                  label: "Import from previous step",
-                  TriggerIcon: ArrowDownToLine,
-                  disabled: !canImport,
-                  alertTitle: "Import mappings from the upstream step?",
-                  alertDescription:
-                    "New rows and matching keys get {{input.*}} placeholders that read the inbound step's output. Rows that already have a non-empty mapping value stay as they are unless you clear the cell first (when using append).",
-                  confirmLabel: "Import mappings",
-                  offerApplyModeChoice: true,
-                  onConfirm: (params?: { applyMode: WorkflowSchemaImportApplyMode }) => applyPreviousStepMappings(params),
-                },
-              ]
-            : undefined
-        }
-        promptImport={hasUpstream ? WORKFLOW_STEP_INPUT_PROMPT_IMPORT : null}
-      />
-    </div>
-  )
-}
-
-/** Language and runnable source for a code step (`input` is shaped on the Input tab). */
+/** Execution tab for **Run code** — timeout, result type, and JavaScript editor (`{{input.*}}` follows the selected predecessor, same as other steps). */
 function CodeExecutionConfig({
   data,
   set,
+  nodeId,
+  upstreamPromptTags,
+  workflowGlobalPromptTags,
 }: {
   data: Record<string, unknown>
   set: (k: string, v: unknown) => void
+  nodeId: string
+  upstreamPromptTags: PromptTagDefinition[]
+  workflowGlobalPromptTags: PromptTagDefinition[]
 }) {
+  const codePromptTags = React.useMemo(
+    () =>
+      mergePromptTagDefinitions({
+        contextual: [...workflowGlobalPromptTags, ...upstreamPromptTags],
+      }),
+    [upstreamPromptTags, workflowGlobalPromptTags],
+  )
+
+  const timeoutSeconds = Math.round(normaliseCodeStepTimeoutMs({ value: data.codeTimeoutMs }) / 1000)
+  const outputType = String(data.codeOutputType ?? "string")
+
   return (
-    <div className="space-y-3">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</p>
-      {/* Language */}
-      <div className="space-y-1.5">
-        <Label>Language</Label>
-        <Select value={String(data.language ?? "typescript")} onValueChange={(v) => set("language", v)}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="typescript">TypeScript</SelectItem>
-            <SelectItem value="javascript">JavaScript</SelectItem>
-            <SelectItem value="python">Python</SelectItem>
-          </SelectContent>
-        </Select>
+    <div className="w-full space-y-8">
+      {/* Timeout and result type */}
+      <div className="grid w-full min-w-0 gap-4 sm:grid-cols-2">
+        <div className="min-w-0 space-y-1.5">
+          <Label htmlFor={`${nodeId}-code-timeout`}>Timeout (seconds)</Label>
+          <Input
+            id={`${nodeId}-code-timeout`}
+            type="number"
+            min={1}
+            max={60}
+            value={timeoutSeconds}
+            onChange={(e) => {
+              const n = Number(e.target.value)
+              if (!Number.isFinite(n)) return
+              const clamped = Math.min(60, Math.max(1, Math.floor(n)))
+              set("codeTimeoutMs", clamped * 1000)
+            }}
+          />
+          <p className="text-[11px] text-muted-foreground leading-snug">Wall-clock limit for the sandbox run (1–60s).</p>
+        </div>
+        <div className="min-w-0 space-y-1.5">
+          <Label>Result type</Label>
+          <Select value={outputType} onValueChange={(v) => set("codeOutputType", v)}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="string">String</SelectItem>
+              <SelectItem value="number">Number</SelectItem>
+              <SelectItem value="json">JSON</SelectItem>
+              <SelectItem value="null">Null</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground leading-snug">How the emitted value is coerced for downstream steps.</p>
+        </div>
       </div>
-      {/* Runnable body */}
-      <div className="space-y-1.5">
-        <Label>Code</Label>
-        <Textarea
-          value={String(
-            data.code ??
-              "// Access previous step output via `input`\nexport default async function run(input) {\n  return input\n}"
-          )}
-          onChange={(e) => set("code", e.target.value)}
-          rows={14}
-          className="resize-none font-mono text-xs"
+
+      {/* Runnable JavaScript — tags in the source are substituted on the server before the VM executes */}
+      <div className="w-full space-y-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">JavaScript</p>
+        {/* Help copy — sandbox runs; learn doc opens in a new tab */}
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Runs as <strong>Node.js</strong> in a <strong>sandbox</strong> (isolated from your browser and editor). The
+          previous step&apos;s output is passed as{" "}
+          <code className="rounded bg-muted px-1 font-mono text-[11px]">input</code> — use{" "}
+          <code className="rounded bg-muted px-1 font-mono text-[11px]">return input</code> or{" "}
+          <code className="rounded bg-muted px-1 font-mono text-[11px]">{"{{input.*}}"}</code> in the source (tags are
+          resolved before the run). Use <code className="rounded bg-muted px-1 font-mono text-[11px]">return</code> in
+          the top-level script body to emit a result. Type{" "}
+          <code className="rounded bg-muted px-1 font-mono text-[11px]">{"{{"}</code> for tag completion.{" "}
+          <Link
+            href="/learn/workflows/steps/code"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-medium text-primary underline underline-offset-2"
+          >
+            Run code guide
+            <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+            <span className="sr-only">(opens in a new tab)</span>
+          </Link>
+        </p>
+        <WorkflowCodeEditor
+          fieldInstanceId={`${nodeId}-workflow-code`}
+          tags={codePromptTags}
+          value={String(data.code ?? "return input\n")}
+          onChange={({ value }) => set("code", value)}
+          fullscreenTitle="Edit workflow code"
         />
-        <p className="text-xs text-muted-foreground">Runs in an isolated Vercel Sandbox</p>
       </div>
     </div>
   )
 }
+
 
 /**
  * DocXML execution panel — model instructions produce XML that the runner renders into a Word document.
@@ -3081,7 +3421,7 @@ function DocumentXmlExecutionConfig({
       {/* Uploaded artefact name */}
       <div className="space-y-1.5">
         <Label>File name</Label>
-        <FunctionInput
+        <ExpressionInput
           tags={outputFileNamePromptTags}
           value={String(data.outputFileName ?? "generated-document.docx")}
           onChange={({ value }) => set("outputFileName", value)}
@@ -3202,7 +3542,7 @@ function DocumentExecutionConfig({
       {/* Generated file name — expression field with tag picker (same as increment / AI bindings) */}
       <div className="space-y-1.5">
         <Label>File name</Label>
-        <FunctionInput
+        <ExpressionInput
           tags={outputFileNamePromptTags}
           value={String(data.outputFileName ?? "generated-document.docx")}
           onChange={({ value }) => set("outputFileName", value)}
@@ -3323,6 +3663,18 @@ function DocumentOutputConfig({
 
   const canSyncFromInput = inputSchemaFields.length > 0
 
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
+  )
+
   /** Primary: execution outputs; secondary: mirror Input tab. */
   const documentOutputExecutionConfirmables = React.useMemo(
     () => [
@@ -3413,6 +3765,7 @@ function DocumentOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={[...documentExecutionPromptTags, ...workflowGlobalPromptTags]}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -3681,6 +4034,18 @@ function SplitOutputConfig({
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
   )
 
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
+  )
+
   const canImportFromInput = inputSchemaFields.length > 0
 
   const outputConfirmableImports = React.useMemo(
@@ -3729,6 +4094,7 @@ function SplitOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -3813,6 +4179,18 @@ function SwitchOutputConfig({
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
   )
 
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
+  )
+
   const canImportFromInput = inputSchemaFields.length > 0
 
   const outputConfirmableImports = React.useMemo(
@@ -3875,6 +4253,7 @@ function SwitchOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>
@@ -4362,6 +4741,18 @@ function DecisionOutputConfig({
     [workflowGlobalPromptTags, outputSchemaFields, contextualPromptTags],
   )
 
+  const globalsImportConfirmables = React.useMemo(
+    () =>
+      buildWorkflowGlobalsSchemaConfirmableImports({
+        inputSchemaFields,
+        outputSchemaFields,
+        globalsSchemaFields,
+        set,
+        includeImportFromOutput: true,
+      }),
+    [globalsSchemaFields, inputSchemaFields, outputSchemaFields, set],
+  )
+
   const canImportFromInput = inputSchemaFields.length > 0
 
   const outputConfirmableImports = React.useMemo(
@@ -4410,6 +4801,7 @@ function DecisionOutputConfig({
         usageContext="globals"
         upstreamPromptTags={upstreamPromptTags}
         contextualPromptTags={globalsContextualTags}
+        confirmableImports={globalsImportConfirmables}
         promptImport={WORKFLOW_GLOBALS_SCHEMA_PROMPT_IMPORT}
       />
     </div>

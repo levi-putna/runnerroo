@@ -115,7 +115,7 @@ export function SwitchNode({ id, data, selected }: NodeProps) {
           <div className="h-px w-full bg-border/80" />
         </div>
 
-        {/* Case rows — fixed h-11 so handle tops are predictable */}
+        {/* Case rows — fixed h-11 so handle tops stay aligned; labels only (conditions live in the sheet). */}
         <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
           {branches.map((b, idx) => (
             <div
@@ -125,30 +125,18 @@ export function SwitchNode({ id, data, selected }: NodeProps) {
               <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tabular-nums text-muted-foreground">
                 {idx + 1}.
               </span>
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <p className="truncate text-xs font-semibold text-foreground">
-                  {b.label || `Case ${idx + 1}`}
-                </p>
-                {b.condition?.trim() ? (
-                  <code className="w-full truncate rounded-md border border-dashed border-border/70 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                    {b.condition}
-                  </code>
-                ) : (
-                  <span className="text-[10px] italic text-muted-foreground">No condition yet</span>
-                )}
-              </div>
+              <p className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
+                {b.label || `Case ${idx + 1}`}
+              </p>
             </div>
           ))}
 
-          {/* Default row */}
+          {/* Default exit — label only */}
           <div className="flex h-11 shrink-0 items-center gap-2 border-t border-dashed border-border/70 bg-slate-500/8 pl-3 pr-10">
             <span className="w-10 shrink-0 text-[10px] font-semibold uppercase text-muted-foreground">
               Default
             </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <p className="truncate text-xs font-semibold text-foreground">{defaultLabel}</p>
-              <span className="text-[10px] text-muted-foreground">If no case matches</span>
-            </div>
+            <p className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{defaultLabel}</p>
           </div>
         </div>
       </div>

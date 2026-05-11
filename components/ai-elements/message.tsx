@@ -18,7 +18,7 @@ import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
+import type { ComponentProps, HTMLAttributes, MouseEventHandler, ReactElement } from "react";
 import {
   createContext,
   memo,
@@ -82,6 +82,11 @@ export type MessageActionProps = ComponentProps<typeof Button> & {
   label?: string;
 };
 
+/**
+ * Icon-sized control for a chat message row. With {@link MessageActionProps.tooltip}, wraps the
+ * button in a tooltip trigger; trigger props are merged so consumer handlers (e.g. `onClick`)
+ * still run after Base UI wiring (spread order alone would drop the caller’s `onClick`).
+ */
 export const MessageAction = ({
   tooltip,
   children,
@@ -99,21 +104,36 @@ export const MessageAction = ({
   );
 
   if (tooltip) {
+    const { onClick: userOnClick, ...userRest } = props;
+
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger
             delay={0}
             render={(triggerProps) => {
-              const { className: triggerClassName, ...triggerRest } = triggerProps;
+              const {
+                className: triggerClassName,
+                onClick: triggerOnClick,
+                ...triggerRest
+              } = triggerProps;
+              const mergedOnClick: MouseEventHandler<HTMLButtonElement> | undefined =
+                triggerOnClick || userOnClick
+                  ? (event) => {
+                      triggerOnClick?.(event);
+                      userOnClick?.(event);
+                    }
+                  : undefined;
+
               return (
                 <Button
                   className={cn(className, triggerClassName)}
                   size={size}
                   type="button"
                   variant={variant}
-                  {...props}
+                  {...userRest}
                   {...triggerRest}
+                  {...(mergedOnClick ? { onClick: mergedOnClick } : {})}
                 >
                   {children}
                   <span className="sr-only">{label || tooltip}</span>

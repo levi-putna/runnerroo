@@ -171,27 +171,6 @@ export function InboxClient({ initialApprovals, className }: InboxClientProps) {
           </div>
         </div>
 
-        {/* ── Overview tiles (filtered count) ── */}
-        <div className="flex flex-col gap-4">
-          <p className="text-sm font-medium text-foreground">Overview</p>
-          <p className="text-xs text-muted-foreground">
-            Items below match your search. Each row needs a decision before the workflow can continue past the
-            approval step.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">In queue</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight text-foreground">
-                {filtered.length}
-              </p>
-              {query.trim().length > 0 ? (
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  <span className="tabular-nums">{approvals.length}</span> total · filtered
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </div>
 
         {/* ── Table ── */}
         <div className="min-w-0 overflow-x-auto rounded-lg border border-border">
